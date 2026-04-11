@@ -387,8 +387,8 @@ set(konsole_SRCS
 # Sets the icon on Windows and OSX
 ecm_add_app_icon(ICONS_SOURCES ICONS ${ICONS_SRCS})
 
-add_executable(konsole ${konsole_SRCS} ${ICONS_SOURCES})
-target_link_libraries(konsole
+add_executable(kmux ${konsole_SRCS} ${ICONS_SOURCES})
+target_link_libraries(kmux
   konsoleprivate
   konsoleapp
   KF6::XmlGui
@@ -401,7 +401,7 @@ target_link_libraries(konsole
 )
 
 if(APPLE)
-    set_target_properties(konsole PROPERTIES
+    set_target_properties(kmux PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.konsole"
         MACOSX_BUNDLE_BUNDLE_NAME "Konsole"
         MACOSX_BUNDLE_DISPLAY_NAME "Konsole"
@@ -412,7 +412,7 @@ if(APPLE)
         MACOSX_BUNDLE_COPYRIGHT "1997-2022 The Konsole Developers")
 endif()
 
-install(TARGETS konsole ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+install(TARGETS kmux ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
 ### Embedded Konsole KPart
 
