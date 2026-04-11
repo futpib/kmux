@@ -555,7 +555,7 @@ TerminalDisplay *currentDragTarget = nullptr;
 
 void Konsole::ViewSplitter::dragEnterEvent(QDragEnterEvent *ev)
 {
-    const auto dragId = QStringLiteral("konsole/terminal_display");
+    const auto dragId = QStringLiteral("kmux/terminal_display");
     if (ev->mimeData()->hasFormat(dragId)) {
         auto other_pid = ev->mimeData()->data(dragId).toInt();
         // don't accept the drop if it's another instance of konsole
@@ -613,7 +613,7 @@ void Konsole::ViewSplitter::dragLeaveEvent(QDragLeaveEvent *event)
 
 void Konsole::ViewSplitter::dropEvent(QDropEvent *ev)
 {
-    if (ev->mimeData()->hasFormat(QStringLiteral("konsole/terminal_display"))) {
+    if (ev->mimeData()->hasFormat(QStringLiteral("kmux/terminal_display"))) {
         if (getToplevelSplitter()->terminalMaximized()) {
             return;
         }

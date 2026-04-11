@@ -168,7 +168,7 @@ void DetachableTabBar::mouseDoubleClickEvent(QMouseEvent *event)
 
 void DetachableTabBar::dragEnterEvent(QDragEnterEvent *event)
 {
-    const auto dragId = QStringLiteral("konsole/terminal_display");
+    const auto dragId = QStringLiteral("kmux/terminal_display");
     if (!event->mimeData()->hasFormat(dragId)) {
         return;
     }

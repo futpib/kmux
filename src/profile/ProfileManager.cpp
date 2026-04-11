@@ -65,7 +65,7 @@ ProfileManager::ProfileManager()
     // if the hosting application of konsolepart does not specify its own
     // default profile, use the default profile of stand-alone Konsole.
     if (defaultProfileFileName.isEmpty()) {
-        KSharedConfigPtr konsoleConfig = KSharedConfig::openConfig(QStringLiteral("konsolerc"));
+        KSharedConfigPtr konsoleConfig = KSharedConfig::openConfig(QStringLiteral("kmuxrc"));
         group = konsoleConfig->group(QStringLiteral("Desktop Entry"));
         defaultProfileFileName = group.readEntry("DefaultProfile", "");
     }

@@ -36,10 +36,10 @@ BookmarkHandler::BookmarkHandler(KActionCollection *collection, QMenu *menu, boo
 {
     setObjectName(QStringLiteral("BookmarkHandler"));
 
-    _file = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("konsole/bookmarks.xml"));
+    _file = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kmux/bookmarks.xml"));
 
     if (_file.isEmpty()) {
-        _file = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/konsole");
+        _file = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/kmux");
         QDir().mkpath(_file);
         _file += QStringLiteral("/bookmarks.xml");
     }

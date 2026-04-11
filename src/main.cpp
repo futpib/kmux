@@ -97,7 +97,7 @@ static int CurrentConfigVersion = 1;
 
 static void migrateRenamedConfigKeys()
 {
-    KSharedConfigPtr konsoleConfig = KSharedConfig::openConfig(QStringLiteral("konsolerc"));
+    KSharedConfigPtr konsoleConfig = KSharedConfig::openConfig(QStringLiteral("kmuxrc"));
     KConfigGroup verGroup = konsoleConfig->group(QStringLiteral("General"));
     const int savedVersion = verGroup.readEntry<int>("ConfigVersion", 0);
     if (savedVersion < CurrentConfigVersion) {
@@ -183,9 +183,9 @@ int main(int argc, char *argv[])
 
     app->setWindowIcon(QIcon::fromTheme(QStringLiteral("utilities-terminal")));
 
-    KLocalizedString::setApplicationDomain("konsole");
+    KLocalizedString::setApplicationDomain("kmux");
 
-    KAboutData about(QStringLiteral("konsole"),
+    KAboutData about(QStringLiteral("kmux"),
                      i18nc("@title", "Konsole"),
                      QStringLiteral(KONSOLE_VERSION),
                      i18nc("@title", "Terminal emulator"),

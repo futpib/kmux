@@ -34,7 +34,7 @@ ProfileReader::~ProfileReader() = default;
 QStringList ProfileReader::findProfiles()
 {
     QStringList profiles;
-    const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("konsole"), QStandardPaths::LocateDirectory);
+    const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("kmux"), QStandardPaths::LocateDirectory);
     profiles.reserve(dirs.size());
 
     for (const QString &dir : dirs) {

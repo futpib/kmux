@@ -1,10 +1,10 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/kconfig">
-        <file>konsolerc</file>
+        <file alias="kmuxrc">konsolerc</file>
     </qresource>
-    <qresource prefix="/konsole">
-        <file>konsole.knsrc</file>
+    <qresource prefix="/kmux">
+        <file alias="kmux.knsrc">konsole.knsrc</file>
         <file>color-schemes/BlackOnLightYellow.colorscheme</file>
         <file>color-schemes/BlackOnRandomLight.colorscheme</file>
         <file>color-schemes/BlackOnWhite.colorscheme</file>
