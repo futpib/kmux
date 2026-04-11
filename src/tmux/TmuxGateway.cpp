@@ -23,6 +23,12 @@ TmuxGateway::TmuxGateway(Session *gatewaySession, QObject *parent)
 {
 }
 
+TmuxGateway::TmuxGateway(WriteCallback writeCallback, QObject *parent)
+    : QObject(parent)
+    , _writeCallback(std::move(writeCallback))
+{
+}
+
 void TmuxGateway::processLine(const QByteArray &line)
 {
     if (_inResponseBlock) {
@@ -549,7 +555,9 @@ int TmuxGateway::parseSessionId(const QByteArray &token)
 
 void TmuxGateway::writeToGateway(const QByteArray &data)
 {
-    if (_gatewaySession && _gatewaySession->emulation()) {
+    if (_writeCallback) {
+        _writeCallback(data);
+    } else if (_gatewaySession && _gatewaySession->emulation()) {
         Q_EMIT _gatewaySession->emulation()->sendData(data);
     }
 }

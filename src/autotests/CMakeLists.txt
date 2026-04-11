@@ -73,3 +73,9 @@ ecm_add_test(
     TEST_NAME TmuxIntegrationTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
+
+ecm_add_test(
+    TmuxProcessBridgeTest.cpp
+    TEST_NAME TmuxProcessBridgeTest
+    LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
+)

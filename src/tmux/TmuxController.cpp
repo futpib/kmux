@@ -75,6 +75,11 @@ TmuxController::TmuxController(TmuxGateway *gateway, Session *gatewaySession, Vi
     connect(_paneTitleTimer, &QTimer::timeout, this, &TmuxController::refreshPaneTitles);
 }
 
+TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent)
+    : TmuxController(gateway, nullptr, viewManager, parent)
+{
+}
+
 TmuxController::~TmuxController()
 {
     _paneManager->destroyAllPaneSessions();

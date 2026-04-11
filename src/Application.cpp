@@ -36,6 +36,7 @@
 #include "widgets/ViewContainer.h"
 
 #include "pluginsystem/IKonsolePlugin.h"
+#include "tmux/TmuxProcessBridge.h"
 
 using namespace Konsole;
 
@@ -191,33 +192,15 @@ int Application::newInstance()
     // create a new window or use an existing one
     MainWindow *window = processWindowArgs(createdNewMainWindow);
 
-    if (m_parser->isSet(QStringLiteral("tabs-from-file"))) {
-        // create new session(s) as described in file
-        if (!processTabsFromFileArgs(window)) {
+    {
+        // Spawn tmux in plain control mode (-C) as a hidden subprocess.
+        // No PTY, no Session, no terminal emulation — TmuxProcessBridge
+        // pipes stdout lines to TmuxGateway and stdin commands back.
+        auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
+        if (!bridge->start()) {
+            qWarning() << "Failed to start tmux";
+            delete bridge;
             return 0;
-        }
-    }
-    // select profile to use
-    Profile::Ptr baseProfile = processProfileSelectArgs();
-
-    // process various command-line options which cause a property of the
-    // selected profile to be changed
-    Profile::Ptr newProfile = processProfileChangeArgs(baseProfile);
-
-    // if layout file is enable load it and create session from definitions,
-    // else create new session
-    if (m_parser->isSet(QStringLiteral("layout"))) {
-        window->viewManager()->loadLayout(m_parser->value(QStringLiteral("layout")));
-    } else {
-        Session *session = window->createSession(newProfile, QString());
-
-        const QString workingDir = m_parser->value(QStringLiteral("workdir"));
-        if (!workingDir.isEmpty()) {
-            session->setInitialWorkingDirectory(workingDir);
-        }
-
-        if (m_parser->isSet(QStringLiteral("noclose"))) {
-            session->setAutoClose(false);
         }
     }
 

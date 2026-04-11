@@ -270,6 +270,7 @@ set(konsoleprivate_SRCS ${windowadaptors_SRCS}
                         tmux/TmuxController.cpp
                         tmux/TmuxControllerRegistry.cpp
                         tmux/TmuxSessionBridge.cpp
+                        tmux/TmuxProcessBridge.cpp
 
                         ${dbus_xml_srcs}
 

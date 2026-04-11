@@ -34,6 +34,7 @@ public:
     enum class State { Idle, Initializing, ApplyingLayout, Dragging };
 
     TmuxController(TmuxGateway *gateway, Session *gatewaySession, ViewManager *viewManager, QObject *parent = nullptr);
+    TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent = nullptr);
     ~TmuxController() override;
 
     void initialize();
@@ -90,7 +91,7 @@ private:
     void handleListWindowsResponse(bool success, const QString &response);
 
     TmuxGateway *_gateway;
-    Session *_gatewaySession;
+    Session *_gatewaySession = nullptr;
     ViewManager *_viewManager;
 
     TmuxPaneManager *_paneManager;
