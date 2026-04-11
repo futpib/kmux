@@ -87,7 +87,7 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
                                }),
                                this);
 
-    _controller = new TmuxController(_gateway, nullptr, _viewManager, this);
+    _controller = new TmuxController(_gateway, _viewManager, this);
 
     // Read from our socket, not from QProcess's stdout
     _readNotifier = new QSocketNotifier(_socketFd, QSocketNotifier::Read, this);

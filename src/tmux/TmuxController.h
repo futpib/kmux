@@ -33,7 +33,6 @@ class KONSOLEPRIVATE_EXPORT TmuxController : public QObject
 public:
     enum class State { Idle, Initializing, ApplyingLayout, Dragging };
 
-    TmuxController(TmuxGateway *gateway, Session *gatewaySession, ViewManager *viewManager, QObject *parent = nullptr);
     TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent = nullptr);
     ~TmuxController() override;
 
@@ -61,7 +60,6 @@ public:
 
     const QMap<int, int> &windowToTabIndex() const;
 
-    Session *gatewaySession() const;
     TmuxGateway *gateway() const;
 
 Q_SIGNALS:
@@ -91,7 +89,6 @@ private:
     void handleListWindowsResponse(bool success, const QString &response);
 
     TmuxGateway *_gateway;
-    Session *_gatewaySession = nullptr;
     ViewManager *_viewManager;
 
     TmuxPaneManager *_paneManager;

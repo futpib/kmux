@@ -15,8 +15,8 @@
 namespace Konsole
 {
 
-class TmuxController;
 class Session;
+class TmuxController;
 
 class KONSOLEPRIVATE_EXPORT TmuxControllerRegistry : public QObject
 {
@@ -29,7 +29,6 @@ public:
 
     QList<TmuxController *> controllers() const;
 
-    TmuxController *controllerForGatewaySession(Session *session) const;
     TmuxController *controllerForSession(Session *session) const;
     TmuxController *controllerForPane(int paneId) const;
 

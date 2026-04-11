@@ -6,9 +6,8 @@
 
 #include "TmuxGateway.h"
 
-#include "TmuxCommand.h"
 #include "Emulation.h"
-#include "session/Session.h"
+#include "TmuxCommand.h"
 
 #include <QLoggingCategory>
 
@@ -16,12 +15,6 @@ Q_LOGGING_CATEGORY(KonsoleTmuxGateway, "konsole.tmux.gateway", QtWarningMsg)
 
 namespace Konsole
 {
-
-TmuxGateway::TmuxGateway(Session *gatewaySession, QObject *parent)
-    : QObject(parent)
-    , _gatewaySession(gatewaySession)
-{
-}
 
 TmuxGateway::TmuxGateway(WriteCallback writeCallback, QObject *parent)
     : QObject(parent)
@@ -561,8 +554,6 @@ void TmuxGateway::writeToGateway(const QByteArray &data)
 {
     if (_writeCallback) {
         _writeCallback(data);
-    } else if (_gatewaySession && _gatewaySession->emulation()) {
-        Q_EMIT _gatewaySession->emulation()->sendData(data);
     }
 }
 

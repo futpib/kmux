@@ -21,15 +21,12 @@
 namespace Konsole
 {
 
-class Session;
-
 class KONSOLEPRIVATE_EXPORT TmuxGateway : public QObject
 {
     Q_OBJECT
 public:
     using WriteCallback = std::function<void(const QByteArray &data)>;
 
-    explicit TmuxGateway(Session *gatewaySession, QObject *parent = nullptr);
     explicit TmuxGateway(WriteCallback writeCallback, QObject *parent = nullptr);
 
     void processLine(const QByteArray &line);
@@ -69,7 +66,6 @@ private:
     void finishCurrentCommand(bool success);
     void writeToGateway(const QByteArray &data);
 
-    Session *_gatewaySession = nullptr;
     WriteCallback _writeCallback;
     bool _exited = false;
     bool _ready = false;

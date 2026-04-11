@@ -27,10 +27,9 @@ Q_LOGGING_CATEGORY(KonsoleTmuxController, "konsole.tmux.controller", QtWarningMs
 namespace Konsole
 {
 
-TmuxController::TmuxController(TmuxGateway *gateway, Session *gatewaySession, ViewManager *viewManager, QObject *parent)
+TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent)
     : QObject(parent)
     , _gateway(gateway)
-    , _gatewaySession(gatewaySession)
     , _viewManager(viewManager)
     , _paneManager(new TmuxPaneManager(gateway, this))
     , _layoutManager(new TmuxLayoutManager(_paneManager, viewManager, this))
@@ -75,11 +74,6 @@ TmuxController::TmuxController(TmuxGateway *gateway, Session *gatewaySession, Vi
     connect(_paneTitleTimer, &QTimer::timeout, this, &TmuxController::refreshPaneTitles);
 }
 
-TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent)
-    : TmuxController(gateway, nullptr, viewManager, parent)
-{
-}
-
 TmuxController::~TmuxController()
 {
     _paneManager->destroyAllPaneSessions();
@@ -93,11 +87,6 @@ void TmuxController::initialize()
                           [this](bool success, const QString &response) {
                               handleListWindowsResponse(success, response);
                           });
-}
-
-Session *TmuxController::gatewaySession() const
-{
-    return _gatewaySession;
 }
 
 TmuxGateway *TmuxController::gateway() const

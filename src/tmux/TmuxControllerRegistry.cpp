@@ -43,16 +43,6 @@ QList<TmuxController *> TmuxControllerRegistry::controllers() const
     return _controllers;
 }
 
-TmuxController *TmuxControllerRegistry::controllerForGatewaySession(Session *session) const
-{
-    for (TmuxController *controller : _controllers) {
-        if (controller->gatewaySession() == session) {
-            return controller;
-        }
-    }
-    return nullptr;
-}
-
 TmuxController *TmuxControllerRegistry::controllerForSession(Session *session) const
 {
     for (TmuxController *controller : _controllers) {
