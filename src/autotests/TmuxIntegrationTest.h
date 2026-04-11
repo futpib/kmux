@@ -53,17 +53,9 @@ private Q_SLOTS:
     void testCloseWindowFromTmuxRemovesTab();
     void testCloseWindowTabFromKonsole();
     void testRenameWindowFromTmuxUpdatesTab();
-    void testFractalSplitDownRight1();
-    void testFractalSplitDownRight2();
-    void testFractalSplitDownRight3();
-    void testFractalSplitDownRight4();
-    // void testFractalSplitDownRight5();
-    // void testFractalSplitDownRight6();
-    // void testFractalSplitDownRight7();
-    // void testFractalSplitDownRight8();
+    void testFractalSplitDownRight8();
 
 private:
-    void fractalSplitDownRight(int depth);
     QTemporaryDir m_tmuxTmpDir;
 };
 

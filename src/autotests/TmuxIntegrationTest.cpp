@@ -3591,29 +3591,9 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     delete attach.mw.data();
 }
 
-void TmuxIntegrationTest::testFractalSplitDownRight1()
+void TmuxIntegrationTest::testFractalSplitDownRight8()
 {
-    fractalSplitDownRight(1);
-}
-void TmuxIntegrationTest::testFractalSplitDownRight2()
-{
-    fractalSplitDownRight(2);
-}
-void TmuxIntegrationTest::testFractalSplitDownRight3()
-{
-    fractalSplitDownRight(3);
-}
-void TmuxIntegrationTest::testFractalSplitDownRight4()
-{
-    fractalSplitDownRight(4);
-}
-// void TmuxIntegrationTest::testFractalSplitDownRight5() { fractalSplitDownRight(5); }
-// void TmuxIntegrationTest::testFractalSplitDownRight6() { fractalSplitDownRight(6); }
-// void TmuxIntegrationTest::testFractalSplitDownRight7() { fractalSplitDownRight(7); }
-// void TmuxIntegrationTest::testFractalSplitDownRight8() { fractalSplitDownRight(8); }
-
-void TmuxIntegrationTest::fractalSplitDownRight(int depth)
-{
+    const int depth = 8;
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
 
     // Use a large window so deep splits don't hit tmux minimum pane size
