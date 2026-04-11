@@ -181,6 +181,11 @@ bool TmuxController::hasPane(int paneId) const
     return _paneManager->hasPane(paneId);
 }
 
+int TmuxController::activePaneId() const
+{
+    return _activePaneId;
+}
+
 int TmuxController::paneIdForSession(Session *session) const
 {
     return _paneManager->paneIdForSession(session);
@@ -476,7 +481,8 @@ bool TmuxController::focusPane(int paneId)
     }
     const auto displays = session->views();
     if (!displays.isEmpty()) {
-        displays.first()->setFocus(Qt::OtherFocusReason);
+        auto *display = displays.first();
+        display->setFocus(Qt::OtherFocusReason);
         return true;
     }
     return false;

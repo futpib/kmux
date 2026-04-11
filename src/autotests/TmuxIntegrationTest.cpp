@@ -7,6 +7,7 @@
 #include "TmuxIntegrationTest.h"
 #include "TmuxTestDSL.h"
 
+#include <KActionCollection>
 #include <QPointer>
 #include <QProcess>
 #include <QResizeEvent>
@@ -3653,17 +3654,17 @@ void TmuxIntegrationTest::fractalSplitDownRight(int depth)
     // Perform alternating horizontal/vertical splits: )()()...
     const int expectedPanes = depth + 1;
 
+    // Look up the split actions — these are the actual hotkey handlers
+    // Ctrl+( = split-view-left-right (horizontal), Ctrl+) = split-view-top-bottom (vertical)
+    QAction *splitH = attach.mw->actionCollection()->action(QStringLiteral("split-view-left-right"));
+    QAction *splitV = attach.mw->actionCollection()->action(QStringLiteral("split-view-top-bottom"));
+    QVERIFY2(splitH, "split-view-left-right action not found");
+    QVERIFY2(splitV, "split-view-top-bottom action not found");
+
     for (int i = 0; i < depth; ++i) {
-        Qt::Orientation orientation = (i % 2 == 0) ? Qt::Horizontal : Qt::Vertical;
-
-        int currentSessionId = attach.mw->viewManager()->currentSession();
-        QVERIFY(currentSessionId >= 0);
-        Session *activeSession = SessionManager::instance()->idToSession(currentSessionId);
-        QVERIFY(activeSession);
-        int paneId = controller->paneIdForSession(activeSession);
-        QVERIFY2(paneId >= 0, qPrintable(QStringLiteral("Split %1: active session has no pane ID").arg(i)));
-
-        controller->requestSplitPane(paneId, orientation);
+        // Alternate: ( ) ( ) ...
+        QAction *action = (i % 2 == 0) ? splitH : splitV;
+        action->trigger();
 
         // Wait for pane count to increase
         int expectedCount = i + 2;
@@ -3681,20 +3682,6 @@ void TmuxIntegrationTest::fractalSplitDownRight(int depth)
                 return false;
             }(),
             10000);
-
-        // Wait for the new pane to receive focus (different pane than what we split)
-        QTRY_VERIFY_WITH_TIMEOUT(
-            [&]() {
-                int newSessionId = attach.mw->viewManager()->currentSession();
-                if (newSessionId < 0)
-                    return false;
-                Session *newSession = SessionManager::instance()->idToSession(newSessionId);
-                if (!newSession)
-                    return false;
-                int newPaneId = controller->paneIdForSession(newSession);
-                return newPaneId >= 0 && newPaneId != paneId;
-            }(),
-            5000);
     }
 
     // Verify tmux has the expected number of panes

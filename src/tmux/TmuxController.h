@@ -53,6 +53,7 @@ public:
     void requestDetach();
 
     bool hasPane(int paneId) const;
+    int activePaneId() const;
     int paneIdForSession(Session *session) const;
     int windowIdForPane(int paneId) const;
     int windowCount() const;

@@ -848,7 +848,16 @@ void ViewManager::splitView(Qt::Orientation orientation, bool fromNextTab)
             if (activeSession && activeSession->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
                 auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
                 if (ctrl) {
-                    ctrl->requestSplitPane(ctrl->paneIdForSession(activeSession), orientation, activeSession->currentWorkingDirectory());
+                    // Use the controller's activePaneId rather than looking up
+                    // from currentSession(). After a layout rebuild, focus
+                    // propagation to currentSession() is asynchronous, but
+                    // activePaneId is updated synchronously from tmux
+                    // notifications and is always authoritative.
+                    int paneId = ctrl->activePaneId();
+                    if (paneId < 0) {
+                        paneId = ctrl->paneIdForSession(activeSession);
+                    }
+                    ctrl->requestSplitPane(paneId, orientation, activeSession->currentWorkingDirectory());
                     return;
                 }
             }
