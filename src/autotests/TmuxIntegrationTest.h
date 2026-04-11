@@ -56,8 +56,7 @@ private Q_SLOTS:
     void testFractalSplitDownRight1();
     void testFractalSplitDownRight2();
     void testFractalSplitDownRight3();
-    // TODO: depths 4+ fail — splitter tree structure diverges from expected fractal at depth 2
-    // void testFractalSplitDownRight4();
+    void testFractalSplitDownRight4();
     // void testFractalSplitDownRight5();
     // void testFractalSplitDownRight6();
     // void testFractalSplitDownRight7();

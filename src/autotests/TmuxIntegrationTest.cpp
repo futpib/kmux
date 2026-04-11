@@ -3602,8 +3602,10 @@ void TmuxIntegrationTest::testFractalSplitDownRight3()
 {
     fractalSplitDownRight(3);
 }
-// TODO: depths 4+ fail — splitter tree structure diverges from expected fractal at depth 2
-// void TmuxIntegrationTest::testFractalSplitDownRight4() { fractalSplitDownRight(4); }
+void TmuxIntegrationTest::testFractalSplitDownRight4()
+{
+    fractalSplitDownRight(4);
+}
 // void TmuxIntegrationTest::testFractalSplitDownRight5() { fractalSplitDownRight(5); }
 // void TmuxIntegrationTest::testFractalSplitDownRight6() { fractalSplitDownRight(6); }
 // void TmuxIntegrationTest::testFractalSplitDownRight7() { fractalSplitDownRight(7); }
@@ -3679,6 +3681,20 @@ void TmuxIntegrationTest::fractalSplitDownRight(int depth)
                 return false;
             }(),
             10000);
+
+        // Wait for the new pane to receive focus (different pane than what we split)
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&]() {
+                int newSessionId = attach.mw->viewManager()->currentSession();
+                if (newSessionId < 0)
+                    return false;
+                Session *newSession = SessionManager::instance()->idToSession(newSessionId);
+                if (!newSession)
+                    return false;
+                int newPaneId = controller->paneIdForSession(newSession);
+                return newPaneId >= 0 && newPaneId != paneId;
+            }(),
+            5000);
     }
 
     // Verify tmux has the expected number of panes
