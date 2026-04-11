@@ -3214,6 +3214,382 @@ void TmuxIntegrationTest::testTmuxAttachNoSessions()
     delete mwGuard.data();
 }
 
+void TmuxIntegrationTest::testAttachMultipleWindows()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a tmux session with 1 window, then add a second window via tmux command
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Create a second tmux window before attaching
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    // Attach Konsole
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for both tmux windows to appear as tabs
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() >= 2;
+        }(),
+        10000);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(container->count(), 2);
+
+    // Verify the controller sees 2 windows
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 2);
+
+    // Each window should have 1 pane
+    const auto &windowTabs = controller->windowToTabIndex();
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        QCOMPARE(controller->paneCountForWindow(it.key()), 1);
+    }
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testNewWindowCreatesTab()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    int initialTabCount = container->count();
+
+    // Get the controller
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    // Request a new window via the controller
+    controller->requestNewWindow(QString());
+
+    // Wait for the new tab to appear
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() == initialTabCount + 1;
+        }(),
+        10000);
+
+    QCOMPARE(controller->windowCount(), 2);
+
+    // Verify tmux also has 2 windows
+    QProcess listWindows;
+    listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
+    QVERIFY(listWindows.waitForFinished(5000));
+    QString windowOutput = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
+    int windowCount = windowOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
+    QCOMPARE(windowCount, 2);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a session, then add a second window
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    // Attach
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() >= 2;
+        }(),
+        10000);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(container->count(), 2);
+
+    // Kill the second tmux window from outside
+    QProcess killWindow;
+    killWindow.start(tmuxPath,
+                     {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-window"), QStringLiteral("-t"), QStringLiteral("%1:1").arg(ctx.sessionName)});
+    QVERIFY(killWindow.waitForFinished(5000));
+    QCOMPARE(killWindow.exitCode(), 0);
+
+    // Wait for the tab to be removed
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() == 1;
+        }(),
+        10000);
+
+    // Verify the controller sees 1 window
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 1);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testCloseWindowTabFromKonsole()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a session with 1 window, then add a second
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    // Attach
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() >= 2;
+        }(),
+        10000);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(container->count(), 2);
+
+    // Find a pane session from the second window and close it
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(sessions.size() >= 2);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    // Find a session that belongs to a different window than the first session
+    int firstPaneId = controller->paneIdForSession(sessions.first());
+    int firstWindowId = controller->windowIdForPane(firstPaneId);
+    Session *secondWindowSession = nullptr;
+    for (Session *s : sessions) {
+        int paneId = controller->paneIdForSession(s);
+        if (paneId >= 0 && controller->windowIdForPane(paneId) != firstWindowId) {
+            secondWindowSession = s;
+            break;
+        }
+    }
+    QVERIFY2(secondWindowSession, "Should find a session belonging to the second window");
+
+    // Close the second window's pane session from Konsole.
+    // This exercises the fix: VirtualSession::closeInNormalWay() should
+    // send kill-pane to tmux, which destroys the window (single-pane window).
+    secondWindowSession->closeInNormalWay();
+
+    // Wait for the tab to be removed
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() == 1;
+        }(),
+        10000);
+
+    // Verify tmux also has only 1 window
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            QProcess listWindows;
+            listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
+            listWindows.waitForFinished(3000);
+            QString windowOutput = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
+            int windowCount = windowOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
+            return windowCount == 1;
+        }(),
+        10000);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container->count() >= 1);
+
+    // Rename the window from tmux
+    QProcess renameWindow;
+    renameWindow.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("rename-window"),
+                        QStringLiteral("-t"),
+                        QStringLiteral("%1:0").arg(ctx.sessionName),
+                        QStringLiteral("my-custom-name")});
+    QVERIFY(renameWindow.waitForFinished(5000));
+    QCOMPARE(renameWindow.exitCode(), 0);
+
+    // Wait for the tab title to update
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            if (!c || c->count() < 1)
+                return false;
+            // Check all tabs for the renamed title
+            for (int i = 0; i < c->count(); ++i) {
+                if (c->tabText(i) == QStringLiteral("my-custom-name")) {
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 QTEST_MAIN(TmuxIntegrationTest)
 
 #include "moc_TmuxIntegrationTest.cpp"

@@ -43,6 +43,16 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
         Q_EMIT paneViewSizeChanged();
     });
 
+    connect(session, &Session::finished, this, [this, paneId]() {
+        // If the pane is still tracked, the close was initiated by the user
+        // (not by tmux), so we need to tell tmux to kill the pane.
+        // When tmux initiates the close, destroyPaneSession() removes the
+        // pane from _paneToSession before calling session->close().
+        if (_paneToSession.contains(paneId)) {
+            _gateway->sendCommand(TmuxCommand(QStringLiteral("kill-pane")).paneTarget(paneId));
+        }
+    });
+
     connect(session, &QObject::destroyed, this, [this, paneId]() {
         _paneToSession.remove(paneId);
     });

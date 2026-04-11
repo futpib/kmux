@@ -48,6 +48,11 @@ private Q_SLOTS:
     void testOscColorQueryNotLeakedAsKeystrokes();
     void testCyrillicInputPreservesUtf8();
     void testTmuxAttachNoSessions();
+    void testAttachMultipleWindows();
+    void testNewWindowCreatesTab();
+    void testCloseWindowFromTmuxRemovesTab();
+    void testCloseWindowTabFromKonsole();
+    void testRenameWindowFromTmuxUpdatesTab();
 
 private:
     QTemporaryDir m_tmuxTmpDir;
