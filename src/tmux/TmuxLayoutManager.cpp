@@ -292,12 +292,13 @@ int TmuxLayoutManager::applyLayout(int tabIndex, const TmuxLayoutNode &layout)
                 buildSplitterTree(newSplitter, layout, existingDisplays);
                 connectSplitterSignals(newSplitter);
 
-                // Swap: save tab text, remove old tab, insert new one at same index
+                // Swap: insert new tab first, then remove old one so the
+                // container is never empty (which would close the window).
                 QString tabText = container->tabText(tabIndex);
                 QIcon tabIcon = container->tabIcon(tabIndex);
                 auto *oldPage = container->tabPageAt(tabIndex);
+                container->addSplitter(newSplitter, tabIndex + 1);
                 container->removeTab(tabIndex);
-                container->addSplitter(newSplitter, tabIndex);
                 tabIndex = container->indexOfSplitter(newSplitter);
                 container->setTabText(tabIndex, tabText);
                 container->setTabIcon(tabIndex, tabIcon);

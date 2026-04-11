@@ -31,6 +31,10 @@ TmuxGateway::TmuxGateway(WriteCallback writeCallback, QObject *parent)
 
 void TmuxGateway::processLine(const QByteArray &line)
 {
+    if (_exited) {
+        return;
+    }
+
     if (_inResponseBlock) {
         // Match %end/%error by command ID: "%end <id> <number>" or "%error <id> <number>"
         if (line.startsWith("%end ") || line.startsWith("%error ")) {

@@ -80,6 +80,8 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
          QStringLiteral("cmd")},
         {{QStringLiteral("force-reuse")},
          i18nc("@info:shell", "Force re-using the existing instance even if it breaks functionality, e. g. --new-tab. Mostly for debugging.")},
+        {{QStringLiteral("s"), QStringLiteral("session")}, i18nc("@info:shell", "Name of the tmux session to attach to or create"), QStringLiteral("name")},
+        {{QStringLiteral("S"), QStringLiteral("socket")}, i18nc("@info:shell", "Path to the tmux server socket"), QStringLiteral("path")},
     };
 
     for (const auto &option : options) {
@@ -197,7 +199,20 @@ int Application::newInstance()
         // No PTY, no Session, no terminal emulation — TmuxProcessBridge
         // pipes stdout lines to TmuxGateway and stdin commands back.
         auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
-        if (!bridge->start()) {
+
+        // Build tmux args: [-S <socket>]
+        QStringList tmuxArgs;
+        if (m_parser->isSet(QStringLiteral("socket"))) {
+            tmuxArgs << QStringLiteral("-S") << m_parser->value(QStringLiteral("socket"));
+        }
+
+        // Build tmux command: "new-session -A [-s <session>]"
+        QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A")};
+        if (m_parser->isSet(QStringLiteral("session"))) {
+            tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
+        }
+
+        if (!bridge->start(QString(), tmuxArgs, tmuxCommand)) {
             qWarning() << "Failed to start tmux";
             delete bridge;
             return 0;

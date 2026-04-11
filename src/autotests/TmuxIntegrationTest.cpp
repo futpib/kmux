@@ -23,13 +23,14 @@
 #include "../session/Session.h"
 #include "../session/SessionController.h"
 #include "../session/SessionManager.h"
-#include "../terminalDisplay/TerminalDisplay.h"
 #include "../session/VirtualSession.h"
+#include "../terminalDisplay/TerminalDisplay.h"
 #include "../tmux/TmuxController.h"
 #include "../tmux/TmuxControllerRegistry.h"
 #include "../tmux/TmuxLayoutManager.h"
 #include "../tmux/TmuxLayoutParser.h"
 #include "../tmux/TmuxPaneManager.h"
+#include "../tmux/TmuxProcessBridge.h"
 #include "../widgets/TabPageWidget.h"
 #include "../widgets/ViewContainer.h"
 #include "../widgets/ViewSplitter.h"
@@ -39,18 +40,11 @@ using namespace Konsole;
 void TmuxIntegrationTest::initTestCase()
 {
     QVERIFY(m_tmuxTmpDir.isValid());
-    qputenv("TMUX_TMPDIR", m_tmuxTmpDir.path().toUtf8());
 }
 
 void TmuxIntegrationTest::cleanupTestCase()
 {
-    // Kill any leftover tmux server in our isolated socket directory
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
-    if (!tmuxPath.isEmpty()) {
-        QProcess kill;
-        kill.start(tmuxPath, {QStringLiteral("kill-server")});
-        kill.waitForFinished(5000);
-    }
+    // Each test uses its own -S socket, so there is no shared server to kill.
 }
 
 void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
@@ -60,31 +54,23 @@ void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
         QSKIP("tmux command not found.");
     }
 
-    // Simulate: konsole -e 'tmux -CC new-session "sleep 1 && exit 0"'
+    // Use TmuxProcessBridge to start tmux -C new-session "sleep 1 && exit 0"
     auto *mw = new MainWindow();
     QPointer<MainWindow> mwGuard(mw);
     ViewManager *vm = mw->viewManager();
 
-    // Set up profile with custom command, like -e does
-    Profile::Ptr profile(new Profile(ProfileManager::instance()->defaultProfile()));
-    profile->setProperty(Profile::Command, tmuxPath);
-    profile->setProperty(Profile::Arguments, QStringList{tmuxPath, QStringLiteral("-CC"), QStringLiteral("new-session"), QStringLiteral("sleep 1 && exit 0")});
-
-    Session *session = vm->createSession(profile, QString());
-    QPointer<Session> sessionGuard(session);
-    auto *view = vm->createView(session);
-    vm->activeContainer()->addView(view);
-    session->run();
+    const QString socketPath = m_tmuxTmpDir.path() + QStringLiteral("/tmux-exit-cleanup");
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    QVERIFY(bridge->start(tmuxPath, {QStringLiteral("-S"), socketPath}, {QStringLiteral("new-session"), QStringLiteral("sleep 1 && exit 0")}));
 
     QPointer<TabbedViewContainer> container = vm->activeContainer();
     QVERIFY(container);
-    QCOMPARE(container->count(), 1);
 
     // Wait for tmux control mode to create virtual pane tab(s)
-    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 2, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
 
     // Wait for tmux to exit — the window may close and delete itself
-    QTRY_VERIFY_WITH_TIMEOUT(!mwGuard || !container || container->count() <= 1, 15000);
+    QTRY_VERIFY_WITH_TIMEOUT(!mwGuard || !container || container->count() == 0, 15000);
 
     // If the window is still alive, clean up
     delete mwGuard.data();
@@ -97,43 +83,30 @@ void TmuxIntegrationTest::testClosePaneTabThenGatewayTab()
         QSKIP("tmux command not found.");
     }
 
-    // Simulate: konsole -e 'tmux -CC new-session "sleep 30"'
+    // Use TmuxProcessBridge to start tmux -C new-session "sleep 30"
     auto *mw = new MainWindow();
     QPointer<MainWindow> mwGuard(mw);
     ViewManager *vm = mw->viewManager();
 
-    Profile::Ptr profile(new Profile(ProfileManager::instance()->defaultProfile()));
-    profile->setProperty(Profile::Command, tmuxPath);
-    profile->setProperty(Profile::Arguments, QStringList{tmuxPath, QStringLiteral("-CC"), QStringLiteral("new-session"), QStringLiteral("sleep 30")});
-
-    Session *gatewaySession = vm->createSession(profile, QString());
-    auto *view = vm->createView(gatewaySession);
-    vm->activeContainer()->addView(view);
-    gatewaySession->run();
+    const QString socketPath = m_tmuxTmpDir.path() + QStringLiteral("/tmux-close-pane");
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    QVERIFY(bridge->start(tmuxPath, {QStringLiteral("-S"), socketPath}, {QStringLiteral("new-session"), QStringLiteral("sleep 30")}));
 
     QPointer<TabbedViewContainer> container = vm->activeContainer();
     QVERIFY(container);
-    QCOMPARE(container->count(), 1);
 
     // Wait for tmux control mode to create virtual pane tab(s)
-    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 2, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
 
-    // Find the pane session (the one that isn't the gateway)
+    // Find the pane session (all sessions are pane sessions with TmuxProcessBridge)
     Session *paneSession = nullptr;
     const auto sessions = vm->sessions();
-    for (Session *s : sessions) {
-        if (s != gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     // Close the pane tab (like clicking the tab close icon)
     paneSession->closeInNormalWay();
-
-    // Close the gateway tab (like pressing Ctrl+W)
-    gatewaySession->closeInNormalWay();
 
     // Wait for everything to tear down — the window may close and delete itself
     QTRY_VERIFY_WITH_TIMEOUT(!mwGuard, 10000);
@@ -162,25 +135,25 @@ void TmuxIntegrationTest::testTmuxControlModeAttach()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Close the pane tab, then the gateway tab
+    // Close the pane tab, then destroy the bridge
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     paneSession->closeInNormalWay();
-    attach.gatewaySession->closeInNormalWay();
 
     // Wait for everything to tear down
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
@@ -209,11 +182,16 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
         ┌────────────────────────────────────────┬────────────────────────────────────────┐
@@ -230,17 +208,14 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
 
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
-    TmuxTestDSL::assertKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    TmuxTestDSL::assertKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
-    // Clean up: close pane sessions, then gateway
+    // Clean up: close pane sessions, then destroy the bridge
     const auto sessions = attach.mw->viewManager()->sessions();
     for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            s->closeInNormalWay();
-        }
+        s->closeInNormalWay();
     }
-    attach.gatewaySession->closeInNormalWay();
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -274,13 +249,24 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
         │                                   │
         │                                   │
         └───────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Send a command with Unicode output
     QProcess sendKeys;
-    sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                              QStringLiteral("echo 'MARKER_START ★ Unicode → Test ✓ MARKER_END'"), QStringLiteral("Enter")});
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("echo 'MARKER_START ★ Unicode → Test ✓ MARKER_END'"),
+                    QStringLiteral("Enter")});
     QVERIFY(sendKeys.waitForFinished(5000));
     QCOMPARE(sendKeys.exitCode(), 0);
 
@@ -289,17 +275,13 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
 
     // Now attach Konsole via -CC
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     // Wait a bit for capture-pane history to be injected
@@ -313,14 +295,12 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
     QVERIFY2(screenText.contains(QStringLiteral("MARKER_END")),
              qPrintable(QStringLiteral("Pane screen should contain 'MARKER_END', got: ") + screenText));
 
-    // Cleanup: close pane sessions first, then gateway
+    // Cleanup: close pane sessions, then destroy the bridge
     const auto allSessions = attach.mw->viewManager()->sessions();
     for (Session *s : allSessions) {
-        if (s != attach.gatewaySession) {
-            s->closeInNormalWay();
-        }
+        s->closeInNormalWay();
     }
-    attach.gatewaySession->closeInNormalWay();
+
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -343,14 +323,27 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
         │                                                                                                                                                                                                                                                │
         │                                                                                                                                                                                                                                                │
         └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Set a complex PS1 prompt with ANSI colors and Unicode
     QProcess sendPS1;
-    sendPS1.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                             QStringLiteral("PS1='\\[\\033[36m\\][\\t] [\\u@\\h \\w] \\[\\033[33m\\]────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── \\[\\033[35m\\]\\s \\V  \\[\\033[32m\\]→ \\[\\033[0m\\]'"),
-                             QStringLiteral("Enter")});
+    sendPS1.start(tmuxPath,
+                  {QStringLiteral("-S"),
+                   ctx.socketPath,
+                   QStringLiteral("send-keys"),
+                   QStringLiteral("-t"),
+                   ctx.sessionName,
+                   QStringLiteral("PS1='\\[\\033[36m\\][\\t] [\\u@\\h \\w] "
+                                  "\\[\\033[33m\\]"
+                                  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+                                  "────────────────────────────── \\[\\033[35m\\]\\s \\V  \\[\\033[32m\\]→ \\[\\033[0m\\]'"),
+                   QStringLiteral("Enter")});
     QVERIFY(sendPS1.waitForFinished(5000));
     QCOMPARE(sendPS1.exitCode(), 0);
 
@@ -359,8 +352,14 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 
     // Run a command so we have some content
     QProcess sendCmd;
-    sendCmd.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                             QStringLiteral("echo 'PROMPT_TEST_OUTPUT'"), QStringLiteral("Enter")});
+    sendCmd.start(tmuxPath,
+                  {QStringLiteral("-S"),
+                   ctx.socketPath,
+                   QStringLiteral("send-keys"),
+                   QStringLiteral("-t"),
+                   ctx.sessionName,
+                   QStringLiteral("echo 'PROMPT_TEST_OUTPUT'"),
+                   QStringLiteral("Enter")});
     QVERIFY(sendCmd.waitForFinished(5000));
     QCOMPARE(sendCmd.exitCode(), 0);
 
@@ -369,17 +368,13 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 
     // Now attach Konsole via -CC
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     // Wait for capture-pane history to be injected
@@ -397,14 +392,12 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
     QVERIFY2(screenText.contains(QStringLiteral("────")),
              qPrintable(QStringLiteral("Pane screen should contain '────' from prompt, got: ") + screenText));
 
-    // Cleanup: close pane sessions first, then gateway
+    // Cleanup: close pane sessions, then destroy the bridge
     const auto allSessions = attach.mw->viewManager()->sessions();
     for (Session *s : allSessions) {
-        if (s != attach.gatewaySession) {
-            s->closeInNormalWay();
-        }
+        s->closeInNormalWay();
     }
-    attach.gatewaySession->closeInNormalWay();
+
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -430,19 +423,30 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Query initial pane sizes
     QProcess tmuxListPanes;
-    tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                   QStringLiteral("-F"), QStringLiteral("#{pane_width}")});
+    tmuxListPanes.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_width}")});
     QVERIFY(tmuxListPanes.waitForFinished(5000));
     QCOMPARE(tmuxListPanes.exitCode(), 0);
     QStringList initialWidths = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
     QCOMPARE(initialWidths.size(), 2);
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     // Apply the initial layout to set Konsole widget sizes to match the diagram
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
@@ -459,7 +463,7 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // Find the split pane splitter
     ViewSplitter *paneSplitter = nullptr;
@@ -517,8 +521,14 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
     // Wait for the command to propagate to tmux and verify exact sizes
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_width} #{pane_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList paneLines = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (paneLines.size() != 2) return false;
@@ -536,8 +546,14 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
     // Also verify tmux window size matches
     {
         QProcess checkWindow;
-        checkWindow.start(tmuxPath, {QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName,
-                                     QStringLiteral("-F"), QStringLiteral("#{window_width} #{window_height}")});
+        checkWindow.start(tmuxPath,
+                          {QStringLiteral("-S"),
+                           ctx.socketPath,
+                           QStringLiteral("list-windows"),
+                           QStringLiteral("-t"),
+                           ctx.sessionName,
+                           QStringLiteral("-F"),
+                           QStringLiteral("#{window_width} #{window_height}")});
         QVERIFY(checkWindow.waitForFinished(3000));
         QStringList windowSize = QString::fromUtf8(checkWindow.readAllStandardOutput()).trimmed().split(QLatin1Char(' '));
         QCOMPARE(windowSize.size(), 2);
@@ -552,7 +568,7 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 
     // Kill the tmux session first to avoid layout-change during teardown
     // (cleanup guard handles this, but we want it early)
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -571,29 +587,36 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
         │                                   │
         │                                   │
         └───────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // cd to /tmp so we have a known directory
     QProcess sendCd;
-    sendCd.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                            QStringLiteral("cd /tmp"), QStringLiteral("Enter")});
+    sendCd.start(tmuxPath,
+                 {QStringLiteral("-S"),
+                  ctx.socketPath,
+                  QStringLiteral("send-keys"),
+                  QStringLiteral("-t"),
+                  ctx.sessionName,
+                  QStringLiteral("cd /tmp"),
+                  QStringLiteral("Enter")});
     QVERIFY(sendCd.waitForFinished(5000));
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto *virtualSession = qobject_cast<VirtualSession *>(paneSession);
@@ -619,11 +642,9 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
     // Cleanup
     const auto allSessions = attach.mw->viewManager()->sessions();
     for (Session *s : allSessions) {
-        if (s != attach.gatewaySession) {
-            s->closeInNormalWay();
-        }
+        s->closeInNormalWay();
     }
-    attach.gatewaySession->closeInNormalWay();
+
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -646,29 +667,29 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Rename the window to something adversarial: spaces, hex-like tokens, commas, braces
     QString evilName = QStringLiteral("htop lol abc0,80x24,0,0 {evil} [nasty]");
     QProcess renameProc;
-    renameProc.start(tmuxPath, {QStringLiteral("rename-window"), QStringLiteral("-t"), ctx.sessionName, evilName});
+    renameProc.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("rename-window"), QStringLiteral("-t"), ctx.sessionName, evilName});
     QVERIFY(renameProc.waitForFinished(5000));
     QCOMPARE(renameProc.exitCode(), 0);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
-    QVERIFY2(paneSession, "Expected a tmux pane session to be created despite spaces in window name");
+    QVERIFY2(!sessions.isEmpty(), "Expected a tmux pane session to be created despite spaces in window name");
+    paneSession = sessions.first();
 
     // Verify the tab title matches the evil name
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -682,7 +703,7 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
     QCOMPARE(tabText, evilName);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -708,21 +729,22 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session and its controller
+    // Find the pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -746,8 +768,11 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
     ViewSplitter *paneSplitter = nullptr;
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         paneSplitter = nullptr;
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return false;
+        for (int i = 0; i < container->count(); ++i) {
+            auto *splitter = container->viewSplitterAt(i);
             if (splitter) {
                 auto terminals = splitter->findChildren<TerminalDisplay *>();
                 if (terminals.size() == 2) {
@@ -776,7 +801,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -804,24 +829,33 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
         │                                        │                                        │                                        │
         │                                        │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Select the first pane so we know which one is active before attaching
     QProcess tmuxSelect;
-    tmuxSelect.start(tmuxPath, {QStringLiteral("select-pane"), QStringLiteral("-t"), ctx.sessionName + QStringLiteral(":0.0")});
+    tmuxSelect.start(tmuxPath,
+                     {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-pane"), QStringLiteral("-t"), ctx.sessionName + QStringLiteral(":0.0")});
     QVERIFY(tmuxSelect.waitForFinished(5000));
     QCOMPARE(tmuxSelect.exitCode(), 0);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for all 3 panes to appear
     ViewSplitter *paneSplitter = nullptr;
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         paneSplitter = nullptr;
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return false;
+        for (int i = 0; i < container->count(); ++i) {
+            auto *splitter = container->viewSplitterAt(i);
             if (splitter) {
                 auto terminals = splitter->findChildren<TerminalDisplay *>();
                 if (terminals.size() == 3) {
@@ -834,14 +868,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     }(), 10000);
     QVERIFY(paneSplitter);
 
-    // Find the first pane to split
-    QList<Session *> paneSessions;
-    const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSessions.append(s);
-        }
-    }
+    // Find the pane sessions (all sessions are pane sessions)
+    QList<Session *> paneSessions = attach.mw->viewManager()->sessions();
     QVERIFY(paneSessions.size() >= 3);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSessions.first());
@@ -864,8 +892,11 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     // Wait for 4 panes to appear
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         paneSplitter = nullptr;
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return false;
+        for (int i = 0; i < container->count(); ++i) {
+            auto *splitter = container->viewSplitterAt(i);
             if (splitter) {
                 auto terminals = splitter->findChildren<TerminalDisplay *>();
                 if (terminals.size() == 4) {
@@ -894,7 +925,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -922,24 +953,33 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // Select the first pane (pane0) so that's what we'll split from Konsole
     QProcess tmuxSelect;
-    tmuxSelect.start(tmuxPath, {QStringLiteral("select-pane"), QStringLiteral("-t"), ctx.sessionName + QStringLiteral(":0.0")});
+    tmuxSelect.start(tmuxPath,
+                     {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-pane"), QStringLiteral("-t"), ctx.sessionName + QStringLiteral(":0.0")});
     QVERIFY(tmuxSelect.waitForFinished(5000));
     QCOMPARE(tmuxSelect.exitCode(), 0);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for all 3 panes to appear
     ViewSplitter *paneSplitter = nullptr;
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         paneSplitter = nullptr;
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return false;
+        for (int i = 0; i < container->count(); ++i) {
+            auto *splitter = container->viewSplitterAt(i);
             if (splitter) {
                 auto terminals = splitter->findChildren<TerminalDisplay *>();
                 if (terminals.size() == 3) {
@@ -952,17 +992,21 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     }(), 10000);
     QVERIFY(paneSplitter);
 
-    // Find pane0's session
-    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(
-        attach.mw->viewManager()->sessions().first() == attach.gatewaySession
-            ? attach.mw->viewManager()->sessions().at(1)
-            : attach.mw->viewManager()->sessions().first());
+    // Find pane0's session (all sessions are pane sessions)
+    QVERIFY(!attach.mw->viewManager()->sessions().isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
 
     // Find pane0: query tmux for pane IDs to find the first one
     QProcess tmuxListPanes;
-    tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                   QStringLiteral("-F"), QStringLiteral("#{pane_id}")});
+    tmuxListPanes.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_id}")});
     QVERIFY(tmuxListPanes.waitForFinished(5000));
     QCOMPARE(tmuxListPanes.exitCode(), 0);
     QStringList paneIdStrs = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
@@ -984,8 +1028,11 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     // Wait for 4 panes to appear
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         paneSplitter = nullptr;
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return false;
+        for (int i = 0; i < container->count(); ++i) {
+            auto *splitter = container->viewSplitterAt(i);
             if (splitter) {
                 auto terminals = splitter->findChildren<TerminalDisplay *>();
                 if (terminals.size() == 4) {
@@ -1014,7 +1061,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1041,7 +1088,10 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
 
     // 2. Attach Konsole
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
@@ -1058,8 +1108,8 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // Find the two-pane splitter
     ViewSplitter *paneSplitter = nullptr;
@@ -1111,8 +1161,14 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     // 4. Wait for tmux to process the layout change (metadata)
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_width}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_width}")});
         check.waitForFinished(3000);
         QStringList paneWidths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (paneWidths.size() != 2) return false;
@@ -1127,15 +1183,20 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     auto runSttyAndCheck = [&](const QString &paneTarget, int expectedLines, int expectedCols) -> bool {
         // Send stty size
         QProcess sendKeys;
-        sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), paneTarget,
-                                  QStringLiteral("-l"), QStringLiteral("stty size\n")});
+        sendKeys.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("send-keys"),
+                        QStringLiteral("-t"),
+                        paneTarget,
+                        QStringLiteral("-l"),
+                        QStringLiteral("stty size\n")});
         if (!sendKeys.waitForFinished(3000)) return false;
         QTest::qWait(300);
 
         // Capture and check
         QProcess capture;
-        capture.start(tmuxPath, {QStringLiteral("capture-pane"), QStringLiteral("-t"), paneTarget,
-                                 QStringLiteral("-p")});
+        capture.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-t"), paneTarget, QStringLiteral("-p")});
         capture.waitForFinished(3000);
         QString output = QString::fromUtf8(capture.readAllStandardOutput());
         QString expected = QString::number(expectedLines) + QStringLiteral(" ") + QString::number(expectedCols);
@@ -1153,7 +1214,7 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     QTest::qWait(500);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1181,7 +1242,10 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
 
     // 2. Attach Konsole and apply the same layout
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
@@ -1198,8 +1262,8 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // 3. Find the top-level splitter (horizontal: left | right-sub-splitter)
     ViewSplitter *topSplitter = nullptr;
@@ -1262,8 +1326,14 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     // 5. Wait for tmux to process the layout change (metadata)
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_height}")});
         check.waitForFinished(3000);
         QStringList paneHeights = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (paneHeights.size() != 3) return false;
@@ -1274,14 +1344,19 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     // 6. Run 'stty size' in each nested pane and verify PTY dimensions match
     auto runSttyAndCheck = [&](const QString &paneTarget, int expectedLines, int expectedCols) -> bool {
         QProcess sendKeys;
-        sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), paneTarget,
-                                  QStringLiteral("-l"), QStringLiteral("stty size\n")});
+        sendKeys.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("send-keys"),
+                        QStringLiteral("-t"),
+                        paneTarget,
+                        QStringLiteral("-l"),
+                        QStringLiteral("stty size\n")});
         if (!sendKeys.waitForFinished(3000)) return false;
         QTest::qWait(300);
 
         QProcess capture;
-        capture.start(tmuxPath, {QStringLiteral("capture-pane"), QStringLiteral("-t"), paneTarget,
-                                 QStringLiteral("-p")});
+        capture.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-t"), paneTarget, QStringLiteral("-p")});
         capture.waitForFinished(3000);
         QString output = QString::fromUtf8(capture.readAllStandardOutput());
         QString expected = QString::number(expectedLines) + QStringLiteral(" ") + QString::number(expectedCols);
@@ -1301,7 +1376,7 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QTest::qWait(500);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1333,11 +1408,11 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
         │                          │                          │                          │
         └──────────────────────────┴──────────────────────────┴──────────────────────────┘
     )"));
-    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, ctx);
+    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
-    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager());
 
     // Find the splitter with 4 displays
     ViewSplitter *topSplitter = nullptr;
@@ -1357,8 +1432,14 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
 
     // Record initial tmux pane widths
     QProcess initialCheck;
-    initialCheck.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                  QStringLiteral("-F"), QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
+    initialCheck.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("list-panes"),
+                        QStringLiteral("-t"),
+                        ctx.sessionName,
+                        QStringLiteral("-F"),
+                        QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
     initialCheck.waitForFinished(3000);
     QString initialPanesStr = QString::fromUtf8(initialCheck.readAllStandardOutput()).trimmed();
 
@@ -1394,8 +1475,14 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
     // Wait for tmux to accept the new layout and verify widths changed.
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList panes = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (panes.size() != 4) return false;
@@ -1417,14 +1504,20 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
     // Now verify the dimensions match the layout we sent.
     // Query tmux for the window layout string and verify it parses correctly.
     QProcess layoutCheck;
-    layoutCheck.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                 QStringLiteral("-p"), QStringLiteral("#{window_layout}")});
+    layoutCheck.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctx.socketPath,
+                       QStringLiteral("display-message"),
+                       QStringLiteral("-t"),
+                       ctx.sessionName,
+                       QStringLiteral("-p"),
+                       QStringLiteral("#{window_layout}")});
     layoutCheck.waitForFinished(3000);
     QString tmuxLayout = QString::fromUtf8(layoutCheck.readAllStandardOutput()).trimmed();
     QVERIFY2(!tmuxLayout.isEmpty(), "tmux should report a valid window layout");
 
     QTest::qWait(500);
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -1458,11 +1551,11 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
         │                          │                          │                          │
         └──────────────────────────┴──────────────────────────┴──────────────────────────┘
     )"));
-    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, ctx);
+    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
-    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager());
 
     // Find the splitter with 4 displays
     ViewSplitter *topSplitter = nullptr;
@@ -1500,8 +1593,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // Wait for tmux to accept the resized layout
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_width}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_width}")});
         check.waitForFinished(3000);
         QStringList widths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (widths.size() != 4) return false;
@@ -1514,34 +1613,54 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
 
     // Record the post-resize layout from tmux
     QProcess layoutCheck;
-    layoutCheck.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                 QStringLiteral("-p"), QStringLiteral("#{window_layout}")});
+    layoutCheck.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctx.socketPath,
+                       QStringLiteral("display-message"),
+                       QStringLiteral("-t"),
+                       ctx.sessionName,
+                       QStringLiteral("-p"),
+                       QStringLiteral("#{window_layout}")});
     layoutCheck.waitForFinished(3000);
     QString postResizeLayout = QString::fromUtf8(layoutCheck.readAllStandardOutput()).trimmed();
     QVERIFY(!postResizeLayout.isEmpty());
 
     // Record post-resize pane dimensions
     QProcess dimsCheck;
-    dimsCheck.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
+    dimsCheck.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
     dimsCheck.waitForFinished(3000);
     QString postResizeDims = QString::fromUtf8(dimsCheck.readAllStandardOutput()).trimmed();
 
     // 2. Attach a smaller client to constrain the layout
     QProcess scriptProc;
-    scriptProc.start(scriptPath, {
-        QStringLiteral("-q"),
-        QStringLiteral("-c"),
-        QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" attach -t ") + ctx.sessionName,
-        QStringLiteral("/dev/null"),
-    });
+    scriptProc.start(
+        scriptPath,
+        {
+            QStringLiteral("-q"),
+            QStringLiteral("-c"),
+            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            QStringLiteral("/dev/null"),
+        });
     QVERIFY(scriptProc.waitForStarted(5000));
 
     // Wait for the smaller client to be visible
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-clients"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{client_width}x#{client_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-clients"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{client_width}x#{client_height}")});
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
@@ -1550,16 +1669,28 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // Wait for layout to shrink
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-p"), QStringLiteral("#{window_layout}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("display-message"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-p"),
+                     QStringLiteral("#{window_layout}")});
         check.waitForFinished(3000);
         QString layout = QString::fromUtf8(check.readAllStandardOutput()).trimmed();
         return layout != postResizeLayout;
     }(), 10000);
 
     QProcess constrainedCheck;
-    constrainedCheck.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                      QStringLiteral("-p"), QStringLiteral("#{window_layout}")});
+    constrainedCheck.start(tmuxPath,
+                           {QStringLiteral("-S"),
+                            ctx.socketPath,
+                            QStringLiteral("display-message"),
+                            QStringLiteral("-t"),
+                            ctx.sessionName,
+                            QStringLiteral("-p"),
+                            QStringLiteral("#{window_layout}")});
     constrainedCheck.waitForFinished(3000);
     QString constrainedLayout = QString::fromUtf8(constrainedCheck.readAllStandardOutput()).trimmed();
 
@@ -1574,8 +1705,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // Wait for only one client to remain
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-clients"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{client_name}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-clients"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{client_name}")});
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() == 1;
@@ -1636,8 +1773,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // The constrained layout shrank pane widths; after recovery and re-resize,
     // at least one pane should have a width different from the constrained state.
     QProcess constrainedDimsCheck;
-    constrainedDimsCheck.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                          QStringLiteral("-F"), QStringLiteral("#{pane_id} #{pane_width}")});
+    constrainedDimsCheck.start(tmuxPath,
+                               {QStringLiteral("-S"),
+                                ctx.socketPath,
+                                QStringLiteral("list-panes"),
+                                QStringLiteral("-t"),
+                                ctx.sessionName,
+                                QStringLiteral("-F"),
+                                QStringLiteral("#{pane_id} #{pane_width}")});
     constrainedDimsCheck.waitForFinished(3000);
     QString constrainedDimsStr = QString::fromUtf8(constrainedDimsCheck.readAllStandardOutput()).trimmed();
 
@@ -1652,8 +1795,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
 
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList panes = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
         if (panes.size() != 4) return false;
@@ -1673,14 +1822,20 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
 
     // Verify the layout string is valid and accepted by tmux
     QProcess recoveredCheck;
-    recoveredCheck.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                    QStringLiteral("-p"), QStringLiteral("#{window_layout}")});
+    recoveredCheck.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("display-message"),
+                          QStringLiteral("-t"),
+                          ctx.sessionName,
+                          QStringLiteral("-p"),
+                          QStringLiteral("#{window_layout}")});
     recoveredCheck.waitForFinished(3000);
     QString recoveredLayout = QString::fromUtf8(recoveredCheck.readAllStandardOutput()).trimmed();
     QVERIFY2(recoveredLayout != constrainedLayout, "Layout should differ from constrained state after focus recovery");
 
     QTest::qWait(500);
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -1725,12 +1880,17 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // 2. Attach Konsole via control mode
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     // 3. Apply large layout so widgets are sized generously
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
@@ -1760,17 +1920,13 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
-    // 4. Find the pane display and verify initial state
+    // 4. Find the pane display and verify initial state (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto paneViews = paneSession->views();
@@ -1787,19 +1943,27 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
     QSize originalPixelSize = display->size();
     // 5. Attach a second smaller tmux client using script to provide a pty
     QProcess scriptProc;
-    scriptProc.start(scriptPath, {
-        QStringLiteral("-q"),
-        QStringLiteral("-c"),
-        QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" attach -t ") + ctx.sessionName,
-        QStringLiteral("/dev/null"),
-    });
+    scriptProc.start(
+        scriptPath,
+        {
+            QStringLiteral("-q"),
+            QStringLiteral("-c"),
+            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            QStringLiteral("/dev/null"),
+        });
     QVERIFY(scriptProc.waitForStarted(5000));
 
     // Wait for the second client to actually appear in tmux
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-clients"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{client_width}x#{client_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-clients"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{client_width}x#{client_height}")});
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
@@ -1839,7 +2003,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
     }
 
     // Kill tmux session early to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1885,12 +2049,17 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
         │                                        │                                       │
         │                                        │                                       │
         └────────────────────────────────────────┴───────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // 2. Attach Konsole via control mode
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     // 3. Apply large layout so widgets are sized generously
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
@@ -1920,7 +2089,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
         │                                        │                                       │
         └────────────────────────────────────────┴───────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // 4. Find the splitter with 2 TerminalDisplay children
     ViewSplitter *paneSplitter = nullptr;
@@ -1951,19 +2120,27 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
 
     // 5. Attach a second smaller tmux client using script to provide a pty
     QProcess scriptProc;
-    scriptProc.start(scriptPath, {
-        QStringLiteral("-q"),
-        QStringLiteral("-c"),
-        QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" attach -t ") + ctx.sessionName,
-        QStringLiteral("/dev/null"),
-    });
+    scriptProc.start(
+        scriptPath,
+        {
+            QStringLiteral("-q"),
+            QStringLiteral("-c"),
+            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            QStringLiteral("/dev/null"),
+        });
     QVERIFY(scriptProc.waitForStarted(5000));
 
     // Wait for the second client to actually appear in tmux
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-clients"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{client_width}x#{client_height}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-clients"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{client_width}x#{client_height}")});
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
@@ -2001,7 +2178,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
     }
 
     // Kill tmux session early to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2024,13 +2201,24 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
         │                                   │
         │                                   │
         └───────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // 2. Generate scrollback content
     QProcess sendKeys;
-    sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                              QStringLiteral("for i in $(seq 1 200); do echo \"SCROLLBACK_LINE_$i\"; done"), QStringLiteral("Enter")});
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("for i in $(seq 1 200); do echo \"SCROLLBACK_LINE_$i\"; done"),
+                    QStringLiteral("Enter")});
     QVERIFY(sendKeys.waitForFinished(5000));
     QCOMPARE(sendKeys.exitCode(), 0);
 
@@ -2039,8 +2227,14 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
     // 3. Check tmux server-side scrollback size
     auto getTmuxHistorySize = [&]() -> int {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-p"), QStringLiteral("#{history_size}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("display-message"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-p"),
+                     QStringLiteral("#{history_size}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed().toInt();
     };
@@ -2049,16 +2243,12 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
 
     // 4. Attach Konsole
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     QTest::qWait(2000);
@@ -2076,8 +2266,8 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
     // Visible content should still show recent output
     auto captureTmuxPane = [&]() -> QString {
         QProcess capture;
-        capture.start(tmuxPath, {QStringLiteral("capture-pane"), QStringLiteral("-t"), ctx.sessionName,
-                                 QStringLiteral("-p")});
+        capture.start(tmuxPath,
+                      {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-p")});
         capture.waitForFinished(3000);
         return QString::fromUtf8(capture.readAllStandardOutput());
     };
@@ -2087,7 +2277,7 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
              qPrintable(QStringLiteral("Expected visible pane to still contain recent output, got: ") + visible));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2110,13 +2300,24 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
         │                                   │
         │                                   │
         └───────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // 2. Generate scrollback content
     QProcess sendKeys;
-    sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                              QStringLiteral("for i in $(seq 1 200); do echo \"SCROLLBACK_LINE_$i\"; done"), QStringLiteral("Enter")});
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("for i in $(seq 1 200); do echo \"SCROLLBACK_LINE_$i\"; done"),
+                    QStringLiteral("Enter")});
     QVERIFY(sendKeys.waitForFinished(5000));
     QCOMPARE(sendKeys.exitCode(), 0);
 
@@ -2124,16 +2325,29 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
 
     auto getTmuxHistorySize = [&]() -> int {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-p"), QStringLiteral("#{history_size}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("display-message"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-p"),
+                     QStringLiteral("#{history_size}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed().toInt();
     };
 
     auto captureTmuxPane = [&]() -> QString {
         QProcess capture;
-        capture.start(tmuxPath, {QStringLiteral("capture-pane"), QStringLiteral("-t"), ctx.sessionName,
-                                 QStringLiteral("-p"), QStringLiteral("-S"), QStringLiteral("-")});
+        capture.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctx.socketPath,
+                       QStringLiteral("capture-pane"),
+                       QStringLiteral("-t"),
+                       ctx.sessionName,
+                       QStringLiteral("-p"),
+                       QStringLiteral("-S"),
+                       QStringLiteral("-")});
         capture.waitForFinished(3000);
         return QString::fromUtf8(capture.readAllStandardOutput());
     };
@@ -2142,16 +2356,12 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
 
     // 3. Attach Konsole
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     QTest::qWait(2000);
@@ -2173,7 +2383,7 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
              qPrintable(QStringLiteral("Expected all SCROLLBACK_LINE content to be cleared, got: ") + allContent));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2198,11 +2408,16 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
         ┌────────────────────────────────────────┬────────────────────────────────────────┐
@@ -2218,7 +2433,7 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -2235,15 +2450,11 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
     QVERIFY(!paneSplitter->terminalMaximized());
 
-    // Find a pane session and its controller
+    // Find a pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -2257,8 +2468,14 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     // Wait for tmux to report zoomed state
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-p"), QStringLiteral("#{window_zoomed_flag}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("display-message"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-p"),
+                     QStringLiteral("#{window_zoomed_flag}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed() == QStringLiteral("1");
     }(), 10000);
@@ -2272,8 +2489,14 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     // Wait for tmux to report unzoomed state
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-p"), QStringLiteral("#{window_zoomed_flag}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("display-message"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-p"),
+                     QStringLiteral("#{window_zoomed_flag}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed() == QStringLiteral("0");
     }(), 10000);
@@ -2282,7 +2505,7 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 5000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2306,11 +2529,16 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
         ┌────────────────────────────────────────┬────────────────────────────────────────┐
@@ -2326,7 +2554,7 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -2345,7 +2573,8 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
 
     // Zoom from tmux externally
     QProcess zoomProc;
-    zoomProc.start(tmuxPath, {QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+    zoomProc.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
     QVERIFY(zoomProc.waitForFinished(5000));
     QCOMPARE(zoomProc.exitCode(), 0);
 
@@ -2354,7 +2583,8 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
 
     // Unzoom from tmux
     QProcess unzoomProc;
-    unzoomProc.start(tmuxPath, {QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+    unzoomProc.start(tmuxPath,
+                     {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
     QVERIFY(unzoomProc.waitForFinished(5000));
     QCOMPARE(unzoomProc.exitCode(), 0);
 
@@ -2386,7 +2616,7 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
     }
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2404,11 +2634,16 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
         │                    │                    │
         │                    │                    │
         └────────────────────┴────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
         ┌────────────────────┬────────────────────┐
@@ -2417,7 +2652,7 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
         │                    │                    │
         └────────────────────┴────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -2433,15 +2668,11 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     }
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
 
-    // Find a pane session and record its pre-zoom display width
+    // Find a pane session and record its pre-zoom display width (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto paneViews = paneSession->views();
@@ -2453,7 +2684,8 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
 
     // Zoom from tmux
     QProcess zoomProc;
-    zoomProc.start(tmuxPath, {QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+    zoomProc.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
     QVERIFY(zoomProc.waitForFinished(5000));
     QCOMPARE(zoomProc.exitCode(), 0);
 
@@ -2480,7 +2712,7 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
                             .arg(zoomedLines).arg(zoomedDisplay->lines())));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2504,11 +2736,16 @@ void TmuxIntegrationTest::testBreakPane()
         │                                        │                                        │
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
         ┌────────────────────────────────────────┬────────────────────────────────────────┐
@@ -2524,7 +2761,7 @@ void TmuxIntegrationTest::testBreakPane()
         │                                        │                                        │
         └────────────────────────────────────────┴────────────────────────────────────────┘
     )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager(), attach.gatewaySession);
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -2540,17 +2777,13 @@ void TmuxIntegrationTest::testBreakPane()
     }
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
 
-    int initialTabCount = attach.container->count();
+    int initialTabCount = attach.mw->viewManager()->activeContainer()->count();
 
-    // Find a pane session and its controller
+    // Find a pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -2562,7 +2795,12 @@ void TmuxIntegrationTest::testBreakPane()
     controller->requestBreakPane(paneId);
 
     // Wait for tab count to increase (new tmux window → new tab)
-    QTRY_VERIFY_WITH_TIMEOUT(attach.container->count() == initialTabCount + 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() == initialTabCount + 1;
+        }(),
+        10000);
 
     // Verify the controller now has 2 windows, each with 1 pane
     QCOMPARE(controller->windowCount(), 2);
@@ -2577,14 +2815,14 @@ void TmuxIntegrationTest::testBreakPane()
 
     // Verify tmux confirms 2 windows exist
     QProcess listWindows;
-    listWindows.start(tmuxPath, {QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
+    listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
     QVERIFY(listWindows.waitForFinished(5000));
     QString windowOutput = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
     int windowCount = windowOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
     QCOMPARE(windowCount, 2);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2607,29 +2845,36 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // cd to /tmp so we have a known directory
     QProcess sendCd;
-    sendCd.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                            QStringLiteral("cd /tmp"), QStringLiteral("Enter")});
+    sendCd.start(tmuxPath,
+                 {QStringLiteral("-S"),
+                  ctx.socketPath,
+                  QStringLiteral("send-keys"),
+                  QStringLiteral("-t"),
+                  ctx.sessionName,
+                  QStringLiteral("cd /tmp"),
+                  QStringLiteral("Enter")});
     QVERIFY(sendCd.waitForFinished(5000));
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session and its controller
+    // Find the pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -2647,24 +2892,35 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
     controller->requestSplitPane(paneId, Qt::Horizontal, QStringLiteral("/tmp"));
 
     // Wait for the split to appear: a ViewSplitter with 2 TerminalDisplay children
-    QTRY_VERIFY_WITH_TIMEOUT([&]() {
-        for (int i = 0; i < attach.container->count(); ++i) {
-            auto *splitter = attach.container->viewSplitterAt(i);
-            if (splitter) {
-                auto terminals = splitter->findChildren<TerminalDisplay *>();
-                if (terminals.size() == 2) {
-                    return true;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            if (!container)
+                return false;
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter) {
+                    auto terminals = splitter->findChildren<TerminalDisplay *>();
+                    if (terminals.size() == 2) {
+                        return true;
+                    }
                 }
             }
-        }
-        return false;
-    }(), 10000);
+            return false;
+        }(),
+        10000);
 
     // Verify the new pane started in /tmp by querying tmux
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_current_path}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_current_path}")});
         check.waitForFinished(3000);
         QStringList paths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         if (paths.size() != 2) return false;
@@ -2673,7 +2929,7 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
     }(), 10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2696,45 +2952,61 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     // cd to /tmp so we have a known directory
     QProcess sendCd;
-    sendCd.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                            QStringLiteral("cd /tmp"), QStringLiteral("Enter")});
+    sendCd.start(tmuxPath,
+                 {QStringLiteral("-S"),
+                  ctx.socketPath,
+                  QStringLiteral("send-keys"),
+                  QStringLiteral("-t"),
+                  ctx.sessionName,
+                  QStringLiteral("cd /tmp"),
+                  QStringLiteral("Enter")});
     QVERIFY(sendCd.waitForFinished(5000));
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(
-        [&]() -> Session * {
-            const auto sessions = attach.mw->viewManager()->sessions();
-            for (Session *s : sessions) {
-                if (s != attach.gatewaySession) {
-                    return s;
-                }
-            }
-            return nullptr;
-        }());
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
     QVERIFY(controller);
 
-    int initialTabCount = attach.container->count();
+    int initialTabCount = attach.mw->viewManager()->activeContainer()->count();
 
     // Request a new tmux window with /tmp as working directory
     controller->requestNewWindow(QStringLiteral("/tmp"));
 
     // Wait for the new tab to appear
-    QTRY_VERIFY_WITH_TIMEOUT(attach.container->count() == initialTabCount + 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() == initialTabCount + 1;
+        }(),
+        10000);
 
     // Verify the new window's pane started in /tmp by querying tmux
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QProcess check;
-        check.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-a"), QStringLiteral("-t"), ctx.sessionName,
-                                QStringLiteral("-F"), QStringLiteral("#{pane_current_path}")});
+        check.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-a"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_current_path}")});
         check.waitForFinished(3000);
         QStringList paths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         if (paths.size() != 2) return false;
@@ -2743,7 +3015,7 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
     }(), 10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2766,21 +3038,22 @@ void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
         │                                                                                │
         │                                                                                │
         └────────────────────────────────────────────────────────────────────────────────┘
-    )")), tmuxPath, ctx);
-    auto cleanup = qScopeGuard([&] { TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName); });
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
     // Spy on data sent back from the emulation (this becomes send-keys in tmux mode)
@@ -2790,14 +3063,20 @@ void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
     // This simulates what happens when a program like bat sends "\033]10;?\007"
     // — tmux forwards the pane output as %output to Konsole's emulation.
     QProcess sendQuery;
-    sendQuery.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                               QStringLiteral("-l"), QStringLiteral("printf '\\033]10;?\\007'")});
+    sendQuery.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("send-keys"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-l"),
+                     QStringLiteral("printf '\\033]10;?\\007'")});
     QVERIFY(sendQuery.waitForFinished(5000));
     QCOMPARE(sendQuery.exitCode(), 0);
     // Execute the printf command
     QProcess sendEnter;
-    sendEnter.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
-                               QStringLiteral("Enter")});
+    sendEnter.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("Enter")});
     QVERIFY(sendEnter.waitForFinished(5000));
     QCOMPARE(sendEnter.exitCode(), 0);
 
@@ -2818,7 +3097,7 @@ void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
     QVERIFY2(!leaked, "OSC color query response was leaked back as keystrokes to tmux pane");
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -2843,134 +3122,94 @@ void TmuxIntegrationTest::testCyrillicInputPreservesUtf8()
         └────────────────────────────────────────────────────────────────────────────────┘
     )")),
                                   tmuxPath,
+                                  m_tmuxTmpDir.path(),
                                   ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     });
 
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx.sessionName, attach);
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
-    // Find the pane session (not the gateway)
+    // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
-    for (Session *s : sessions) {
-        if (s != attach.gatewaySession) {
-            paneSession = s;
-            break;
-        }
-    }
+    QVERIFY(!sessions.isEmpty());
+    paneSession = sessions.first();
     QVERIFY(paneSession);
 
-    // Spy on data sent to the tmux server (the gateway session's emulation).
-    // Every tmux command (like send-keys) goes through writeToGateway() which
-    // emits sendData on the gateway emulation.
-    QSignalSpy gatewaySpy(attach.gatewaySession->emulation(), &Emulation::sendData);
+    // TODO: adapt for TmuxProcessBridge — no emulation to spy on for the gateway.
+    // With TmuxProcessBridge, tmux commands are sent via QProcess stdin, not
+    // through a gateway Session's emulation. We verify the end-to-end result
+    // by checking what tmux actually received instead.
 
     // Simulate typing Cyrillic text into the pane.
     // This goes through: sendText → Vt102Emulation → sendData signal →
-    //   TmuxPaneManager lambda → TmuxGateway::sendKeys → writeToGateway
+    //   TmuxPaneManager lambda → TmuxGateway::sendKeys → QProcess stdin
     const QString cyrillicText = QStringLiteral("слоп");
     paneSession->emulation()->sendText(cyrillicText);
 
-    // Let the event loop process
-    QTest::qWait(500);
+    // Let the event loop process and tmux receive the command
+    QTest::qWait(1000);
 
-    // Collect all tmux commands sent to the gateway
-    QByteArray allCommands;
-    for (const auto &call : gatewaySpy) {
-        allCommands.append(call.at(0).toByteArray());
-    }
+    // Verify end-to-end: capture the tmux pane and check that the Cyrillic text
+    // was received correctly (not garbled by hex encoding).
+    QProcess capture;
+    capture.start(tmuxPath,
+                  {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-p")});
+    QVERIFY(capture.waitForFinished(5000));
+    QString paneContent = QString::fromUtf8(capture.readAllStandardOutput());
 
-    // The commands should use send-keys -l with the actual UTF-8 text,
-    // NOT hex-encoded individual bytes like "0xd0 0xb9 0xd1 0x86 0xd1 0x83 0xd0 0xba".
-    // If the bytes are sent as hex, tmux will interpret them as individual Latin-1 bytes
-    // rather than multi-byte UTF-8 characters, causing garbled display.
-    const QByteArray cyrillicUtf8 = cyrillicText.toUtf8();
-    bool containsLiteralCyrillic = allCommands.contains(cyrillicUtf8);
+    // The pane should contain the Cyrillic text as-is (it appears on the command line)
+    bool containsLiteralCyrillic = paneContent.contains(cyrillicText);
 
-    // Also check for the broken hex encoding pattern.
-    // "слоп" in UTF-8 is: d1 81 d0 bb d0 be d0 bf
-    // If broken, we'd see something like: send-keys ... 0xd1 0x81 0xd0 0xbb ...
-    bool containsHexEncoded = allCommands.contains("0xd0");
+    // Also check for the broken hex encoding pattern appearing in the pane.
+    // If broken, we'd see something like: 0xd1 0x81 0xd0 0xbb ...
+    bool containsHexEncoded = paneContent.contains(QStringLiteral("0xd0"));
 
     QVERIFY2(containsLiteralCyrillic,
              qPrintable(QStringLiteral("Cyrillic text should be sent as literal UTF-8 via send-keys -l, "
-                                       "but the gateway received: %1")
-                            .arg(QString::fromUtf8(allCommands))));
+                                       "but the pane contains: %1")
+                            .arg(paneContent)));
     QVERIFY2(!containsHexEncoded,
              qPrintable(QStringLiteral("Cyrillic bytes should NOT be hex-encoded as individual bytes, "
-                                       "but the gateway received: %1")
-                            .arg(QString::fromUtf8(allCommands))));
+                                       "but the pane contains: %1")
+                            .arg(paneContent)));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx.sessionName);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testTmuxAttachNoSessions()
 {
-    const QString bashPath = QStandardPaths::findExecutable(QStringLiteral("bash"));
-    if (bashPath.isEmpty()) {
-        QSKIP("bash command not found.");
+    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    if (tmuxPath.isEmpty()) {
+        QSKIP("tmux command not found.");
     }
 
-    // Start a bash shell session — this mimics the real scenario where
-    // the user types "tmux -CC attach" at a shell prompt.
+    // Use TmuxProcessBridge to attempt "tmux -C attach" when there are no
+    // tmux sessions. The bridge should handle the immediate exit gracefully
+    // without crashing or leaking commands.
     auto *mw = new MainWindow();
     QPointer<MainWindow> mwGuard(mw);
     ViewManager *vm = mw->viewManager();
 
-    Profile::Ptr profile(new Profile(ProfileManager::instance()->defaultProfile()));
-    profile->setProperty(Profile::Command, bashPath);
-    profile->setProperty(Profile::Arguments, QStringList{bashPath, QStringLiteral("--norc"), QStringLiteral("--noprofile")});
+    // Use a fresh socket so there is guaranteed no server running on it
+    const QString socketPath = m_tmuxTmpDir.path() + QStringLiteral("/tmux-no-sessions");
 
-    Session *session = vm->createSession(profile, QString());
-    QPointer<Session> sessionGuard(session);
-    auto *view = vm->createView(session);
-    vm->activeContainer()->addView(view);
-    session->run();
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    QSignalSpy disconnectedSpy(bridge, &TmuxProcessBridge::disconnected);
 
-    // Wait for the shell prompt to appear
-    QTest::qWait(500);
+    // Start with "attach" which should fail immediately (no sessions)
+    bridge->start(tmuxPath, {QStringLiteral("-S"), socketPath}, {QStringLiteral("attach")});
 
-    // Spy on data sent back through the emulation (i.e. written to the PTY).
-    // If list-windows leaks, it will appear here.
-    QSignalSpy sendSpy(session->emulation(), &Emulation::sendData);
+    // Wait for the bridge to report disconnection (tmux exits with error)
+    QTRY_VERIFY_WITH_TIMEOUT(disconnectedSpy.count() >= 1, 10000);
 
-    // Simulate tmux entering control mode and immediately exiting, with
-    // the DCS start and %exit arriving in separate PTY reads.  This
-    // reproduces the race where QTimer::singleShot(0) (used to defer
-    // initialize()) fires between the two reads, causing list-windows
-    // to be sent to the underlying shell.
-    //
-    // Feed the DCS start directly into the emulation:
-    const QByteArray dcsStart = QByteArrayLiteral("\033P1000p");
-    session->emulation()->receiveData(dcsStart.constData(), dcsStart.size());
-
-    // Let the event loop run so the deferred initialize() fires (if the
-    // guard is insufficient, list-windows will be written to the PTY).
-    QTest::qWait(100);
-
-    // Now deliver the %exit and DCS terminator:
-    const QByteArray exitAndST = QByteArrayLiteral("%exit\r\n\033\\");
-    session->emulation()->receiveData(exitAndST.constData(), exitAndST.size());
-
-    // Let everything settle.
-    QTest::qWait(100);
-
-    // Check that no "list-windows" command was sent through the emulation
-    // to the PTY (which would mean it leaked to the underlying shell).
-    bool leaked = false;
-    for (const auto &call : sendSpy) {
-        QByteArray data = call.at(0).toByteArray();
-        if (data.contains("list-windows")) {
-            leaked = true;
-            break;
-        }
-    }
-    QVERIFY2(!leaked, "list-windows command leaked to shell after tmux exit");
+    // The ViewManager should have no sessions (no pane tabs created)
+    QVERIFY2(vm->sessions().isEmpty(), "No pane sessions should be created when tmux attach fails");
 
     delete mwGuard.data();
 }

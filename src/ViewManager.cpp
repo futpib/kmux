@@ -714,8 +714,15 @@ void ViewManager::sessionFinished(Session *session)
         // The last session/tab, and only one view (no splits), emit empty()
         // so that close() is called in MainWindow, fixes #432077
         if (_viewContainer->count() == 1 && _viewContainer->currentTabViewCount() == 1) {
-            Q_EMIT empty();
-            return;
+            // Only treat as empty if the finishing session's view is still
+            // part of the widget tree. A view detached from the splitter
+            // (e.g. during tmux layout rebuild) is already gone visually
+            // and shouldn't trigger window close.
+            auto *view = _sessionMap.key(session);
+            if (view != nullptr && view->parentWidget() != nullptr) {
+                Q_EMIT empty();
+                return;
+            }
         }
     }
 

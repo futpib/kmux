@@ -19,6 +19,7 @@
 #include "../terminalDisplay/TerminalDisplay.h"
 #include "../terminalDisplay/TerminalFonts.h"
 #include "../tmux/TmuxLayoutParser.h"
+#include "../tmux/TmuxProcessBridge.h"
 #include "../widgets/ViewContainer.h"
 #include "../widgets/ViewSplitter.h"
 
@@ -700,10 +701,11 @@ DiagramSpec parse(const QString &diagram)
     return spec;
 }
 
-void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionContext &ctx)
+void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, const QString &socketDir, SessionContext &ctx)
 {
     static int sessionCounter = 0;
-    ctx.sessionName = QStringLiteral("konsole-dsl-test-%1-%2").arg(QCoreApplication::applicationPid()).arg(sessionCounter++);
+    ctx.sessionName = QStringLiteral("konsole-dsl-test-%1-%2").arg(QCoreApplication::applicationPid()).arg(sessionCounter);
+    ctx.socketPath = socketDir + QStringLiteral("/tmux-test-%1-%2").arg(QCoreApplication::applicationPid()).arg(sessionCounter++);
 
     // Collect all pane commands
     QStringList cmds;
@@ -714,7 +716,7 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
     }
 
     // Build new-session arguments
-    QStringList args = {QStringLiteral("new-session"), QStringLiteral("-d"), QStringLiteral("-s"), ctx.sessionName};
+    QStringList args = {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-session"), QStringLiteral("-d"), QStringLiteral("-s"), ctx.sessionName};
 
     auto windowSize = computeWindowSize(spec.layout);
     args << QStringLiteral("-x") << QString::number(windowSize.first);
@@ -815,9 +817,14 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
                 targetPane = firstChildPaneIndex;
 
                 QProcess tmuxSplit;
-                tmuxSplit.start(tmuxPath, {QStringLiteral("split-window"), dir,
-                                           QStringLiteral("-t"), QStringLiteral("%1:%2.%3").arg(ctx.sessionName).arg(0).arg(targetPane),
-                                           childCmd});
+                tmuxSplit.start(tmuxPath,
+                                {QStringLiteral("-S"),
+                                 ctx.socketPath,
+                                 QStringLiteral("split-window"),
+                                 dir,
+                                 QStringLiteral("-t"),
+                                 QStringLiteral("%1:%2.%3").arg(ctx.sessionName).arg(0).arg(targetPane),
+                                 childCmd});
                 QVERIFY2(tmuxSplit.waitForFinished(5000),
                          qPrintable(QStringLiteral("split-window timed out")));
                 QCOMPARE(tmuxSplit.exitCode(), 0);
@@ -832,8 +839,14 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
 
         // Build ID to pane ID mapping by querying tmux for actual pane IDs
         QProcess tmuxListPanes;
-        tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                       QStringLiteral("-F"), QStringLiteral("#{pane_index} #{pane_id}")});
+        tmuxListPanes.start(tmuxPath,
+                            {QStringLiteral("-S"),
+                             ctx.socketPath,
+                             QStringLiteral("list-panes"),
+                             QStringLiteral("-t"),
+                             ctx.sessionName,
+                             QStringLiteral("-F"),
+                             QStringLiteral("#{pane_index} #{pane_id}")});
         QVERIFY(tmuxListPanes.waitForFinished(5000));
         QStringList paneLines = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
 
@@ -856,8 +869,14 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
         // Single pane - query its ID
         if (!spec.layout.pane.id.isEmpty()) {
             QProcess tmuxListPanes;
-            tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                           QStringLiteral("-F"), QStringLiteral("#{pane_id}")});
+            tmuxListPanes.start(tmuxPath,
+                                {QStringLiteral("-S"),
+                                 ctx.socketPath,
+                                 QStringLiteral("list-panes"),
+                                 QStringLiteral("-t"),
+                                 ctx.sessionName,
+                                 QStringLiteral("-F"),
+                                 QStringLiteral("#{pane_id}")});
             QVERIFY(tmuxListPanes.waitForFinished(5000));
             QString paneId = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed();
             if (paneId.startsWith(QLatin1Char('%'))) {
@@ -874,8 +893,14 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
         collectPaneDimensions(spec.layout, expectedDims);
 
         QProcess tmuxListPanes;
-        tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                       QStringLiteral("-F"), QStringLiteral("#{pane_index} #{pane_id}")});
+        tmuxListPanes.start(tmuxPath,
+                            {QStringLiteral("-S"),
+                             ctx.socketPath,
+                             QStringLiteral("list-panes"),
+                             QStringLiteral("-t"),
+                             ctx.sessionName,
+                             QStringLiteral("-F"),
+                             QStringLiteral("#{pane_index} #{pane_id}")});
         QVERIFY(tmuxListPanes.waitForFinished(5000));
         QCOMPARE(tmuxListPanes.exitCode(), 0);
         QStringList paneLines = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
@@ -894,17 +919,29 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
         // Try resize-pane for each pane (may fail silently for complex layouts)
         for (int i = 0; i < expectedPanes; ++i) {
             QProcess resize;
-            resize.start(tmuxPath, {QStringLiteral("resize-pane"),
-                                    QStringLiteral("-t"), QStringLiteral("%1:%2.%3").arg(ctx.sessionName).arg(0).arg(paneIndices[i]),
-                                    QStringLiteral("-x"), QString::number(expectedDims[i].first),
-                                    QStringLiteral("-y"), QString::number(expectedDims[i].second)});
+            resize.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("resize-pane"),
+                          QStringLiteral("-t"),
+                          QStringLiteral("%1:%2.%3").arg(ctx.sessionName).arg(0).arg(paneIndices[i]),
+                          QStringLiteral("-x"),
+                          QString::number(expectedDims[i].first),
+                          QStringLiteral("-y"),
+                          QString::number(expectedDims[i].second)});
             QVERIFY2(resize.waitForFinished(5000), qPrintable(QStringLiteral("resize-pane timed out for pane %1").arg(paneIndices[i])));
         }
 
         // Verify dimensions — if any mismatch, fall back to select-layout
         QProcess verifyPanes;
-        verifyPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                     QStringLiteral("-F"), QStringLiteral("#{pane_width} #{pane_height}")});
+        verifyPanes.start(tmuxPath,
+                          {QStringLiteral("-S"),
+                           ctx.socketPath,
+                           QStringLiteral("list-panes"),
+                           QStringLiteral("-t"),
+                           ctx.sessionName,
+                           QStringLiteral("-F"),
+                           QStringLiteral("#{pane_width} #{pane_height}")});
         QVERIFY(verifyPanes.waitForFinished(5000));
         QStringList verifyLines = QString::fromUtf8(verifyPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
 
@@ -928,17 +965,26 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
             auto windowSize = computeWindowSize(spec.layout);
 
             QProcess selectLayout1;
-            selectLayout1.start(tmuxPath, {QStringLiteral("select-layout"), QStringLiteral("-t"), ctx.sessionName, layoutString});
+            selectLayout1.start(tmuxPath,
+                                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-layout"), QStringLiteral("-t"), ctx.sessionName, layoutString});
             QVERIFY(selectLayout1.waitForFinished(5000));
 
             QProcess resizeWindow;
-            resizeWindow.start(tmuxPath, {QStringLiteral("resize-window"), QStringLiteral("-t"), ctx.sessionName,
-                                          QStringLiteral("-x"), QString::number(windowSize.first),
-                                          QStringLiteral("-y"), QString::number(windowSize.second)});
+            resizeWindow.start(tmuxPath,
+                               {QStringLiteral("-S"),
+                                ctx.socketPath,
+                                QStringLiteral("resize-window"),
+                                QStringLiteral("-t"),
+                                ctx.sessionName,
+                                QStringLiteral("-x"),
+                                QString::number(windowSize.first),
+                                QStringLiteral("-y"),
+                                QString::number(windowSize.second)});
             QVERIFY(resizeWindow.waitForFinished(5000));
 
             QProcess selectLayout2;
-            selectLayout2.start(tmuxPath, {QStringLiteral("select-layout"), QStringLiteral("-t"), ctx.sessionName, layoutString});
+            selectLayout2.start(tmuxPath,
+                                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-layout"), QStringLiteral("-t"), ctx.sessionName, layoutString});
             QVERIFY2(selectLayout2.waitForFinished(5000), qPrintable(QStringLiteral("select-layout timed out")));
             QCOMPARE(selectLayout2.exitCode(), 0);
         }
@@ -950,8 +996,14 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
         collectPaneDimensions(spec.layout, expectedDims);
 
         QProcess tmuxListPanes;
-        tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName,
-                                       QStringLiteral("-F"), QStringLiteral("#{pane_width} #{pane_height}")});
+        tmuxListPanes.start(tmuxPath,
+                            {QStringLiteral("-S"),
+                             ctx.socketPath,
+                             QStringLiteral("list-panes"),
+                             QStringLiteral("-t"),
+                             ctx.sessionName,
+                             QStringLiteral("-F"),
+                             QStringLiteral("#{pane_width} #{pane_height}")});
         QVERIFY(tmuxListPanes.waitForFinished(5000));
         QCOMPARE(tmuxListPanes.exitCode(), 0);
         QStringList paneLines = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
@@ -971,33 +1023,28 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionC
 
 }
 
-void attachKonsole(const QString &tmuxPath, const QString &sessionName, AttachResult &result)
+void attachKonsole(const QString &tmuxPath, const SessionContext &ctx, AttachResult &result)
 {
-
     auto *mw = new MainWindow();
     result.mw = mw;
     ViewManager *vm = mw->viewManager();
 
-    Profile::Ptr profile(new Profile(ProfileManager::instance()->defaultProfile()));
-    profile->setProperty(Profile::Command, tmuxPath);
-    profile->setProperty(Profile::Arguments,
-                         QStringList{tmuxPath, QStringLiteral("-CC"), QStringLiteral("attach"), QStringLiteral("-t"), sessionName});
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    result.bridge = bridge;
 
-    Session *gatewaySession = vm->createSession(profile, QString());
-    result.gatewaySession = gatewaySession;
-    auto *view = vm->createView(gatewaySession);
-    vm->activeContainer()->addView(view);
-    gatewaySession->run();
+    bool started = bridge->start(tmuxPath,
+                                 {QStringLiteral("-S"), ctx.socketPath},
+                                 {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName});
+    QVERIFY(started);
 
     result.container = vm->activeContainer();
     QVERIFY(result.container);
-    QCOMPARE(result.container->count(), 1);
 
-    // Wait for tmux control mode to create virtual pane tab(s)
-    QTRY_VERIFY_WITH_TIMEOUT(result.container && result.container->count() >= 2, 10000);
+    // Wait for tmux control mode to create pane tab(s)
+    QTRY_VERIFY_WITH_TIMEOUT(result.container && result.container->count() >= 1, 10000);
 }
 
-void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gatewaySession)
+void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm)
 {
     auto *container = vm->activeContainer();
     QVERIFY(container);
@@ -1041,11 +1088,9 @@ void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gatew
             pair.first->setFocus();
         }
     }
-
-    Q_UNUSED(gatewaySession)
 }
 
-void assertKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gatewaySession)
+void assertKonsoleLayout(const DiagramSpec &spec, ViewManager *vm)
 {
     auto *container = vm->activeContainer();
     QVERIFY(container);
@@ -1131,15 +1176,19 @@ void assertKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gate
             }
         }
     }
-
-    Q_UNUSED(gatewaySession)
 }
 
-void assertTmuxLayout(const DiagramSpec &spec, const QString &tmuxPath, const QString &sessionName)
+void assertTmuxLayout(const DiagramSpec &spec, const QString &tmuxPath, const SessionContext &ctx)
 {
     QProcess tmuxListPanes;
-    tmuxListPanes.start(tmuxPath, {QStringLiteral("list-panes"), QStringLiteral("-t"), sessionName,
-                                   QStringLiteral("-F"), QStringLiteral("#{pane_width} #{pane_height}")});
+    tmuxListPanes.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_width} #{pane_height}")});
     QVERIFY(tmuxListPanes.waitForFinished(5000));
     QCOMPARE(tmuxListPanes.exitCode(), 0);
     QStringList paneLines = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
@@ -1147,10 +1196,10 @@ void assertTmuxLayout(const DiagramSpec &spec, const QString &tmuxPath, const QS
     QCOMPARE(paneLines.size(), countPanes(spec.layout));
 }
 
-void killTmuxSession(const QString &tmuxPath, const QString &sessionName)
+void killTmuxSession(const QString &tmuxPath, const SessionContext &ctx)
 {
     QProcess tmuxKill;
-    tmuxKill.start(tmuxPath, {QStringLiteral("kill-session"), QStringLiteral("-t"), sessionName});
+    tmuxKill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), ctx.sessionName});
     tmuxKill.waitForFinished(5000);
 }
 

@@ -9,6 +9,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QSocketNotifier>
 #include <QString>
 
 #include "konsoleprivate_export.h"
@@ -34,7 +35,15 @@ public:
     explicit TmuxProcessBridge(ViewManager *viewManager, QObject *parent = nullptr);
     ~TmuxProcessBridge() override;
 
-    bool start(const QString &tmuxPath = QString(), const QStringList &extraArgs = {});
+    /**
+     * @param tmuxPath   Path to tmux binary. Empty = find in PATH.
+     * @param tmuxArgs   Extra tmux flags before -C (e.g. {"-S", "/path/to/socket"}).
+     * @param command    Tmux command + args after -C (e.g. {"new-session", "-A"}).
+     *                   Defaults to {"new-session", "-A"}.
+     */
+    bool start(const QString &tmuxPath = QString(),
+               const QStringList &tmuxArgs = {},
+               const QStringList &command = {QStringLiteral("new-session"), QStringLiteral("-A")});
 
     TmuxController *controller() const;
 
@@ -50,6 +59,8 @@ private:
     QProcess *_process = nullptr;
     TmuxGateway *_gateway = nullptr;
     TmuxController *_controller = nullptr;
+    QSocketNotifier *_readNotifier = nullptr;
+    int _socketFd = -1;
     QByteArray _readBuffer;
 };
 

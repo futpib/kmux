@@ -22,6 +22,7 @@ namespace Konsole
 class MainWindow;
 class Session;
 class TabbedViewContainer;
+class TmuxProcessBridge;
 class ViewManager;
 
 namespace TmuxTestDSL
@@ -52,12 +53,13 @@ struct DiagramSpec {
 
 struct SessionContext {
     QString sessionName;
+    QString socketPath;
     QMap<QString, int> idToPaneId;
 };
 
 struct AttachResult {
     QPointer<MainWindow> mw;
-    Session *gatewaySession = nullptr;
+    TmuxProcessBridge *bridge = nullptr;
     QPointer<TabbedViewContainer> container;
 };
 
@@ -65,24 +67,25 @@ struct AttachResult {
 DiagramSpec parse(const QString &diagram);
 
 // Create a detached tmux session matching the diagram, then verify it was created correctly.
-// Populates ctx with session name and pane ID mapping.
-void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, SessionContext &ctx);
+// Populates ctx with session name, socket path, and pane ID mapping.
+// Each call creates a unique tmux server socket for test isolation.
+void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, const QString &socketDir, SessionContext &ctx);
 
-// Attach Konsole to an existing tmux session via -CC control mode.
+// Attach Konsole to an existing tmux session via TmuxProcessBridge.
 // Waits for virtual pane tabs to appear.
-void attachKonsole(const QString &tmuxPath, const QString &sessionName, AttachResult &result);
+void attachKonsole(const QString &tmuxPath, const SessionContext &ctx, AttachResult &result);
 
 // Resize Konsole window and splitters so TerminalDisplay columns()/lines() match the diagram.
-void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gatewaySession);
+void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm);
 
 // Assert that the Konsole ViewSplitter tree matches the diagram structure, dimensions, and focus.
-void assertKonsoleLayout(const DiagramSpec &spec, ViewManager *vm, Session *gatewaySession);
+void assertKonsoleLayout(const DiagramSpec &spec, ViewManager *vm);
 
 // Assert that tmux pane state matches the diagram.
-void assertTmuxLayout(const DiagramSpec &spec, const QString &tmuxPath, const QString &sessionName);
+void assertTmuxLayout(const DiagramSpec &spec, const QString &tmuxPath, const SessionContext &ctx);
 
 // Kill a tmux session.
-void killTmuxSession(const QString &tmuxPath, const QString &sessionName);
+void killTmuxSession(const QString &tmuxPath, const SessionContext &ctx);
 
 // Find tmux executable or call QSKIP. Returns the path.
 QString findTmuxOrSkip();
