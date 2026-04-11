@@ -3591,6 +3591,221 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testSwapPaneFromTmux()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a 2-pane horizontal split
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Find the splitter with 2 displays
+    auto *container = attach.mw->viewManager()->activeContainer();
+    ViewSplitter *paneSplitter = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    // Record which pane is on the left and which is on the right
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
+    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    QVERIFY(leftDisplay);
+    QVERIFY(rightDisplay);
+
+    int leftPaneId = controller->paneIdForSession(leftDisplay->sessionController()->session());
+    int rightPaneId = controller->paneIdForSession(rightDisplay->sessionController()->session());
+    QVERIFY(leftPaneId >= 0);
+    QVERIFY(rightPaneId >= 0);
+    QVERIFY(leftPaneId != rightPaneId);
+
+    // Swap panes from tmux
+    QProcess swapPane;
+    swapPane.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("swap-pane"),
+                    QStringLiteral("-s"),
+                    QLatin1Char('%') + QString::number(leftPaneId),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(rightPaneId)});
+    QVERIFY(swapPane.waitForFinished(5000));
+    QCOMPARE(swapPane.exitCode(), 0);
+
+    // Wait for the layout change to be applied — the pane IDs should swap positions
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            // Re-find the splitter (it may have been rebuilt)
+            paneSplitter = nullptr;
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    break;
+                }
+            }
+            if (!paneSplitter)
+                return false;
+            auto *newLeft = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
+            auto *newRight = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+            if (!newLeft || !newRight)
+                return false;
+            int newLeftPaneId = controller->paneIdForSession(newLeft->sessionController()->session());
+            int newRightPaneId = controller->paneIdForSession(newRight->sessionController()->session());
+            // After swap: the originally-left pane should now be on the right and vice versa
+            return newLeftPaneId == rightPaneId && newRightPaneId == leftPaneId;
+        }(),
+        10000);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testSwapPaneFromKonsole()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a 2-pane horizontal split
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Find the splitter with 2 displays
+    auto *container = attach.mw->viewManager()->activeContainer();
+    ViewSplitter *paneSplitter = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
+    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    QVERIFY(leftDisplay);
+    QVERIFY(rightDisplay);
+
+    int leftPaneId = controller->paneIdForSession(leftDisplay->sessionController()->session());
+    int rightPaneId = controller->paneIdForSession(rightDisplay->sessionController()->session());
+    QVERIFY(leftPaneId >= 0);
+    QVERIFY(rightPaneId >= 0);
+    QVERIFY(leftPaneId != rightPaneId);
+
+    // Swap panes from Konsole
+    controller->requestSwapPane(leftPaneId, rightPaneId);
+
+    // Wait for the layout change — pane positions should swap
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            paneSplitter = nullptr;
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    break;
+                }
+            }
+            if (!paneSplitter)
+                return false;
+            auto *newLeft = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
+            auto *newRight = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+            if (!newLeft || !newRight)
+                return false;
+            int newLeftPaneId = controller->paneIdForSession(newLeft->sessionController()->session());
+            int newRightPaneId = controller->paneIdForSession(newRight->sessionController()->session());
+            return newLeftPaneId == rightPaneId && newRightPaneId == leftPaneId;
+        }(),
+        10000);
+
+    // Verify tmux also reflects the swap
+    QProcess listPanes;
+    listPanes.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id}")});
+    QVERIFY(listPanes.waitForFinished(5000));
+    QCOMPARE(listPanes.exitCode(), 0);
+    QStringList paneOrder = QString::fromUtf8(listPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(paneOrder.size(), 2);
+    // After swap: first pane in tmux list should be the originally-right pane
+    QCOMPARE(paneOrder[0], QLatin1Char('%') + QString::number(rightPaneId));
+    QCOMPARE(paneOrder[1], QLatin1Char('%') + QString::number(leftPaneId));
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testFractalSplitDownRight8()
 {
     const int depth = 8;

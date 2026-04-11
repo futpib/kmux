@@ -373,7 +373,13 @@ bool TmuxLayoutManager::updateSplitterSizes(ViewSplitter *splitter, const TmuxLa
         QWidget *widget = splitter->widget(i);
 
         if (child.type == TmuxLayoutNodeType::Leaf) {
-            if (!qobject_cast<TerminalDisplay *>(widget)) {
+            auto *display = qobject_cast<TerminalDisplay *>(widget);
+            if (!display) {
+                return false;
+            }
+            // Verify the pane ID matches — a swap changes which pane
+            // is at each position without changing the tree structure.
+            if (_paneManager->paneIdForDisplay(display) != child.paneId) {
                 return false;
             }
         } else {
