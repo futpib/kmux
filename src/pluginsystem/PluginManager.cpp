@@ -35,7 +35,7 @@ PluginManager::~PluginManager()
 
 void PluginManager::loadAllPlugins()
 {
-    QVector<KPluginMetaData> pluginMetaData = KPluginMetaData::findPlugins(QStringLiteral("konsoleplugins"), [](const KPluginMetaData &data) {
+    QVector<KPluginMetaData> pluginMetaData = KPluginMetaData::findPlugins(QStringLiteral("kmuxplugins"), [](const KPluginMetaData &data) {
         // Compare RELEASE_SERVICE_VERSION MAJOR and MINOR only: XX.YY
         auto plugin_version = QString(data.version()).left(5);
         auto release_version = QLatin1String(RELEASE_SERVICE_VERSION).left(5);

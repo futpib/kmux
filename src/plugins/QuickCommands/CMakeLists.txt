@@ -1,7 +1,7 @@
 
 ki18n_wrap_ui(EXTRA_QUICKCOMMANDSPLUGIN_SRCS qcwidget.ui)
 
-kcoreaddons_add_plugin(konsole_quickcommandsplugin
+kcoreaddons_add_plugin(kmux_quickcommandsplugin
 SOURCES
     quickcommandsplugin.cpp
     quickcommandswidget.cpp
@@ -9,11 +9,11 @@ SOURCES
     filtermodel.cpp
     ${EXTRA_QUICKCOMMANDSPLUGIN_SRCS}
 INSTALL_NAMESPACE
-    "konsoleplugins"
+    "kmuxplugins"
 )
 
 configure_file(konsole_quickcommands.in.json konsole_quickcommands.json)
-target_link_libraries(konsole_quickcommandsplugin
+target_link_libraries(kmux_quickcommandsplugin
     konsoleprivate
     konsoleapp
 )

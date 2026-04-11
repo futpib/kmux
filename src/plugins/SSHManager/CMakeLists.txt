@@ -11,7 +11,7 @@ ecm_qt_declare_logging_category(
     EXPORT KONSOLE
 )
 
-kcoreaddons_add_plugin(konsole_sshmanagerplugin
+kcoreaddons_add_plugin(kmux_sshmanagerplugin
 SOURCES
     sshmanagerplugin.cpp
     sshmanagerpluginwidget.cpp
@@ -20,11 +20,11 @@ SOURCES
     sshtreeview.cpp
     ${extra_sshplugin_SRCS}
 INSTALL_NAMESPACE
-    "konsoleplugins"
+    "kmuxplugins"
 )
 
 configure_file(konsole_sshmanager.in.json konsole_sshmanager.json)
-target_link_libraries(konsole_sshmanagerplugin
+target_link_libraries(kmux_sshmanagerplugin
     konsoleprivate
     konsoleapp
 )

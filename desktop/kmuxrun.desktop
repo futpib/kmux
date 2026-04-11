@@ -2,12 +2,12 @@
 Type=Service
 X-KDE-ServiceTypes=KonqPopupMenu/Plugin
 MimeType=application/x-executable;
-Actions=runInKonsole;
+Actions=runInKmux;
 X-KDE-AuthorizeAction=shell_access
 
-[Desktop Action runInKonsole]
-TryExec=konsole
-Exec=konsole --hold -e %f
+[Desktop Action runInKmux]
+TryExec=kmux
+Exec=kmux --hold -e %f
 Icon=utilities-terminal
 
 Name=Run In Konsole
