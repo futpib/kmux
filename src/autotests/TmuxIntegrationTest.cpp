@@ -3806,6 +3806,452 @@ void TmuxIntegrationTest::testSwapPaneFromKonsole()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testMovePaneFromTmux()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a session with 2 windows, each with 1 pane
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() >= 2;
+        }(),
+        10000);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(container->count(), 2);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 2);
+
+    // Get pane IDs from each window
+    const auto &windowTabs = controller->windowToTabIndex();
+    QList<int> windowIds = windowTabs.keys();
+    QCOMPARE(windowIds.size(), 2);
+
+    // Get the pane ID from window 1 (the second window)
+    int window1PaneId = -1;
+    {
+        int tabIndex = windowTabs.value(windowIds[1]);
+        auto *splitter = container->viewSplitterAt(tabIndex);
+        QVERIFY(splitter);
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 1);
+        window1PaneId = controller->paneIdForSession(terminals.first()->sessionController()->session());
+        QVERIFY(window1PaneId >= 0);
+    }
+
+    // Get the pane ID from window 0
+    int window0PaneId = -1;
+    {
+        int tabIndex = windowTabs.value(windowIds[0]);
+        auto *splitter = container->viewSplitterAt(tabIndex);
+        QVERIFY(splitter);
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 1);
+        window0PaneId = controller->paneIdForSession(terminals.first()->sessionController()->session());
+        QVERIFY(window0PaneId >= 0);
+    }
+
+    // Move pane from window 1 into window 0 (horizontal split) via tmux
+    QProcess movePane;
+    movePane.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("move-pane"),
+                    QStringLiteral("-h"),
+                    QStringLiteral("-s"),
+                    QLatin1Char('%') + QString::number(window1PaneId),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(window0PaneId)});
+    QVERIFY(movePane.waitForFinished(5000));
+    QCOMPARE(movePane.exitCode(), 0);
+
+    // Window 1 should disappear (it had only 1 pane), leaving 1 tab with 2 panes
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            if (!c || c->count() != 1)
+                return false;
+            auto *splitter = c->viewSplitterAt(0);
+            return splitter && splitter->findChildren<TerminalDisplay *>().size() == 2;
+        }(),
+        10000);
+
+    QCOMPARE(controller->windowCount(), 1);
+
+    // Cleanup
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testMovePaneFromKonsole()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a session with 2 windows, each with 1 pane
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            return c && c->count() >= 2;
+        }(),
+        10000);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(container->count(), 2);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 2);
+
+    // Get pane IDs from each window
+    const auto &windowTabs = controller->windowToTabIndex();
+    QList<int> windowIds = windowTabs.keys();
+    QCOMPARE(windowIds.size(), 2);
+
+    int window0PaneId = -1;
+    int window1PaneId = -1;
+    {
+        auto *splitter0 = container->viewSplitterAt(windowTabs.value(windowIds[0]));
+        auto *splitter1 = container->viewSplitterAt(windowTabs.value(windowIds[1]));
+        QVERIFY(splitter0);
+        QVERIFY(splitter1);
+        window0PaneId = controller->paneIdForSession(splitter0->findChildren<TerminalDisplay *>().first()->sessionController()->session());
+        window1PaneId = controller->paneIdForSession(splitter1->findChildren<TerminalDisplay *>().first()->sessionController()->session());
+        QVERIFY(window0PaneId >= 0);
+        QVERIFY(window1PaneId >= 0);
+    }
+
+    // Move pane from window 1 into window 0 via Konsole
+    controller->requestMovePane(window1PaneId, window0PaneId, Qt::Horizontal, false);
+
+    // Window 1 should disappear, leaving 1 tab with 2 panes
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            if (!c || c->count() != 1)
+                return false;
+            auto *splitter = c->viewSplitterAt(0);
+            return splitter && splitter->findChildren<TerminalDisplay *>().size() == 2;
+        }(),
+        10000);
+
+    QCOMPARE(controller->windowCount(), 1);
+
+    // Verify tmux also has 1 window with 2 panes
+    QProcess listPanes;
+    listPanes.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id}")});
+    QVERIFY(listPanes.waitForFinished(5000));
+    QCOMPARE(listPanes.exitCode(), 0);
+    QStringList paneLines = QString::fromUtf8(listPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(paneLines.size(), 2);
+
+    // Cleanup
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a 2-pane window + a 1-pane window
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window with 1 pane
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 2, 10000);
+    QCOMPARE(container->count(), 2);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    // Find the 2-pane window and the 1-pane window
+    const auto &windowTabs = controller->windowToTabIndex();
+    int twoPaneWindowId = -1;
+    int onePaneWindowId = -1;
+    int movePaneId = -1; // pane to move from the 2-pane window
+    int targetPaneId = -1; // pane in the 1-pane window
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        if (controller->paneCountForWindow(it.key()) == 2) {
+            twoPaneWindowId = it.key();
+        } else if (controller->paneCountForWindow(it.key()) == 1) {
+            onePaneWindowId = it.key();
+        }
+    }
+    QVERIFY(twoPaneWindowId >= 0);
+    QVERIFY(onePaneWindowId >= 0);
+
+    // Get a pane ID from the 2-pane window (the right one)
+    {
+        auto *splitter = container->viewSplitterAt(windowTabs.value(twoPaneWindowId));
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 2);
+        movePaneId = controller->paneIdForSession(terminals.last()->sessionController()->session());
+    }
+    // Get the pane ID from the 1-pane window
+    {
+        auto *splitter = container->viewSplitterAt(windowTabs.value(onePaneWindowId));
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 1);
+        targetPaneId = controller->paneIdForSession(terminals.first()->sessionController()->session());
+    }
+    QVERIFY(movePaneId >= 0);
+    QVERIFY(targetPaneId >= 0);
+
+    // Move one pane from the 2-pane window to the 1-pane window via tmux
+    QProcess movePane;
+    movePane.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("move-pane"),
+                    QStringLiteral("-h"),
+                    QStringLiteral("-s"),
+                    QLatin1Char('%') + QString::number(movePaneId),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(targetPaneId)});
+    QVERIFY(movePane.waitForFinished(5000));
+    QCOMPARE(movePane.exitCode(), 0);
+
+    // Both windows should now have 1 and 2 panes (moved from first to second)
+    // Still 2 tabs, but the pane counts should have changed
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            return controller->paneCountForWindow(twoPaneWindowId) == 1 && controller->paneCountForWindow(onePaneWindowId) == 2;
+        }(),
+        10000);
+
+    // Verify Konsole splitter tree matches
+    {
+        auto *splitter1 = container->viewSplitterAt(windowTabs.value(twoPaneWindowId));
+        auto *splitter2 = container->viewSplitterAt(windowTabs.value(onePaneWindowId));
+        QVERIFY(splitter1);
+        QVERIFY(splitter2);
+        QCOMPARE(splitter1->findChildren<TerminalDisplay *>().size(), 1);
+        QCOMPARE(splitter2->findChildren<TerminalDisplay *>().size(), 2);
+    }
+
+    // Cleanup
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Create a 2-pane window + a 1-pane window
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second window with 1 pane
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Wait for 2 tabs
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 2, 10000);
+    QCOMPARE(container->count(), 2);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    const auto &windowTabs = controller->windowToTabIndex();
+    int twoPaneWindowId = -1;
+    int onePaneWindowId = -1;
+    int movePaneId = -1;
+    int targetPaneId = -1;
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        if (controller->paneCountForWindow(it.key()) == 2) {
+            twoPaneWindowId = it.key();
+        } else if (controller->paneCountForWindow(it.key()) == 1) {
+            onePaneWindowId = it.key();
+        }
+    }
+    QVERIFY(twoPaneWindowId >= 0);
+    QVERIFY(onePaneWindowId >= 0);
+
+    {
+        auto *splitter = container->viewSplitterAt(windowTabs.value(twoPaneWindowId));
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 2);
+        movePaneId = controller->paneIdForSession(terminals.last()->sessionController()->session());
+    }
+    {
+        auto *splitter = container->viewSplitterAt(windowTabs.value(onePaneWindowId));
+        auto terminals = splitter->findChildren<TerminalDisplay *>();
+        QCOMPARE(terminals.size(), 1);
+        targetPaneId = controller->paneIdForSession(terminals.first()->sessionController()->session());
+    }
+    QVERIFY(movePaneId >= 0);
+    QVERIFY(targetPaneId >= 0);
+
+    // Move pane from 2-pane window to 1-pane window via Konsole
+    controller->requestMovePane(movePaneId, targetPaneId, Qt::Horizontal, false);
+
+    // Pane counts should change: 2→1, 1→2
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            return controller->paneCountForWindow(twoPaneWindowId) == 1 && controller->paneCountForWindow(onePaneWindowId) == 2;
+        }(),
+        10000);
+
+    // Verify splitter trees
+    {
+        auto *splitter1 = container->viewSplitterAt(windowTabs.value(twoPaneWindowId));
+        auto *splitter2 = container->viewSplitterAt(windowTabs.value(onePaneWindowId));
+        QVERIFY(splitter1);
+        QVERIFY(splitter2);
+        QCOMPARE(splitter1->findChildren<TerminalDisplay *>().size(), 1);
+        QCOMPARE(splitter2->findChildren<TerminalDisplay *>().size(), 2);
+    }
+
+    // Verify tmux agrees
+    QProcess listWindows;
+    listWindows.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctx.socketPath,
+                       QStringLiteral("list-panes"),
+                       QStringLiteral("-a"),
+                       QStringLiteral("-t"),
+                       ctx.sessionName,
+                       QStringLiteral("-F"),
+                       QStringLiteral("#{window_id} #{pane_id}")});
+    QVERIFY(listWindows.waitForFinished(5000));
+    QCOMPARE(listWindows.exitCode(), 0);
+    QStringList lines = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(lines.size(), 3); // 3 total panes across 2 windows
+
+    // Cleanup
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testFractalSplitDownRight8()
 {
     const int depth = 8;

@@ -55,6 +55,10 @@ private Q_SLOTS:
     void testRenameWindowFromTmuxUpdatesTab();
     void testSwapPaneFromTmux();
     void testSwapPaneFromKonsole();
+    void testMovePaneFromTmux();
+    void testMovePaneFromKonsole();
+    void testMovePaneFromTwoToOneFromTmux();
+    void testMovePaneFromTwoToOneFromKonsole();
     void testFractalSplitDownRight8();
 
 private:
