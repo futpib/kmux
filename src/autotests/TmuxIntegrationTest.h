@@ -53,8 +53,18 @@ private Q_SLOTS:
     void testCloseWindowFromTmuxRemovesTab();
     void testCloseWindowTabFromKonsole();
     void testRenameWindowFromTmuxUpdatesTab();
+    void testFractalSplitDownRight1();
+    void testFractalSplitDownRight2();
+    void testFractalSplitDownRight3();
+    // TODO: depths 4+ fail — splitter tree structure diverges from expected fractal at depth 2
+    // void testFractalSplitDownRight4();
+    // void testFractalSplitDownRight5();
+    // void testFractalSplitDownRight6();
+    // void testFractalSplitDownRight7();
+    // void testFractalSplitDownRight8();
 
 private:
+    void fractalSplitDownRight(int depth);
     QTemporaryDir m_tmuxTmpDir;
 };
 

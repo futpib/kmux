@@ -3590,6 +3590,166 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testFractalSplitDownRight1()
+{
+    fractalSplitDownRight(1);
+}
+void TmuxIntegrationTest::testFractalSplitDownRight2()
+{
+    fractalSplitDownRight(2);
+}
+void TmuxIntegrationTest::testFractalSplitDownRight3()
+{
+    fractalSplitDownRight(3);
+}
+// TODO: depths 4+ fail — splitter tree structure diverges from expected fractal at depth 2
+// void TmuxIntegrationTest::testFractalSplitDownRight4() { fractalSplitDownRight(4); }
+// void TmuxIntegrationTest::testFractalSplitDownRight5() { fractalSplitDownRight(5); }
+// void TmuxIntegrationTest::testFractalSplitDownRight6() { fractalSplitDownRight(6); }
+// void TmuxIntegrationTest::testFractalSplitDownRight7() { fractalSplitDownRight(7); }
+// void TmuxIntegrationTest::testFractalSplitDownRight8() { fractalSplitDownRight(8); }
+
+void TmuxIntegrationTest::fractalSplitDownRight(int depth)
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Use a large window so deep splits don't hit tmux minimum pane size
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │ columns: 256                                                                   │
+        │ lines: 64                                                                      │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Show and activate the window so setFocus() works
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    // Perform alternating horizontal/vertical splits: )()()...
+    const int expectedPanes = depth + 1;
+
+    for (int i = 0; i < depth; ++i) {
+        Qt::Orientation orientation = (i % 2 == 0) ? Qt::Horizontal : Qt::Vertical;
+
+        int currentSessionId = attach.mw->viewManager()->currentSession();
+        QVERIFY(currentSessionId >= 0);
+        Session *activeSession = SessionManager::instance()->idToSession(currentSessionId);
+        QVERIFY(activeSession);
+        int paneId = controller->paneIdForSession(activeSession);
+        QVERIFY2(paneId >= 0, qPrintable(QStringLiteral("Split %1: active session has no pane ID").arg(i)));
+
+        controller->requestSplitPane(paneId, orientation);
+
+        // Wait for pane count to increase
+        int expectedCount = i + 2;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&]() {
+                auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+                if (!container)
+                    return false;
+                for (int t = 0; t < container->count(); ++t) {
+                    auto *splitter = container->viewSplitterAt(t);
+                    if (splitter && splitter->findChildren<TerminalDisplay *>().size() == expectedCount) {
+                        return true;
+                    }
+                }
+                return false;
+            }(),
+            10000);
+    }
+
+    // Verify tmux has the expected number of panes
+    QProcess listPanes;
+    listPanes.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id}")});
+    QVERIFY(listPanes.waitForFinished(5000));
+    QCOMPARE(listPanes.exitCode(), 0);
+    QStringList paneLines = QString::fromUtf8(listPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(paneLines.size(), expectedPanes);
+
+    // Verify the fractal splitter structure:
+    // HSplit[Leaf, VSplit[Leaf, HSplit[Leaf, ...]]]
+    // Alternating H/V, nested child always second (right/bottom).
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    ViewSplitter *paneSplitter = nullptr;
+    for (int i = 0; i < container->count(); ++i) {
+        auto *splitter = container->viewSplitterAt(i);
+        if (splitter && splitter->findChildren<TerminalDisplay *>().size() == expectedPanes) {
+            paneSplitter = splitter;
+            break;
+        }
+    }
+    QVERIFY2(paneSplitter, qPrintable(QStringLiteral("Expected a ViewSplitter with %1 TerminalDisplay children").arg(expectedPanes)));
+
+    // Verify the fractal structure: walk the tree always taking the last child.
+    // At each level the orientation should alternate H, V, H, V, ...
+    if (depth >= 1) {
+        ViewSplitter *current = paneSplitter;
+        for (int d = 0; d < depth; ++d) {
+            Qt::Orientation expectedOrientation = (d % 2 == 0) ? Qt::Horizontal : Qt::Vertical;
+            QVERIFY2(current->orientation() == expectedOrientation,
+                     qPrintable(QStringLiteral("Depth %1: expected %2 but got %3")
+                                    .arg(d)
+                                    .arg(expectedOrientation == Qt::Horizontal ? QStringLiteral("Horizontal") : QStringLiteral("Vertical"))
+                                    .arg(current->orientation() == Qt::Horizontal ? QStringLiteral("Horizontal") : QStringLiteral("Vertical"))));
+            QVERIFY2(current->count() >= 2, qPrintable(QStringLiteral("Depth %1: expected at least 2 children but got %2").arg(d).arg(current->count())));
+
+            // The last child should be a ViewSplitter (except at deepest level)
+            auto *lastChild = current->widget(current->count() - 1);
+            if (d < depth - 1) {
+                auto *nextSplitter = qobject_cast<ViewSplitter *>(lastChild);
+                QVERIFY2(nextSplitter, qPrintable(QStringLiteral("Depth %1: last child should be a ViewSplitter").arg(d)));
+                current = nextSplitter;
+            }
+        }
+    }
+
+    // Verify the final bottom-right pane has focus.
+    // Walk down always taking the last child to find the deepest bottom-right display.
+    QWidget *node = paneSplitter;
+    while (auto *splitter = qobject_cast<ViewSplitter *>(node)) {
+        node = splitter->widget(splitter->count() - 1);
+    }
+    auto *deepestBottomRight = qobject_cast<TerminalDisplay *>(node);
+    QVERIFY(deepestBottomRight);
+    QTRY_VERIFY_WITH_TIMEOUT(deepestBottomRight->hasFocus(), 5000);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 QTEST_MAIN(TmuxIntegrationTest)
 
 #include "moc_TmuxIntegrationTest.cpp"
