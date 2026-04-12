@@ -126,7 +126,7 @@ void PartTest::testFd(bool runShell)
 
 KParts::Part *PartTest::createPart()
 {
-    const KPluginMetaData metaData(QStringLiteral("konsolepart"));
+    const KPluginMetaData metaData(QStringLiteral("kmuxpart"));
     Q_ASSERT(metaData.isValid());
 
     KPluginFactory::Result<KParts::Part> result = KPluginFactory::instantiatePlugin<KParts::Part>(metaData, this);
