@@ -9,7 +9,6 @@
 #include <QPointer>
 #include <QProcess>
 #include <QSignalSpy>
-#include <QStandardPaths>
 #include <QTest>
 
 #include "../MainWindow.h"
@@ -19,13 +18,14 @@
 #include "../tmux/TmuxControllerRegistry.h"
 #include "../tmux/TmuxProcessBridge.h"
 #include "../widgets/ViewContainer.h"
+#include "TmuxTestDSL.h"
 
 using namespace Konsole;
 
 void TmuxProcessBridgeTest::initTestCase()
 {
     QVERIFY(m_tmuxTmpDir.isValid());
-    m_tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    m_tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (m_tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }

@@ -61,7 +61,7 @@ void TmuxIntegrationTest::cleanupTestCase()
 
 void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -90,7 +90,7 @@ void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
 
 void TmuxIntegrationTest::testClosePaneTabThenGatewayTab()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -128,7 +128,7 @@ void TmuxIntegrationTest::testClosePaneTabThenGatewayTab()
 
 void TmuxIntegrationTest::testTmuxControlModeAttach()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -175,7 +175,7 @@ void TmuxIntegrationTest::testTmuxControlModeAttach()
 
 void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -416,7 +416,7 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 
 void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -722,7 +722,7 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -821,7 +821,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -945,7 +945,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -3355,7 +3355,7 @@ void TmuxIntegrationTest::testCyrillicInputPreservesUtf8()
 
 void TmuxIntegrationTest::testTmuxAttachNoSessions()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }

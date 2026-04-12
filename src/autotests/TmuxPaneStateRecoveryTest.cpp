@@ -7,13 +7,14 @@
 #include "TmuxPaneStateRecoveryTest.h"
 
 #include <QProcess>
-#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include "../Emulation.h"
 #include "../Screen.h"
 #include "../ScreenWindow.h"
 #include "../session/VirtualSession.h"
+#include "TmuxTestDSL.h"
 
 using namespace Konsole;
 
@@ -136,24 +137,33 @@ void TmuxPaneStateRecoveryTest::testCapturePaneWideMismatch()
 
 void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
 {
-    const QString tmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
-    const QString sessionName = QStringLiteral("konsole-capture-test-%1").arg(QCoreApplication::applicationPid());
+    QTemporaryDir socketDir;
+    QVERIFY(socketDir.isValid());
 
-    // Create a detached tmux session with known dimensions
-    QProcess tmuxNew;
-    tmuxNew.start(tmuxPath,
-                  {QStringLiteral("new-session"), QStringLiteral("-d"), QStringLiteral("-s"), sessionName, QStringLiteral("-x"), QStringLiteral("80"),
-                   QStringLiteral("-y"), QStringLiteral("24"), QStringLiteral("cat")});
-    QVERIFY(tmuxNew.waitForFinished(5000));
-    QCOMPARE(tmuxNew.exitCode(), 0);
+    // Create a detached tmux session with known dimensions using the DSL
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: cat                                                                       │
+        │ columns: 80                                                                    │
+        │ lines: 24                                                                      │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  socketDir.path(),
+                                  ctx);
 
     // Send known text to the pane via send-keys
     QProcess sendKeys;
-    sendKeys.start(tmuxPath, {QStringLiteral("send-keys"), QStringLiteral("-t"), sessionName, QStringLiteral("CAPTURE_TEST_MARKER"), QStringLiteral("Enter")});
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("CAPTURE_TEST_MARKER"), QStringLiteral("Enter")});
     QVERIFY(sendKeys.waitForFinished(5000));
     QCOMPARE(sendKeys.exitCode(), 0);
 
@@ -162,7 +172,8 @@ void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
 
     // Capture pane content WITHOUT -e (matching our code: capture-pane -p -J -S -)
     QProcess capture;
-    capture.start(tmuxPath, {QStringLiteral("capture-pane"), QStringLiteral("-p"), QStringLiteral("-J"), QStringLiteral("-t"), sessionName, QStringLiteral("-S"), QStringLiteral("-")});
+    capture.start(tmuxPath,
+                  {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-p"), QStringLiteral("-J"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-S"), QStringLiteral("-")});
     QVERIFY(capture.waitForFinished(5000));
     QCOMPARE(capture.exitCode(), 0);
 
@@ -182,9 +193,7 @@ void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
     delete session;
 
     // Cleanup tmux session
-    QProcess tmuxKill;
-    tmuxKill.start(tmuxPath, {QStringLiteral("kill-session"), QStringLiteral("-t"), sessionName});
-    tmuxKill.waitForFinished(5000);
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
 }
 
 QTEST_GUILESS_MAIN(TmuxPaneStateRecoveryTest)
