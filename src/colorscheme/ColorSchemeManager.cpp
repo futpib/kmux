@@ -190,7 +190,7 @@ QString ColorSchemeManager::findColorSchemePath(const QString &name) const
         path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kmux/") + name + QStringLiteral(".schema"));
     }
     if (path.isEmpty()) {
-        const QString resource = QStringLiteral(":/konsole/color-schemes/") + name + QStringLiteral(".colorscheme");
+        const QString resource = QStringLiteral(":/kmux/color-schemes/") + name + QStringLiteral(".colorscheme");
         if (QFile::exists(resource)) {
             path = resource;
         }
