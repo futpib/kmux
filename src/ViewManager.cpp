@@ -50,6 +50,7 @@
 #include "terminalDisplay/TerminalDisplay.h"
 #include "tmux/TmuxController.h"
 #include "tmux/TmuxControllerRegistry.h"
+#include "tmux/TmuxTreeSwitcher.h"
 #include "widgets/ViewContainer.h"
 #include "widgets/ViewSplitter.h"
 
@@ -247,6 +248,12 @@ void ViewManager::setupActions()
     action->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
     action->setText(i18nc("@action:inmenu", "Detach from tmux Session"));
     connect(action, &QAction::triggered, this, &ViewManager::detachFromTmux);
+
+    action = collection->addAction(QStringLiteral("tmux-tree-switcher"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
+    action->setText(i18nc("@action:inmenu", "Show tmux Tree Switcher"));
+    connect(action, &QAction::triggered, this, &ViewManager::showTmuxTreeSwitcher);
 
     // keyboard shortcut only actions
     action = new QAction(i18nc("@action Shortcut entry", "Next Tab"), this);
@@ -588,6 +595,18 @@ void ViewManager::detachFromTmux()
             ctrl->requestDetach();
         }
     }
+}
+
+void ViewManager::showTmuxTreeSwitcher()
+{
+    Session *activeSession = _pluggedController ? _pluggedController->session().data() : nullptr;
+    if (!activeSession)
+        return;
+    auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
+    if (!ctrl)
+        return;
+    auto *switcher = new TmuxTreeSwitcher(this, ctrl);
+    switcher->setFocus();
 }
 
 void ViewManager::detachActiveTab()

@@ -9,6 +9,7 @@
 
 #include <KActionCollection>
 #include <KMessageBox>
+#include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
 #include <QResizeEvent>
@@ -16,6 +17,7 @@
 #include <QStandardPaths>
 #include <QTabBar>
 #include <QTest>
+#include <QTreeView>
 
 #include "../Emulation.h"
 #include "../MainWindow.h"
@@ -34,6 +36,8 @@
 #include "../tmux/TmuxLayoutParser.h"
 #include "../tmux/TmuxPaneManager.h"
 #include "../tmux/TmuxProcessBridge.h"
+#include "../tmux/TmuxTreeModel.h"
+#include "../tmux/TmuxTreeSwitcher.h"
 #include "../widgets/TabPageWidget.h"
 #include "../widgets/ViewContainer.h"
 #include "../widgets/ViewSplitter.h"
@@ -4436,6 +4440,533 @@ void TmuxIntegrationTest::testDetachFromTmuxAction()
     listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
     QVERIFY(listSessions.waitForFinished(5000));
     QCOMPARE(listSessions.exitCode(), 0);
+
+    delete attach.mw.data();
+}
+
+namespace
+{
+// Helper: set up a tmux session with 2 windows: window 0 has 2 panes (split),
+// window 1 has 1 pane. Returns attached kmux and controller, plus the pane IDs.
+struct TreeSwitcherFixture {
+    QString tmuxPath;
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::AttachResult attach;
+    TmuxController *controller = nullptr;
+    int w0pane0Id = -1;
+    int w0pane1Id = -1;
+    int w1pane0Id = -1;
+    int w0WindowId = -1;
+    int w1WindowId = -1;
+};
+
+void setupTreeSwitcherFixture(TreeSwitcherFixture &f, const QString &tmuxTmpDirPath)
+{
+    f.tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  f.tmuxPath,
+                                  tmuxTmpDirPath,
+                                  f.ctx);
+    // Add a second window with 1 pane
+    QProcess newWindow;
+    newWindow.start(
+        f.tmuxPath,
+        {QStringLiteral("-S"), f.ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), f.ctx.sessionName, QStringLiteral("sleep 60")});
+    newWindow.waitForFinished(5000);
+
+    // new-window leaves the new window focused; switch back to the 2-pane window
+    // so tests have a predictable "active pane is in w0" starting state.
+    QProcess selectWindow;
+    selectWindow.start(
+        f.tmuxPath,
+        {QStringLiteral("-S"), f.ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(f.ctx.sessionName)});
+    selectWindow.waitForFinished(5000);
+
+    TmuxTestDSL::attachKonsole(f.tmuxPath, f.ctx, f.attach);
+    f.attach.mw->show();
+    QTest::qWaitForWindowActive(f.attach.mw);
+
+    // Wait for 2 tabs
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 2, 10000);
+
+    f.controller = TmuxControllerRegistry::instance()->controllerForSession(f.attach.mw->viewManager()->sessions().first());
+
+    // Wait for active pane to be known
+    QTRY_VERIFY_WITH_TIMEOUT(f.controller && f.controller->activePaneId() >= 0, 10000);
+
+    // Identify windows: 2-pane window is w0, 1-pane is w1
+    const auto &windowTabs = f.controller->windowToTabIndex();
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        int cnt = f.controller->paneCountForWindow(it.key());
+        if (cnt == 2)
+            f.w0WindowId = it.key();
+        else if (cnt == 1)
+            f.w1WindowId = it.key();
+    }
+
+    QList<int> w0Panes = f.controller->panesForWindow(f.w0WindowId);
+    QList<int> w1Panes = f.controller->panesForWindow(f.w1WindowId);
+    if (w0Panes.size() == 2) {
+        f.w0pane0Id = w0Panes[0];
+        f.w0pane1Id = w0Panes[1];
+    }
+    if (w1Panes.size() == 1) {
+        f.w1pane0Id = w1Panes[0];
+    }
+}
+
+// Walk the tree (including proxy) to find the QModelIndex for a pane ID.
+QModelIndex findPaneIndex(QAbstractItemModel *model, int paneId)
+{
+    std::function<QModelIndex(const QModelIndex &)> walk = [&](const QModelIndex &parent) -> QModelIndex {
+        int rows = model->rowCount(parent);
+        for (int i = 0; i < rows; ++i) {
+            QModelIndex idx = model->index(i, 0, parent);
+            if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::PaneNode && idx.data(TmuxTreeModel::IdRole).toInt() == paneId) {
+                return idx;
+            }
+            QModelIndex child = walk(idx);
+            if (child.isValid())
+                return child;
+        }
+        return {};
+    };
+    return walk({});
+}
+
+QModelIndex findWindowIndex(QAbstractItemModel *model, int windowId)
+{
+    std::function<QModelIndex(const QModelIndex &)> walk = [&](const QModelIndex &parent) -> QModelIndex {
+        int rows = model->rowCount(parent);
+        for (int i = 0; i < rows; ++i) {
+            QModelIndex idx = model->index(i, 0, parent);
+            if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::WindowNode && idx.data(TmuxTreeModel::IdRole).toInt() == windowId) {
+                return idx;
+            }
+            QModelIndex child = walk(idx);
+            if (child.isValid())
+                return child;
+        }
+        return {};
+    };
+    return walk({});
+}
+} // anonymous namespace
+
+void TmuxIntegrationTest::testTreeSwitcherActivePreselected()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    int activePane = f.controller->activePaneId();
+    QVERIFY(activePane >= 0);
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    // The currently-selected row in the tree should map to the active pane
+    QModelIndex current = switcher->treeView()->currentIndex();
+    QVERIFY(current.isValid());
+    QCOMPARE(current.data(TmuxTreeModel::NodeTypeRole).toInt(), int(TmuxTreeModel::PaneNode));
+    QCOMPARE(current.data(TmuxTreeModel::IdRole).toInt(), activePane);
+
+    delete switcher;
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneSameWindow()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    int activePane = f.controller->activePaneId();
+    QVERIFY(activePane == f.w0pane0Id || activePane == f.w0pane1Id);
+    int targetPane = (activePane == f.w0pane0Id) ? f.w0pane1Id : f.w0pane0Id;
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    // Find and select the sibling pane
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex targetIdx = findPaneIndex(model, targetPane);
+    QVERIFY(targetIdx.isValid());
+    switcher->treeView()->setCurrentIndex(targetIdx);
+
+    switcher->activateCurrent();
+
+    // activePaneId should update to the target pane
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->activePaneId(), targetPane, 10000);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneDifferentWindow()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    // Active pane is in w0; switch to the pane in w1
+    int initialActivePane = f.controller->activePaneId();
+    QVERIFY(initialActivePane != f.w1pane0Id);
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex targetIdx = findPaneIndex(model, f.w1pane0Id);
+    QVERIFY(targetIdx.isValid());
+    switcher->treeView()->setCurrentIndex(targetIdx);
+
+    switcher->activateCurrent();
+
+    // activePaneId should update to w1's pane AND the active tab should change
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->activePaneId(), f.w1pane0Id, 10000);
+
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    int expectedTabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), expectedTabIndex, 10000);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherSwitchesWindow()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    // Active is in w0; pick the w1 window node
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex targetIdx = findWindowIndex(model, f.w1WindowId);
+    QVERIFY(targetIdx.isValid());
+    switcher->treeView()->setCurrentIndex(targetIdx);
+
+    switcher->activateCurrent();
+
+    // Active tab should become w1's tab
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    int expectedTabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), expectedTabIndex, 10000);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherEscapeClosesNoChange()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    int initialActivePane = f.controller->activePaneId();
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    int initialTabIndex = container->currentIndex();
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+    QPointer<TmuxTreeSwitcher> guard(switcher);
+
+    QTest::keyClick(switcher, Qt::Key_Escape);
+
+    // Switcher should go away
+    QTRY_VERIFY_WITH_TIMEOUT(!guard, 5000);
+
+    // No changes to active pane or active tab
+    QCOMPARE(f.controller->activePaneId(), initialActivePane);
+    QCOMPARE(container->currentIndex(), initialTabIndex);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherFuzzyFilter()
+{
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    // Rename w1 to a searchable name via tmux
+    QProcess rename;
+    rename.start(f.tmuxPath,
+                 {QStringLiteral("-S"),
+                  f.ctx.socketPath,
+                  QStringLiteral("rename-window"),
+                  QStringLiteral("-t"),
+                  QStringLiteral("%1:1").arg(f.ctx.sessionName),
+                  QStringLiteral("xyzzy-unique")});
+    QVERIFY(rename.waitForFinished(5000));
+
+    // Wait for the tab title to propagate
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    int w1TabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
+    QTRY_COMPARE_WITH_TIMEOUT(container->tabText(w1TabIndex), QStringLiteral("xyzzy-unique"), 10000);
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for the async queryTree response to populate the model
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    // Type the filter
+    QLineEdit *input = switcher->findChild<QLineEdit *>();
+    QVERIFY(input);
+    input->setText(QStringLiteral("xyzzy"));
+
+    // After filtering, the only matching window should be xyzzy-unique (w1)
+    // Walk the filtered model and assert only w1 appears at the window level.
+    QAbstractItemModel *filteredModel = switcher->treeView()->model();
+    // top-level = sessions; session has windows; verify xyzzy window matched
+    bool found = false;
+    std::function<void(const QModelIndex &)> walk = [&](const QModelIndex &parent) {
+        for (int i = 0; i < filteredModel->rowCount(parent); ++i) {
+            QModelIndex idx = filteredModel->index(i, 0, parent);
+            if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::WindowNode && idx.data(TmuxTreeModel::IdRole).toInt() == f.w1WindowId) {
+                found = true;
+            }
+            walk(idx);
+        }
+    };
+    walk({});
+    QVERIFY2(found, "xyzzy-unique window should pass the fuzzy filter");
+
+    // w0 window (no matching name) should NOT appear in the filtered result
+    // (unless one of its panes has "xyzzy" in its title, which we didn't set)
+    bool w0Present = false;
+    std::function<void(const QModelIndex &)> walk2 = [&](const QModelIndex &parent) {
+        for (int i = 0; i < filteredModel->rowCount(parent); ++i) {
+            QModelIndex idx = filteredModel->index(i, 0, parent);
+            if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::WindowNode && idx.data(TmuxTreeModel::IdRole).toInt() == f.w0WindowId) {
+                w0Present = true;
+            }
+            walk2(idx);
+        }
+    };
+    walk2({});
+    QVERIFY2(!w0Present, "w0 window should be filtered out");
+
+    delete switcher;
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherSwitchesSession()
+{
+    // Create a tmux server with 2 sessions. Attach kmux to session A.
+    // Use the tree switcher to select a pane in session B; after the switch,
+    // kmux should be attached to session B.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctxA;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctxA);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+    });
+
+    // Create session B on the same socket (same server)
+    const QString sessionBName = ctxA.sessionName + QStringLiteral("-B");
+    QProcess newSessionB;
+    newSessionB.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctxA.socketPath,
+                       QStringLiteral("new-session"),
+                       QStringLiteral("-d"),
+                       QStringLiteral("-s"),
+                       sessionBName,
+                       QStringLiteral("sleep 60")});
+    QVERIFY(newSessionB.waitForFinished(5000));
+    QCOMPARE(newSessionB.exitCode(), 0);
+
+    auto cleanupB = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctxA.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), sessionBName});
+        kill.waitForFinished(5000);
+    });
+
+    // Attach to session A
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+
+    int initialSessionId = controller->sessionId();
+    QVERIFY(initialSessionId >= 0);
+
+    // Open the tree switcher and find session B
+    auto *switcher = new TmuxTreeSwitcher(attach.mw->viewManager(), controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    // Wait for queryTree to return both sessions
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 2, 10000);
+
+    // Find session B's index (any non-current session)
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex sessionBIdx;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        QModelIndex idx = model->index(i, 0);
+        if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::SessionNode && idx.data(TmuxTreeModel::IdRole).toInt() != initialSessionId) {
+            sessionBIdx = idx;
+            break;
+        }
+    }
+    QVERIFY2(sessionBIdx.isValid(), "Session B should appear in the tree");
+
+    int sessionBId = sessionBIdx.data(TmuxTreeModel::IdRole).toInt();
+
+    switcher->treeView()->setCurrentIndex(sessionBIdx);
+    switcher->activateCurrent();
+
+    // After switch-client, tmux sends %session-changed and the controller
+    // updates _sessionId. Wait for that.
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionId(), sessionBId, 10000);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
+{
+    // If the user selects a session that has since been killed on the
+    // server (race condition), switch-client should fail gracefully and
+    // kmux should remain attached to the current session.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctxA;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctxA);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+    });
+
+    const QString sessionBName = ctxA.sessionName + QStringLiteral("-stale");
+    QProcess newSessionB;
+    newSessionB.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctxA.socketPath,
+                       QStringLiteral("new-session"),
+                       QStringLiteral("-d"),
+                       QStringLiteral("-s"),
+                       sessionBName,
+                       QStringLiteral("sleep 60")});
+    QVERIFY(newSessionB.waitForFinished(5000));
+    QCOMPARE(newSessionB.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+
+    int initialSessionId = controller->sessionId();
+
+    auto *switcher = new TmuxTreeSwitcher(attach.mw->viewManager(), controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 2, 10000);
+
+    // Find the other session's index BEFORE killing it — this snapshots the tree
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex staleIdx;
+    int staleSessionId = -1;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        QModelIndex idx = model->index(i, 0);
+        int id = idx.data(TmuxTreeModel::IdRole).toInt();
+        if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::SessionNode && id != initialSessionId) {
+            staleIdx = idx;
+            staleSessionId = id;
+            break;
+        }
+    }
+    QVERIFY(staleIdx.isValid());
+    QVERIFY(staleSessionId >= 0);
+
+    // Kill session B behind the switcher's back
+    QProcess kill;
+    kill.start(tmuxPath, {QStringLiteral("-S"), ctxA.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), sessionBName});
+    QVERIFY(kill.waitForFinished(5000));
+    QCOMPARE(kill.exitCode(), 0);
+
+    // Activate the stale selection — switch-client will fail silently
+    switcher->treeView()->setCurrentIndex(staleIdx);
+    switcher->activateCurrent();
+
+    // Give tmux a moment to process (and not) the switch
+    QTest::qWait(500);
+
+    // Still attached to the original session
+    QCOMPARE(controller->sessionId(), initialSessionId);
 
     delete attach.mw.data();
 }

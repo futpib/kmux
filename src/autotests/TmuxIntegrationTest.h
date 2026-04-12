@@ -63,6 +63,14 @@ private Q_SLOTS:
     void testNewTabFromTmuxPane();
     void testDetachViewBreaksPane();
     void testDetachFromTmuxAction();
+    void testTreeSwitcherActivePreselected();
+    void testTreeSwitcherSwitchesPaneSameWindow();
+    void testTreeSwitcherSwitchesPaneDifferentWindow();
+    void testTreeSwitcherSwitchesWindow();
+    void testTreeSwitcherEscapeClosesNoChange();
+    void testTreeSwitcherFuzzyFilter();
+    void testTreeSwitcherSwitchesSession();
+    void testTreeSwitcherStaleSessionIsNoop();
     void testClosePaneFromSessionControllerConfirmed();
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();

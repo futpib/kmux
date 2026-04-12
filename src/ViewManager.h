@@ -398,6 +398,7 @@ private Q_SLOTS:
     void detachActiveView();
     void detachActiveTab();
     void detachFromTmux();
+    void showTmuxTreeSwitcher();
 
     // called when a session terminates - the view manager will delete any
     // views associated with the session
