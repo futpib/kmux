@@ -10,15 +10,24 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     container:
-      image: invent-registry.kde.org/neon/docker-images/plasma:unstable
+      image: archlinux:latest
       options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install extra dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build g++ tmux
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake ninja git \
+            extra-cmake-modules \
+            qt6-base qt6-multimedia qt6-5compat qt6-tools \
+            kcoreaddons kconfig kio kparts kcrash knotifications \
+            kxmlgui kbookmarks kiconthemes kconfigwidgets kwindowsystem \
+            kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
+            ktextwidgets kwidgetsaddons kservice ki18n \
+            icu tmux
 
       - name: Configure
         run: cmake -B build -G Ninja -DBUILD_TESTING=ON
@@ -35,15 +44,21 @@ jobs:
     name: clang-format
     runs-on: ubuntu-latest
     container:
-      image: invent-registry.kde.org/neon/docker-images/plasma:unstable
+      image: archlinux:latest
       options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install extra dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build g++ clang-format
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake ninja git \
+            extra-cmake-modules \
+            qt6-base \
+            kcoreaddons \
+            clang
 
       - name: Configure (generates .clang-format via KDEClangFormat)
         run: cmake -B build -G Ninja
