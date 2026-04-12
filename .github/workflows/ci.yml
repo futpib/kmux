@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install extra dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build tmux
+        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build g++ tmux
 
       - name: Configure
         run: cmake -B build -G Ninja -DBUILD_TESTING=ON
@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install extra dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build clang-format
+        run: apt-get update && apt-get install -y --no-install-recommends cmake ninja-build g++ clang-format
 
       - name: Configure (generates .clang-format via KDEClangFormat)
         run: cmake -B build -G Ninja
