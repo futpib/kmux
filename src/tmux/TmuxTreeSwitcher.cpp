@@ -221,7 +221,11 @@ void TmuxTreeSwitcher::activateCurrent()
 
     hide();
     deleteLater();
-    window()->setFocus();
+    // Don't call window()->setFocus() — tmux's %window-pane-changed
+    // response triggers TmuxController::focusPane(), which focuses the
+    // target TerminalDisplay. Calling setFocus() on the window here
+    // would race with that and leave focus on the top-level widget
+    // instead of the terminal.
 }
 
 bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)

@@ -4621,6 +4621,12 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneSameWindow()
     // activePaneId should update to the target pane
     QTRY_COMPARE_WITH_TIMEOUT(f.controller->activePaneId(), targetPane, 10000);
 
+    // The target pane's terminal display should have keyboard focus
+    Session *targetSession = f.controller->sessionForPane(targetPane);
+    QVERIFY(targetSession);
+    QVERIFY(!targetSession->views().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(targetSession->views().first()->hasFocus(), 10000);
+
     delete f.attach.mw.data();
 }
 
@@ -4655,6 +4661,12 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneDifferentWindow()
     int expectedTabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
     QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), expectedTabIndex, 10000);
 
+    // The target pane's terminal display should have keyboard focus
+    Session *targetSession = f.controller->sessionForPane(f.w1pane0Id);
+    QVERIFY(targetSession);
+    QVERIFY(!targetSession->views().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(targetSession->views().first()->hasFocus(), 10000);
+
     delete f.attach.mw.data();
 }
 
@@ -4683,6 +4695,13 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesWindow()
     auto *container = f.attach.mw->viewManager()->activeContainer();
     int expectedTabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
     QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), expectedTabIndex, 10000);
+
+    // The active pane's terminal display in the now-active window should have focus
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->activePaneId(), f.w1pane0Id, 10000);
+    Session *targetSession = f.controller->sessionForPane(f.w1pane0Id);
+    QVERIFY(targetSession);
+    QVERIFY(!targetSession->views().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(targetSession->views().first()->hasFocus(), 10000);
 
     delete f.attach.mw.data();
 }
@@ -4969,6 +4988,107 @@ void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
     QCOMPARE(controller->sessionId(), initialSessionId);
 
     delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherActivatePaneAlreadyActiveIsNoop()
+{
+    // Activating the pane that is already active must not change active pane
+    // or active tab — it should just dismiss the switcher.
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    const int activePane = f.controller->activePaneId();
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    const int initialTabIndex = container->currentIndex();
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    QModelIndex selfIdx = findPaneIndex(switcher->treeView()->model(), activePane);
+    QVERIFY(selfIdx.isValid());
+    switcher->treeView()->setCurrentIndex(selfIdx);
+    switcher->activateCurrent();
+
+    QTest::qWait(500);
+    QCOMPARE(f.controller->activePaneId(), activePane);
+    QCOMPARE(container->currentIndex(), initialTabIndex);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherActivateCurrentWindowIsNoop()
+{
+    // Activating the window node that already hosts the active pane must
+    // leave active pane and tab unchanged.
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    const int activePane = f.controller->activePaneId();
+    const int activeWindow = f.w0WindowId; // fixture starts with active pane in w0
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    const int initialTabIndex = container->currentIndex();
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    QModelIndex winIdx = findWindowIndex(switcher->treeView()->model(), activeWindow);
+    QVERIFY(winIdx.isValid());
+    switcher->treeView()->setCurrentIndex(winIdx);
+    switcher->activateCurrent();
+
+    QTest::qWait(500);
+    QCOMPARE(f.controller->activePaneId(), activePane);
+    QCOMPARE(container->currentIndex(), initialTabIndex);
+
+    delete f.attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTreeSwitcherActivateCurrentSessionIsNoop()
+{
+    // Activating the session node we're already attached to must not issue
+    // a switch-client and must leave active pane/tab/session untouched.
+    TreeSwitcherFixture f;
+    setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+    });
+
+    const int activePane = f.controller->activePaneId();
+    const int initialSessionId = f.controller->sessionId();
+    auto *container = f.attach.mw->viewManager()->activeContainer();
+    const int initialTabIndex = container->currentIndex();
+
+    auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex sessionIdx;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        QModelIndex idx = model->index(i, 0);
+        if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::SessionNode && idx.data(TmuxTreeModel::IdRole).toInt() == initialSessionId) {
+            sessionIdx = idx;
+            break;
+        }
+    }
+    QVERIFY(sessionIdx.isValid());
+    switcher->treeView()->setCurrentIndex(sessionIdx);
+    switcher->activateCurrent();
+
+    QTest::qWait(500);
+    QCOMPARE(f.controller->sessionId(), initialSessionId);
+    QCOMPARE(f.controller->activePaneId(), activePane);
+    QCOMPARE(container->currentIndex(), initialTabIndex);
+
+    delete f.attach.mw.data();
 }
 
 void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()

@@ -71,6 +71,9 @@ private Q_SLOTS:
     void testTreeSwitcherFuzzyFilter();
     void testTreeSwitcherSwitchesSession();
     void testTreeSwitcherStaleSessionIsNoop();
+    void testTreeSwitcherActivatePaneAlreadyActiveIsNoop();
+    void testTreeSwitcherActivateCurrentWindowIsNoop();
+    void testTreeSwitcherActivateCurrentSessionIsNoop();
     void testClosePaneFromSessionControllerConfirmed();
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();
