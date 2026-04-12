@@ -9,6 +9,7 @@
 
 #include <KActionCollection>
 #include <KMessageBox>
+#include <QApplication>
 #include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
@@ -2724,6 +2725,165 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+namespace
+{
+bool tmuxWindowZoomed(const QString &tmuxPath, const QString &socketPath, const QString &sessionName)
+{
+    QProcess check;
+    check.start(tmuxPath,
+                {QStringLiteral("-S"),
+                 socketPath,
+                 QStringLiteral("display-message"),
+                 QStringLiteral("-t"),
+                 sessionName,
+                 QStringLiteral("-p"),
+                 QStringLiteral("#{window_zoomed_flag}")});
+    check.waitForFinished(3000);
+    return QString::fromUtf8(check.readAllStandardOutput()).trimmed() == QStringLiteral("1");
+}
+
+ViewSplitter *findTwoPaneSplitter(TabbedViewContainer *container)
+{
+    for (int i = 0; i < container->count(); ++i) {
+        auto *splitter = container->viewSplitterAt(i);
+        if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+            return splitter;
+        }
+    }
+    return nullptr;
+}
+} // namespace
+
+// Pressing Ctrl+Shift+E on a tmux-attached pane should zoom it on the tmux
+// side, not only maximize locally. Kmux's splitter maximization and tmux's
+// window_zoomed_flag must agree after the keypress, and toggling again must
+// return both to the unzoomed/unmaximized state.
+void TmuxIntegrationTest::testCtrlShiftEBoundToTmuxZoom()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )"));
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+
+    ViewSplitter *paneSplitter = findTwoPaneSplitter(attach.container);
+    QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
+    QVERIFY(!paneSplitter->terminalMaximized());
+    QVERIFY(!tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName));
+
+    // Focus the active pane's display so the shortcut resolves against it.
+    auto *display = paneSplitter->activeTerminalDisplay();
+    QVERIFY(display);
+    display->setFocus(Qt::OtherFocusReason);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(display), 5000);
+
+    // Ctrl+Shift+E: must zoom tmux AND maximize kmux.
+    QTest::keyClick(display, Qt::Key_E, Qt::ControlModifier | Qt::ShiftModifier);
+
+    QTRY_VERIFY_WITH_TIMEOUT(tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(paneSplitter->terminalMaximized(), 10000);
+
+    // Ctrl+Shift+E again: unzoom tmux AND unmaximize kmux.
+    QTest::keyClick(display, Qt::Key_E, Qt::ControlModifier | Qt::ShiftModifier);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 10000);
+
+    delete attach.mw.data();
+}
+
+// Zooming from the tmux side (equivalent to the user pressing prefix+z) must
+// also be reflected as a kmux splitter maximize. Symmetric to
+// testCtrlShiftEBoundToTmuxZoom — both sides must agree after the toggle.
+void TmuxIntegrationTest::testTmuxZoomReflectedAsKonsoleMaximize()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )"));
+    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+
+    ViewSplitter *paneSplitter = findTwoPaneSplitter(attach.container);
+    QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
+    QVERIFY(!paneSplitter->terminalMaximized());
+    QVERIFY(!tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName));
+
+    // tmux-side zoom via `resize-pane -Z` (the non-control-mode equivalent of
+    // the user pressing prefix+z in an interactive client).
+    QProcess zoom;
+    zoom.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+    QVERIFY(zoom.waitForFinished(5000));
+    QCOMPARE(zoom.exitCode(), 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(paneSplitter->terminalMaximized(), 10000);
+
+    // Unzoom on the tmux side.
+    QProcess unzoom;
+    unzoom.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+    QVERIFY(unzoom.waitForFinished(5000));
+    QCOMPARE(unzoom.exitCode(), 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!tmuxWindowZoomed(tmuxPath, ctx.socketPath, ctx.sessionName), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 10000);
+
     delete attach.mw.data();
 }
 

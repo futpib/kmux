@@ -42,6 +42,8 @@ private Q_SLOTS:
     void testTmuxZoomFromKonsole();
     void testTmuxZoomFromTmux();
     void testTmuxZoomSurvivesLayoutChanges();
+    void testCtrlShiftEBoundToTmuxZoom();
+    void testTmuxZoomReflectedAsKonsoleMaximize();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
     void testNewWindowInheritsWorkingDirectory();
