@@ -148,6 +148,7 @@ Q_SIGNALS:
 protected:
     // Reimplemented for internal reasons.
     void showEvent(QShowEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 
     // reimplemented from KMainWindow
