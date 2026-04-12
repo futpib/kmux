@@ -6,6 +6,37 @@ set(RELEASE_SERVICE_VERSION_MINOR "07")
 set(RELEASE_SERVICE_VERSION_MICRO "70")
 set(RELEASE_SERVICE_VERSION "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}.${RELEASE_SERVICE_VERSION_MICRO}")
 
+# Capture git commit hash for --version output. Falls back to empty string
+# when building from a tarball without .git/.
+set(KONSOLE_GIT_COMMIT "")
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE KONSOLE_GIT_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} diff --quiet HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE KONSOLE_GIT_DIRTY
+            ERROR_QUIET
+        )
+        if(KONSOLE_GIT_COMMIT AND NOT KONSOLE_GIT_DIRTY EQUAL 0)
+            set(KONSOLE_GIT_COMMIT "${KONSOLE_GIT_COMMIT}-dirty")
+        endif()
+    endif()
+endif()
+
+if(KONSOLE_GIT_COMMIT)
+    set(KONSOLE_FULL_VERSION "${RELEASE_SERVICE_VERSION}+${KONSOLE_GIT_COMMIT}")
+else()
+    set(KONSOLE_FULL_VERSION "${RELEASE_SERVICE_VERSION}")
+endif()
+
 # Do not increase these requirements without a merge-request or/and
 # approval from maintainer(s).
 # minimal requirements

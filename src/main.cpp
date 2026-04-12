@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
 
     KAboutData about(QStringLiteral("kmux"),
                      i18nc("@title", "Konsole"),
-                     QStringLiteral(KONSOLE_VERSION),
+                     QStringLiteral(KONSOLE_VERSION_FULL),
                      i18nc("@title", "Terminal emulator"),
                      KAboutLicense::GPL_V2,
                      i18nc("@info:credit", "(c) 1997-2022, The Konsole Developers"),
