@@ -36,6 +36,7 @@
 #include "../tmux/TmuxLayoutManager.h"
 #include "../tmux/TmuxLayoutParser.h"
 #include "../tmux/TmuxPaneManager.h"
+#include "../tmux/TmuxPrefixPalette.h"
 #include "../tmux/TmuxProcessBridge.h"
 #include "../tmux/TmuxTreeModel.h"
 #include "../tmux/TmuxTreeSwitcher.h"
@@ -4600,6 +4601,64 @@ void TmuxIntegrationTest::testDetachFromTmuxAction()
     listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
     QVERIFY(listSessions.waitForFinished(5000));
     QCOMPARE(listSessions.exitCode(), 0);
+
+    delete attach.mw.data();
+}
+
+// Pressing the tmux prefix (default C-b) on the kmux window opens the prefix
+// palette populated from tmux's own `list-keys -T prefix`. The next keystroke
+// resolves to a binding and the raw tmux command is sent back through the
+// gateway — here, `d` → `detach-client`, which disconnects the control client.
+void TmuxIntegrationTest::testTmuxPrefixPaletteDetach()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    // Wait until prefix + bindings are loaded (both show-options and list-keys
+    // responses have landed), otherwise the palette would be empty.
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QCOMPARE(controller->prefixShortcut(), QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    // Pressing the tmux prefix shortcut on the main window should invoke the
+    // palette action.
+    QSignalSpy disconnectSpy(attach.bridge, &TmuxProcessBridge::disconnected);
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+
+    // The palette is a child QFrame of the window; find it.
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QVERIFY(palette->hasFocus());
+
+    // Press `d` — tmux's default binding is `detach-client`.
+    QTest::keyClick(palette, Qt::Key_D);
+
+    // The bridge should disconnect (tmux control client exits on detach)
+    QTRY_VERIFY_WITH_TIMEOUT(disconnectSpy.count() >= 1, 10000);
 
     delete attach.mw.data();
 }

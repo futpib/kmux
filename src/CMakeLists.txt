@@ -272,6 +272,7 @@ set(konsoleprivate_SRCS ${windowadaptors_SRCS}
                         tmux/TmuxProcessBridge.cpp
                         tmux/TmuxTreeModel.cpp
                         tmux/TmuxTreeSwitcher.cpp
+                        tmux/TmuxPrefixPalette.cpp
 
                         ${dbus_xml_srcs}
 

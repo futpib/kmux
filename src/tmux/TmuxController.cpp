@@ -113,6 +113,8 @@ void TmuxController::initialize()
                 }
             }
         });
+
+    queryPrefixBindings();
 }
 
 TmuxGateway *TmuxController::gateway() const
@@ -749,6 +751,170 @@ void TmuxController::cleanup()
     _windowToTabIndex.clear();
     _windowPanes.clear();
     _zoomedWindows.clear();
+}
+
+QKeySequence TmuxController::prefixShortcut() const
+{
+    return _prefixShortcut;
+}
+
+const QList<TmuxController::PrefixBinding> &TmuxController::prefixBindings() const
+{
+    return _prefixBindings;
+}
+
+namespace
+{
+// Translate a tmux key token (e.g. "C-b", "M-x", "F5") into a QKeySequence.
+// Returns an empty QKeySequence if the token can't be mapped (non-ASCII named
+// keys beyond what we handle, compound tmux sequences, etc.).
+QKeySequence tmuxTokenToShortcut(QString token)
+{
+    Qt::KeyboardModifiers mods;
+    while (true) {
+        if (token.startsWith(QStringLiteral("C-"))) {
+            mods |= Qt::ControlModifier;
+            token.remove(0, 2);
+        } else if (token.startsWith(QStringLiteral("M-"))) {
+            mods |= Qt::AltModifier;
+            token.remove(0, 2);
+        } else if (token.startsWith(QStringLiteral("S-"))) {
+            mods |= Qt::ShiftModifier;
+            token.remove(0, 2);
+        } else {
+            break;
+        }
+    }
+
+    int key = 0;
+    if (token.length() == 1) {
+        // Single-character: use the ASCII code (uppercased so shortcut
+        // matching is consistent).
+        key = token.at(0).toUpper().unicode();
+    } else if (token.compare(QStringLiteral("Up"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Up;
+    } else if (token.compare(QStringLiteral("Down"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Down;
+    } else if (token.compare(QStringLiteral("Left"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Left;
+    } else if (token.compare(QStringLiteral("Right"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Right;
+    } else if (token.compare(QStringLiteral("Space"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Space;
+    } else if (token.compare(QStringLiteral("Tab"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Tab;
+    } else if (token.compare(QStringLiteral("Enter"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Return;
+    } else if (token.compare(QStringLiteral("BSpace"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Backspace;
+    } else if (token.compare(QStringLiteral("PPage"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_PageUp;
+    } else if (token.compare(QStringLiteral("NPage"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_PageDown;
+    } else if (token.compare(QStringLiteral("Home"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Home;
+    } else if (token.compare(QStringLiteral("End"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_End;
+    } else if (token.compare(QStringLiteral("DC"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Delete;
+    } else if (token.compare(QStringLiteral("IC"), Qt::CaseInsensitive) == 0) {
+        key = Qt::Key_Insert;
+    } else if (token.startsWith(QLatin1Char('F')) && token.length() >= 2) {
+        bool ok = false;
+        int n = token.mid(1).toInt(&ok);
+        if (ok && n >= 1 && n <= 35) {
+            key = Qt::Key_F1 + (n - 1);
+        }
+    }
+
+    if (key == 0) {
+        return {};
+    }
+    return QKeySequence(static_cast<int>(mods) | key);
+}
+
+// Parse one `list-keys -T prefix` output line into {keyToken, commandString}.
+// Returns false if the line doesn't look like a binding.
+bool parseBindKeyLine(const QString &line, QString &keyToken, QString &command)
+{
+    // Format: `bind-key [-r] -T prefix <key> <command...>`
+    int pos = 0;
+    auto skipSpace = [&]() {
+        while (pos < line.length() && line.at(pos).isSpace())
+            ++pos;
+    };
+    auto takeWord = [&]() {
+        skipSpace();
+        int start = pos;
+        while (pos < line.length() && !line.at(pos).isSpace())
+            ++pos;
+        return line.mid(start, pos - start);
+    };
+
+    if (takeWord() != QStringLiteral("bind-key")) {
+        return false;
+    }
+    QString token = takeWord();
+    if (token == QStringLiteral("-r")) {
+        token = takeWord();
+    }
+    if (token != QStringLiteral("-T")) {
+        return false;
+    }
+    if (takeWord() != QStringLiteral("prefix")) {
+        return false;
+    }
+    QString key = takeWord();
+    if (key.isEmpty()) {
+        return false;
+    }
+    // tmux escapes some key glyphs with a leading backslash (e.g. \", \$, \%).
+    if (key.startsWith(QLatin1Char('\\')) && key.length() >= 2) {
+        key = key.mid(1);
+    }
+    skipSpace();
+    QString rest = line.mid(pos).trimmed();
+    if (rest.isEmpty()) {
+        return false;
+    }
+    keyToken = key;
+    command = rest;
+    return true;
+}
+} // namespace
+
+void TmuxController::queryPrefixBindings()
+{
+    // Query the prefix option and the binding table in parallel. Emit the
+    // signal once both have landed so the shortcut and palette data are in
+    // sync for consumers.
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("show-options -gv prefix")), [this](bool success, const QString &response) {
+        if (!success) {
+            return;
+        }
+        QString token = response.trimmed();
+        // `show-options -gv prefix` prints just the value, e.g. `C-b`.
+        _prefixShortcut = tmuxTokenToShortcut(token);
+        if (!_prefixBindings.isEmpty()) {
+            Q_EMIT prefixBindingsChanged();
+        }
+    });
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-keys -T prefix")), [this](bool success, const QString &response) {
+        if (!success) {
+            return;
+        }
+        QList<PrefixBinding> bindings;
+        const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            QString key;
+            QString command;
+            if (parseBindKeyLine(line, key, command)) {
+                bindings.append({key, command});
+            }
+        }
+        _prefixBindings = std::move(bindings);
+        Q_EMIT prefixBindingsChanged();
+    });
 }
 
 void TmuxController::onExit(const QString &reason)

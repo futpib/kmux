@@ -50,6 +50,7 @@
 #include "terminalDisplay/TerminalDisplay.h"
 #include "tmux/TmuxController.h"
 #include "tmux/TmuxControllerRegistry.h"
+#include "tmux/TmuxPrefixPalette.h"
 #include "tmux/TmuxTreeSwitcher.h"
 #include "widgets/ViewContainer.h"
 #include "widgets/ViewSplitter.h"
@@ -254,6 +255,24 @@ void ViewManager::setupActions()
     action->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
     action->setText(i18nc("@action:inmenu", "Show tmux Tree Switcher"));
     connect(action, &QAction::triggered, this, &ViewManager::showTmuxTreeSwitcher);
+
+    _tmuxPrefixAction = collection->addAction(QStringLiteral("tmux-prefix-palette"));
+    _tmuxPrefixAction->setText(i18nc("@action:inmenu", "Show tmux Prefix Palette"));
+    _tmuxPrefixAction->setIcon(QIcon::fromTheme(QStringLiteral("input-keyboard")));
+    connect(_tmuxPrefixAction, &QAction::triggered, this, &ViewManager::showTmuxPrefixPalette);
+    // Rebind this action's shortcut to whatever tmux reports as its prefix
+    // whenever a controller attaches or reports new bindings.
+    connect(TmuxControllerRegistry::instance(), &TmuxControllerRegistry::controllerAdded, this, [this](TmuxController *ctrl) {
+        connect(ctrl, &TmuxController::prefixBindingsChanged, this, [this, ctrl]() {
+            if (!_tmuxPrefixAction) {
+                return;
+            }
+            QKeySequence seq = ctrl->prefixShortcut();
+            if (!seq.isEmpty()) {
+                _actionCollection->setDefaultShortcut(_tmuxPrefixAction, seq);
+            }
+        });
+    });
 
     // keyboard shortcut only actions
     action = new QAction(i18nc("@action Shortcut entry", "Next Tab"), this);
@@ -607,6 +626,27 @@ void ViewManager::showTmuxTreeSwitcher()
         return;
     auto *switcher = new TmuxTreeSwitcher(this, ctrl);
     switcher->setFocus();
+}
+
+void ViewManager::showTmuxPrefixPalette()
+{
+    Session *activeSession = _pluggedController ? _pluggedController->session().data() : nullptr;
+    if (!activeSession)
+        return;
+    auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
+    if (!ctrl)
+        return;
+    QList<TmuxPrefixBinding> bindings;
+    const auto &ctrlBindings = ctrl->prefixBindings();
+    bindings.reserve(ctrlBindings.size());
+    for (const auto &b : ctrlBindings) {
+        bindings.append({b.keyToken, b.command});
+    }
+    if (bindings.isEmpty()) {
+        return;
+    }
+    auto *palette = new TmuxPrefixPalette(this, ctrl, bindings);
+    palette->setFocus();
 }
 
 void ViewManager::detachActiveTab()

@@ -399,6 +399,7 @@ private Q_SLOTS:
     void detachActiveTab();
     void detachFromTmux();
     void showTmuxTreeSwitcher();
+    void showTmuxPrefixPalette();
 
     // called when a session terminates - the view manager will delete any
     // views associated with the session
@@ -542,6 +543,11 @@ private:
     QList<QAction *> _multiSplitterOnlyActions;
 
     QList<QAction *> contextMenuAdditionalActions;
+
+    // Action whose shortcut matches the tmux prefix key. Opens the prefix
+    // palette. Shortcut is rebound each time a TmuxController reports new
+    // prefix bindings.
+    QAction *_tmuxPrefixAction = nullptr;
 
     friend class ViewManagerTest;
 };

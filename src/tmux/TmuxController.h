@@ -7,6 +7,7 @@
 #ifndef TMUXCONTROLLER_H
 #define TMUXCONTROLLER_H
 
+#include <QKeySequence>
 #include <QList>
 #include <QMap>
 #include <QObject>
@@ -95,9 +96,19 @@ public:
 
     TmuxGateway *gateway() const;
 
+    // Prefix key + bindings, populated asynchronously after attach. Emits
+    // prefixBindingsChanged() when (re-)loaded so UI can bind the shortcut.
+    struct PrefixBinding {
+        QString keyToken;
+        QString command;
+    };
+    QKeySequence prefixShortcut() const;
+    const QList<PrefixBinding> &prefixBindings() const;
+
 Q_SIGNALS:
     void initialWindowsOpened();
     void detached();
+    void prefixBindingsChanged();
 
 private Q_SLOTS:
     void onLayoutChanged(int windowId, const QString &layout, const QString &visibleLayout, bool zoomed);
@@ -122,6 +133,7 @@ private:
     void refreshPaneTitles();
     void handleListWindowsResponse(bool success, const QString &response);
     void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
+    void queryPrefixBindings();
 
     TmuxGateway *_gateway;
     ViewManager *_viewManager;
@@ -134,6 +146,9 @@ private:
     QMap<int, int> _windowToTabIndex;
     QMap<int, QList<int>> _windowPanes;
     QSet<int> _zoomedWindows;
+
+    QKeySequence _prefixShortcut;
+    QList<PrefixBinding> _prefixBindings;
 
     QTimer *_paneTitleTimer;
 
