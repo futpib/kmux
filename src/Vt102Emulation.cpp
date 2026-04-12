@@ -101,7 +101,7 @@ Vt102Emulation::Vt102Emulation()
         qCDebug(KonsoleDebug) << "win32-input-mode: FAILED to create xkb_context.";
         _win32InputModeAvailable = false;
     } else {
-        struct xkb_rule_names rules = { nullptr, nullptr, "us", nullptr, nullptr };
+        struct xkb_rule_names rules = {nullptr, nullptr, "us", nullptr, nullptr};
         _xkbData.keymap_us = xkb_keymap_new_from_names(_xkbData.context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
         if (!_xkbData.keymap_us) {
             qCDebug(KonsoleDebug) << "win32-input-mode: FAILED to create US keymap.";
@@ -377,13 +377,13 @@ void Vt102Emulation::addToCurrentToken(uint cc)
 }
 
 // Character Class flags used while decoding
-const int CTL = 1; // Control character
-const int CHR = 2; // Printable character
-const int CPN = 4; // TODO: Document me
-const int DIG = 8; // Digit
-const int SCS = 16; // Select Character Set
-const int GRP = 32; // TODO: Document me
-const int CPS = 64; // Character which indicates end of window resize
+const int CTL = 1;   // Control character
+const int CHR = 2;   // Printable character
+const int CPN = 4;   // TODO: Document me
+const int DIG = 8;   // Digit
+const int SCS = 16;  // Select Character Set
+const int GRP = 32;  // TODO: Document me
+const int CPS = 64;  // Character which indicates end of window resize
 const int INT = 128; // Intermediate Byte (ECMA 48 5.4 -> CSI P..P I..I F)
 
 void Vt102Emulation::initTokenizer()
@@ -548,11 +548,9 @@ void Vt102Emulation::csi_dispatch(const uint cc)
 {
     if (_ignore || (params.hasSubParams && cc != 'm')) // Be conservative for now
         return;
-    if ((tokenBufferPos == 0 || (tokenBuffer[0] != '?' && tokenBuffer[0] != '!' && tokenBuffer[0] != '=' && tokenBuffer[0] != '>')) && cc < 256
-        && (charClass[cc] & CPN) == CPN && _nIntermediate == 0) {
+    if ((tokenBufferPos == 0 || (tokenBuffer[0] != '?' && tokenBuffer[0] != '!' && tokenBuffer[0] != '=' && tokenBuffer[0] != '>')) && cc < 256 && (charClass[cc] & CPN) == CPN && _nIntermediate == 0) {
         processToken(token_csi_pn(cc), params.value[0], params.value[1]);
-    } else if ((tokenBufferPos == 0 || (tokenBuffer[0] != '?' && tokenBuffer[0] != '!' && tokenBuffer[0] != '=' && tokenBuffer[0] != '>')) && cc < 256
-               && (charClass[cc] & CPS) == CPS && _nIntermediate == 0) {
+    } else if ((tokenBufferPos == 0 || (tokenBuffer[0] != '?' && tokenBuffer[0] != '!' && tokenBuffer[0] != '=' && tokenBuffer[0] != '>')) && cc < 256 && (charClass[cc] & CPS) == CPS && _nIntermediate == 0) {
         processToken(token_csi_ps(cc, params.value[0]), params.value[1], params.value[2]);
     } else if (tokenBufferPos != 0 && tokenBuffer[0] == '!') {
         processToken(token_csi_pe(cc), 0, 0);
@@ -574,35 +572,30 @@ void Vt102Emulation::csi_dispatch(const uint cc)
                 processToken(token_csi_pq(cc), 0, 0);
             } else if (tokenBufferPos != 0 && tokenBuffer[0] == '>') {
                 processToken(token_csi_pg(cc), 0, 0);
-            } else if (cc == 'm' && !params.sub[i].count && params.count - i >= 4 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
-                       && params.value[i + 1] == 2) {
+            } else if (cc == 'm' && !params.sub[i].count && params.count - i >= 4 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58) && params.value[i + 1] == 2) {
                 // ESC[ ... 48;2;<red>;<green>;<blue> ... m -or- ESC[ ... 38;2;<red>;<green>;<blue> ... m
                 i += 2;
                 processToken(token_csi_ps(cc, params.value[i - 2]),
                              COLOR_SPACE_RGB,
                              (params.value[i] << 16) | (params.value[i + 1] << 8) | params.value[i + 2]);
                 i += 2;
-            } else if (cc == 'm' && params.sub[i].count >= 5 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
-                       && params.sub[i].value[1] == 2) {
+            } else if (cc == 'm' && params.sub[i].count >= 5 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58) && params.sub[i].value[1] == 2) {
                 // ESC[ ... 48:2:<id>:<red>:<green>:<blue> ... m -or- ESC[ ... 38:2:<id>:<red>:<green>:<blue> ... m
                 processToken(token_csi_ps(cc, params.value[i]),
                              COLOR_SPACE_RGB,
                              (params.sub[i].value[3] << 16) | (params.sub[i].value[4] << 8) | params.sub[i].value[5]);
-            } else if (cc == 'm' && params.sub[i].count == 4 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
-                       && params.sub[i].value[1] == 2) {
+            } else if (cc == 'm' && params.sub[i].count == 4 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58) && params.sub[i].value[1] == 2) {
                 // ESC[ ... 48:2:<red>:<green>:<blue> ... m -or- ESC[ ... 38:2:<red>:<green>:<blue> ... m
                 processToken(token_csi_ps(cc, params.value[i]),
                              COLOR_SPACE_RGB,
                              (params.sub[i].value[2] << 16) | (params.sub[i].value[3] << 8) | params.sub[i].value[4]);
             } else if (cc == 'm' && params.sub[i].count == 1 && params.value[i] == 4) {
                 processToken(token_csi_ps(cc, params.value[i]), params.sub[i].value[1], 1);
-            } else if (cc == 'm' && !params.sub[i].count && params.count - i >= 2 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
-                       && params.value[i + 1] == 5) {
+            } else if (cc == 'm' && !params.sub[i].count && params.count - i >= 2 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58) && params.value[i + 1] == 5) {
                 // ESC[ ... 48;5;<index> ... m -or- ESC[ ... 38;5;<index> ... m
                 i += 2;
                 processToken(token_csi_ps(cc, params.value[i - 2]), COLOR_SPACE_256, params.value[i]);
-            } else if (cc == 'm' && params.sub[i].count >= 2 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
-                       && params.sub[i].value[1] == 5) {
+            } else if (cc == 'm' && params.sub[i].count >= 2 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58) && params.sub[i].value[1] == 5) {
                 // ESC[ ... 48:5:<index> ... m -or- ESC[ ... 38:5:<index> ... m
                 processToken(token_csi_ps(cc, params.value[i]), COLOR_SPACE_256, params.sub[i].value[2]);
             } else if (_nIntermediate == 0) {
@@ -901,8 +894,7 @@ void Vt102Emulation::receiveChars(const QVector<uint> &chars)
                     if (cc == 0x5B) {
                         switchState(CsiEntry, cc);
                         clear();
-                    } else if ((cc >= 0x30 && cc <= 0x4F) || (cc >= 0x51 && cc <= 0x57) || (cc >= 0x59 && cc <= 0x5A) || cc == 0x5C
-                               || (cc >= 0x60 && cc <= 0x7E)) {
+                    } else if ((cc >= 0x30 && cc <= 0x4F) || (cc >= 0x51 && cc <= 0x57) || (cc >= 0x59 && cc <= 0x5A) || cc == 0x5C || (cc >= 0x60 && cc <= 0x7E)) {
                         esc_dispatch(cc);
                         switchState(Ground, cc);
                     } else if (cc >= 0x20 && cc <= 0x2F) {
@@ -1090,7 +1082,7 @@ void Vt102Emulation::receiveChars(const QVector<uint> &chars)
                     break;
                 case SosPmApcString:
                     if (cc <= 0x7F || cc >= 0xA0) { // 0x18, 0x1A, 0x1B already taken care of.
-                        apc_put(cc); // while the vt100.net diagram has ignore here, konsole does process some APCs (kitty images).
+                        apc_put(cc);                // while the vt100.net diagram has ignore here, konsole does process some APCs (kitty images).
                     }
                     // 0x9C already taken care of.
                     break;
@@ -1452,7 +1444,7 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
         int closeSignal = -1;
         QString applicationName;
 
-        for (QString param: std::as_const(params)) {
+        for (QString param : std::as_const(params)) {
             if (param.startsWith(QString::fromLatin1("i="))) {
                 // Notification ID:
                 QString payloadValue = param.mid(2);
@@ -1468,13 +1460,13 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
                 // Whether the notification is complete:
                 bool parseOk;
                 int parsedComplete = param.mid(2).toInt(&parseOk);
-                if (parseOk && parsedComplete >=0 && parsedComplete < 2)
+                if (parseOk && parsedComplete >= 0 && parsedComplete < 2)
                     complete = parsedComplete;
             } else if (param.startsWith(QString::fromLatin1("e="))) {
                 // Escape (whether the paylaod is Base64 encoded):
                 bool parseOk;
                 int parsedEncoding = param.mid(2).toInt(&parseOk);
-                if (parseOk && parsedEncoding >=0 && parsedEncoding < 2)
+                if (parseOk && parsedEncoding >= 0 && parsedEncoding < 2)
                     encoding = parsedEncoding;
             } else if (param.startsWith(QString::fromLatin1("a="))) {
                 // Parse a comma-separated of actions with optional "-" (eg. "-focus,report"):
@@ -1537,7 +1529,7 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
             }
         }
 
-        KittyNotificationState* notificationState = nullptr;
+        KittyNotificationState *notificationState = nullptr;
         KittyNotificationState notificationValue;
         auto notificationIterator = _kittyNotifications.find(notificationId);
         if (notificationIterator != _kittyNotifications.end()) {
@@ -1571,23 +1563,22 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
         }
         constexpr qsizetype max_notification_size = 1024;
         switch (payloadType) {
-            case Unknown:
-                break;
-            case Query:
-                _kittyNotifications.remove(notificationId);
-                sendString((QStringLiteral("\033]99;i=") + notificationId
-                            + QStringLiteral(";p=?;p=title,body,buttons:a=report,focus:o=always,unfocus,invisible:u=0,1,2:c=1\033\\"))
-                               .toLatin1());
-                return;
-            case Title:
-                notificationState->title += payload.left(max_notification_size - notificationState->title.size());
-                break;
-            case Body:
-                notificationState->body += payload.left(max_notification_size - notificationState->body.size());
-                break;
-            case Buttons:
-                notificationState->buttons = payload.split(QString::fromUtf8(u8"\u2028"));
-                break;
+        case Unknown:
+            break;
+        case Query:
+            _kittyNotifications.remove(notificationId);
+            sendString((QStringLiteral("\033]99;i=") + notificationId + QStringLiteral(";p=?;p=title,body,buttons:a=report,focus:o=always,unfocus,invisible:u=0,1,2:c=1\033\\"))
+                           .toLatin1());
+            return;
+        case Title:
+            notificationState->title += payload.left(max_notification_size - notificationState->title.size());
+            break;
+        case Body:
+            notificationState->body += payload.left(max_notification_size - notificationState->body.size());
+            break;
+        case Buttons:
+            notificationState->buttons = payload.split(QString::fromUtf8(u8"\u2028"));
+            break;
         }
 
         if (complete) {
@@ -1598,57 +1589,57 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
             default:
             case KittyNotificationOption::None:
             case KittyNotificationOption::Always:
-                    enabled = true;
-                    break;
+                enabled = true;
+                break;
             case KittyNotificationOption::Unfocused:
-                    enabled = !hasFocus;
-                    break;
+                enabled = !hasFocus;
+                break;
             case KittyNotificationOption::Invisible:
-                    // We might want to check if the tab is active, the window visible, etc.
-                    enabled = !hasFocus;
-                    break;
+                // We might want to check if the tab is active, the window visible, etc.
+                enabled = !hasFocus;
+                break;
             }
 
             if (enabled) {
-                    KNotification *notification;
-                    QString iconName = resolveIcon(notificationState->iconNames);
+                KNotification *notification;
+                QString iconName = resolveIcon(notificationState->iconNames);
 
-                    // KNotification does not support application name, add it to the title instead:
-                    QString fullTitle = notificationState->applicationName;
-                    if (!notificationState->title.isEmpty()) {
+                // KNotification does not support application name, add it to the title instead:
+                QString fullTitle = notificationState->applicationName;
+                if (!notificationState->title.isEmpty()) {
                     if (!fullTitle.isEmpty())
                         fullTitle += QStringLiteral(": ");
                     fullTitle += notificationState->title;
-                    }
+                }
 
-                    notification = KNotification::event(hasFocus ? QStringLiteral("ProcessNotification") : QStringLiteral("ProcessNotificationHidden"),
-                                                        fullTitle,
-                                                        notificationState->body.toHtmlEscaped(),
-                                                        iconName);
+                notification = KNotification::event(hasFocus ? QStringLiteral("ProcessNotification") : QStringLiteral("ProcessNotificationHidden"),
+                                                    fullTitle,
+                                                    notificationState->body.toHtmlEscaped(),
+                                                    iconName);
 
-                    KNotification::Urgency resultUrgency = KNotification::Urgency::NormalUrgency;
-                    switch (notificationState->urgency) {
-                    case 0:
+                KNotification::Urgency resultUrgency = KNotification::Urgency::NormalUrgency;
+                switch (notificationState->urgency) {
+                case 0:
                     resultUrgency = KNotification::Urgency::LowUrgency;
                     break;
-                    case 1:
+                case 1:
                     resultUrgency = KNotification::Urgency::NormalUrgency;
                     break;
-                    case 2:
+                case 2:
                     resultUrgency = KNotification::Urgency::CriticalUrgency;
                     break;
-                    }
-                    notification->setUrgency(resultUrgency);
-                    auto action = notification->addDefaultAction(i18n("Show session"));
+                }
+                notification->setUrgency(resultUrgency);
+                auto action = notification->addDefaultAction(i18n("Show session"));
 
-                    if (notificationState->closeSignal) {
+                if (notificationState->closeSignal) {
                     connect(notification, &KNotification::closed, this, [this, notificationId]() {
                         sendString((QStringLiteral("\033]99;i=") + notificationId + QStringLiteral(":p=close;\033\\")).toLatin1());
                     });
-                    }
+                }
 
-                    int notificationAction = notificationState->action;
-                    if (notificationAction != 0) {
+                int notificationAction = notificationState->action;
+                if (notificationAction != 0) {
                     connect(action, &KNotificationAction::activated, this, [this, notification, notificationAction, notificationId]() {
                         if (notificationAction & NotificationActionReport) {
                             sendString((QStringLiteral("\033]99;i=") + notificationId + QStringLiteral(";\033\\")).toLatin1());
@@ -1657,15 +1648,15 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
                             _currentScreen->currentTerminalDisplay()->notificationClicked(notification->xdgActivationToken());
                         }
                     });
-                    }
+                }
 
-                    for (int i = 0; i < notificationState->buttons.size(); ++i) {
+                for (int i = 0; i < notificationState->buttons.size(); ++i) {
                     KNotificationAction *action = notification->addAction(notificationState->buttons[i]);
                     connect(action, &KNotificationAction::activated, this, [this, notificationId, i]() {
                         sendString((QStringLiteral("\033]99;i=") + notificationId + QStringLiteral(";") + QString::number(i + 1) + QStringLiteral("\033\\"))
                                        .toLatin1());
                     });
-                    }
+                }
             }
 
             _kittyNotifications.remove(notificationId);
@@ -1674,7 +1665,7 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
         if (_kittyNotifications.size() >= 10) {
             auto toRemote = std::min_element(
                 _kittyNotifications.begin(), _kittyNotifications.end(),
-                [](KittyNotificationState const& first, KittyNotificationState const& second) {
+                [](KittyNotificationState const &first, KittyNotificationState const &second) {
                     return first.serial < second.serial;
                 });
             _kittyNotifications.erase(toRemote);
@@ -1897,10 +1888,10 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
             {QLatin1String("col-resize"), Qt::ArrowCursor}, // no exact match
             {QLatin1String("row-resize"), Qt::ArrowCursor}, // no exact match
 
-            {QLatin1String("n-resize"), Qt::SizeVerCursor}, // no exact match
-            {QLatin1String("e-resize"), Qt::SizeHorCursor}, // no exact match
-            {QLatin1String("s-resize"), Qt::SizeVerCursor}, // no exact match
-            {QLatin1String("w-resize"), Qt::SizeHorCursor}, // no exact match
+            {QLatin1String("n-resize"), Qt::SizeVerCursor},    // no exact match
+            {QLatin1String("e-resize"), Qt::SizeHorCursor},    // no exact match
+            {QLatin1String("s-resize"), Qt::SizeVerCursor},    // no exact match
+            {QLatin1String("w-resize"), Qt::SizeHorCursor},    // no exact match
             {QLatin1String("ne-resize"), Qt::SizeBDiagCursor}, // no exact match
             {QLatin1String("nw-resize"), Qt::SizeFDiagCursor}, // no exact match
             {QLatin1String("se-resize"), Qt::SizeFDiagCursor}, // no exact match
@@ -1911,7 +1902,7 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
             {QLatin1String("nesw-resize"), Qt::SizeBDiagCursor},
             {QLatin1String("nwse-resize"), Qt::SizeFDiagCursor},
 
-            {QLatin1String("zoom-in"), Qt::ArrowCursor}, // no exact match
+            {QLatin1String("zoom-in"), Qt::ArrowCursor},  // no exact match
             {QLatin1String("zoom-out"), Qt::ArrowCursor}, // no exact match
 
             // XCursor shapes, taken from the Qt docs
@@ -3089,7 +3080,7 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
 
         // X11 keycodes are offset by 8 from evdev and Wayland scancodes.
         const xkb_keycode_t keycode = event->nativeScanCode() +
-            (QGuiApplication::platformName() == QLatin1String("xcb") ? 8 : 0);
+                                      (QGuiApplication::platformName() == QLatin1String("xcb") ? 8 : 0);
 
         /* To correctly determine the Virtual Key Code (which represents a physical key,
          * e.g. VK_1 regardless of whether '1' or '!' is produced), we need the base keysym.
@@ -3111,161 +3102,433 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
         bool modifier = false;
 
         switch (keysym_us) {
-            case XKB_KEY_BackSpace:   virtualKeyCode = VK_BACK;   break;
-            case XKB_KEY_Tab:         virtualKeyCode = VK_TAB;    break;
-            case XKB_KEY_Return:      virtualKeyCode = VK_RETURN; break;
-            case XKB_KEY_Pause:       virtualKeyCode = VK_PAUSE;  break;
-            case XKB_KEY_Scroll_Lock: virtualKeyCode = VK_SCROLL; break;
-            case XKB_KEY_Escape:      virtualKeyCode = VK_ESCAPE; break;
-            case XKB_KEY_Shift_L:
-                virtualKeyCode = VK_SHIFT;
-                scanCode = LEFT_SHIFT_SCAN_CODE;
-                if (is_key_down) controlKeyState |= SHIFT_PRESSED;
-                modifier = true;
-                break;
-            case XKB_KEY_Shift_R:
-                virtualKeyCode = VK_SHIFT;
-                scanCode = RIGHT_SHIFT_SCAN_CODE;
-                if (is_key_down) controlKeyState |= SHIFT_PRESSED;
-                modifier = true;
-                break;
-            case XKB_KEY_Control_L:
-                virtualKeyCode = VK_CONTROL;
-                if (is_key_down) controlKeyState |= LEFT_CTRL_PRESSED;
-                modifier = true;
-                break;
-            case XKB_KEY_Control_R:
-                virtualKeyCode = VK_CONTROL;
-                _isRightCtrlPressed = is_key_down;
-                if (is_key_down) controlKeyState |= RIGHT_CTRL_PRESSED;
-                controlKeyState |= ENHANCED_KEY;
-                modifier = true;
-                break;
-            case XKB_KEY_Alt_L:
-                virtualKeyCode = VK_MENU;
-                if (is_key_down) controlKeyState |= LEFT_ALT_PRESSED;
-                modifier = true;
-                break;
-            case XKB_KEY_Alt_R:
-                virtualKeyCode = VK_MENU;
-                _isRightAltPressed = is_key_down;
-                if (is_key_down) controlKeyState |= RIGHT_ALT_PRESSED;
-                controlKeyState |= ENHANCED_KEY;
-                modifier = true;
-                break;
-            case XKB_KEY_Caps_Lock:    virtualKeyCode = VK_CAPITAL; break;
-            case XKB_KEY_Num_Lock:     virtualKeyCode = VK_NUMLOCK; break;
-            case XKB_KEY_Meta_L:       virtualKeyCode = VK_LWIN;    break;
-            case XKB_KEY_Meta_R:       virtualKeyCode = VK_RWIN;    break;
-            case XKB_KEY_Page_Up:      virtualKeyCode = VK_PRIOR;   controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Page_Down:    virtualKeyCode = VK_NEXT;    controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_End:          virtualKeyCode = VK_END;     controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Home:         virtualKeyCode = VK_HOME;    controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Left:         virtualKeyCode = VK_LEFT;    controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Up:           virtualKeyCode = VK_UP;      controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Right:        virtualKeyCode = VK_RIGHT;   controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Down:         virtualKeyCode = VK_DOWN;    controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Insert:       virtualKeyCode = VK_INSERT;  controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Delete:       virtualKeyCode = VK_DELETE;  controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_Print:        virtualKeyCode = VK_PRINT;   break;
-            case XKB_KEY_KP_Page_Up:   virtualKeyCode = VK_PRIOR;   break;
-            case XKB_KEY_KP_Page_Down: virtualKeyCode = VK_NEXT;    break;
-            case XKB_KEY_KP_End:       virtualKeyCode = VK_END;     break;
-            case XKB_KEY_KP_Home:      virtualKeyCode = VK_HOME;    break;
-            case XKB_KEY_KP_Left:      virtualKeyCode = VK_LEFT;    break;
-            case XKB_KEY_KP_Up:        virtualKeyCode = VK_UP;      break;
-            case XKB_KEY_KP_Right:     virtualKeyCode = VK_RIGHT;   break;
-            case XKB_KEY_KP_Down:      virtualKeyCode = VK_DOWN;    break;
-            case XKB_KEY_KP_Insert:    virtualKeyCode = VK_INSERT;  break;
-            case XKB_KEY_KP_Delete:    virtualKeyCode = VK_DELETE;  break;
-            case XKB_KEY_KP_Begin:     virtualKeyCode = VK_NUMPAD5; break;
-            case XKB_KEY_KP_0:         virtualKeyCode = VK_NUMPAD0; break;
-            case XKB_KEY_KP_1:         virtualKeyCode = VK_NUMPAD1; break;
-            case XKB_KEY_KP_2:         virtualKeyCode = VK_NUMPAD2; break;
-            case XKB_KEY_KP_3:         virtualKeyCode = VK_NUMPAD3; break;
-            case XKB_KEY_KP_4:         virtualKeyCode = VK_NUMPAD4; break;
-            case XKB_KEY_KP_5:         virtualKeyCode = VK_NUMPAD5; break;
-            case XKB_KEY_KP_6:         virtualKeyCode = VK_NUMPAD6; break;
-            case XKB_KEY_KP_7:         virtualKeyCode = VK_NUMPAD7; break;
-            case XKB_KEY_KP_8:         virtualKeyCode = VK_NUMPAD8; break;
-            case XKB_KEY_KP_9:         virtualKeyCode = VK_NUMPAD9; break;
-            case XKB_KEY_KP_Decimal:   virtualKeyCode = VK_DECIMAL; break;
-            case XKB_KEY_KP_Add:       virtualKeyCode = VK_ADD;     break;
-            case XKB_KEY_KP_Subtract:  virtualKeyCode = VK_SUBTRACT;    break;
-            case XKB_KEY_KP_Multiply:  virtualKeyCode = VK_MULTIPLY;    break;
-            case XKB_KEY_KP_Divide:    virtualKeyCode = VK_DIVIDE;      controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_KP_Enter:     virtualKeyCode = VK_RETURN;      controlKeyState |= ENHANCED_KEY; break;
-            case XKB_KEY_a: case XKB_KEY_A: virtualKeyCode = 'A'; break;
-            case XKB_KEY_b: case XKB_KEY_B: virtualKeyCode = 'B'; break;
-            case XKB_KEY_c: case XKB_KEY_C: virtualKeyCode = 'C'; break;
-            case XKB_KEY_d: case XKB_KEY_D: virtualKeyCode = 'D'; break;
-            case XKB_KEY_e: case XKB_KEY_E: virtualKeyCode = 'E'; break;
-            case XKB_KEY_f: case XKB_KEY_F: virtualKeyCode = 'F'; break;
-            case XKB_KEY_g: case XKB_KEY_G: virtualKeyCode = 'G'; break;
-            case XKB_KEY_h: case XKB_KEY_H: virtualKeyCode = 'H'; break;
-            case XKB_KEY_i: case XKB_KEY_I: virtualKeyCode = 'I'; break;
-            case XKB_KEY_j: case XKB_KEY_J: virtualKeyCode = 'J'; break;
-            case XKB_KEY_k: case XKB_KEY_K: virtualKeyCode = 'K'; break;
-            case XKB_KEY_l: case XKB_KEY_L: virtualKeyCode = 'L'; break;
-            case XKB_KEY_m: case XKB_KEY_M: virtualKeyCode = 'M'; break;
-            case XKB_KEY_n: case XKB_KEY_N: virtualKeyCode = 'N'; break;
-            case XKB_KEY_o: case XKB_KEY_O: virtualKeyCode = 'O'; break;
-            case XKB_KEY_p: case XKB_KEY_P: virtualKeyCode = 'P'; break;
-            case XKB_KEY_q: case XKB_KEY_Q: virtualKeyCode = 'Q'; break;
-            case XKB_KEY_r: case XKB_KEY_R: virtualKeyCode = 'R'; break;
-            case XKB_KEY_s: case XKB_KEY_S: virtualKeyCode = 'S'; break;
-            case XKB_KEY_t: case XKB_KEY_T: virtualKeyCode = 'T'; break;
-            case XKB_KEY_u: case XKB_KEY_U: virtualKeyCode = 'U'; break;
-            case XKB_KEY_v: case XKB_KEY_V: virtualKeyCode = 'V'; break;
-            case XKB_KEY_w: case XKB_KEY_W: virtualKeyCode = 'W'; break;
-            case XKB_KEY_x: case XKB_KEY_X: virtualKeyCode = 'X'; break;
-            case XKB_KEY_y: case XKB_KEY_Y: virtualKeyCode = 'Y'; break;
-            case XKB_KEY_z: case XKB_KEY_Z: virtualKeyCode = 'Z'; break;
-            case XKB_KEY_0: virtualKeyCode = '0'; break;
-            case XKB_KEY_1: virtualKeyCode = '1'; break;
-            case XKB_KEY_2: virtualKeyCode = '2'; break;
-            case XKB_KEY_3: virtualKeyCode = '3'; break;
-            case XKB_KEY_4: virtualKeyCode = '4'; break;
-            case XKB_KEY_5: virtualKeyCode = '5'; break;
-            case XKB_KEY_6: virtualKeyCode = '6'; break;
-            case XKB_KEY_7: virtualKeyCode = '7'; break;
-            case XKB_KEY_8: virtualKeyCode = '8'; break;
-            case XKB_KEY_9: virtualKeyCode = '9'; break;
-            case XKB_KEY_F1:  virtualKeyCode = VK_F1;  break;
-            case XKB_KEY_F2:  virtualKeyCode = VK_F2;  break;
-            case XKB_KEY_F3:  virtualKeyCode = VK_F3;  break;
-            case XKB_KEY_F4:  virtualKeyCode = VK_F4;  break;
-            case XKB_KEY_F5:  virtualKeyCode = VK_F5;  break;
-            case XKB_KEY_F6:  virtualKeyCode = VK_F6;  break;
-            case XKB_KEY_F7:  virtualKeyCode = VK_F7;  break;
-            case XKB_KEY_F8:  virtualKeyCode = VK_F8;  break;
-            case XKB_KEY_F9:  virtualKeyCode = VK_F9;  break;
-            case XKB_KEY_F10: virtualKeyCode = VK_F10; break;
-            case XKB_KEY_F11: virtualKeyCode = VK_F11; break;
-            case XKB_KEY_F12: virtualKeyCode = VK_F12; break;
-            case XKB_KEY_space:        virtualKeyCode = VK_SPACE;      break;
-            case XKB_KEY_grave:        virtualKeyCode = VK_OEM_3;      break;
-            case XKB_KEY_minus:        virtualKeyCode = VK_OEM_MINUS;  break;
-            case XKB_KEY_equal:        virtualKeyCode = VK_OEM_PLUS;   break;
-            case XKB_KEY_bracketleft:  virtualKeyCode = VK_OEM_4;      break;
-            case XKB_KEY_bracketright: virtualKeyCode = VK_OEM_6;      break;
-            case XKB_KEY_semicolon:    virtualKeyCode = VK_OEM_1;      break;
-            case XKB_KEY_apostrophe:   virtualKeyCode = VK_OEM_7;      break;
-            case XKB_KEY_backslash:    virtualKeyCode = VK_OEM_5;      break;
-            case XKB_KEY_comma:        virtualKeyCode = VK_OEM_COMMA;  break;
-            case XKB_KEY_period:       virtualKeyCode = VK_OEM_PERIOD; break;
-            case XKB_KEY_slash:        virtualKeyCode = VK_OEM_2;      break;
+        case XKB_KEY_BackSpace:
+            virtualKeyCode = VK_BACK;
+            break;
+        case XKB_KEY_Tab:
+            virtualKeyCode = VK_TAB;
+            break;
+        case XKB_KEY_Return:
+            virtualKeyCode = VK_RETURN;
+            break;
+        case XKB_KEY_Pause:
+            virtualKeyCode = VK_PAUSE;
+            break;
+        case XKB_KEY_Scroll_Lock:
+            virtualKeyCode = VK_SCROLL;
+            break;
+        case XKB_KEY_Escape:
+            virtualKeyCode = VK_ESCAPE;
+            break;
+        case XKB_KEY_Shift_L:
+            virtualKeyCode = VK_SHIFT;
+            scanCode = LEFT_SHIFT_SCAN_CODE;
+            if (is_key_down)
+                controlKeyState |= SHIFT_PRESSED;
+            modifier = true;
+            break;
+        case XKB_KEY_Shift_R:
+            virtualKeyCode = VK_SHIFT;
+            scanCode = RIGHT_SHIFT_SCAN_CODE;
+            if (is_key_down)
+                controlKeyState |= SHIFT_PRESSED;
+            modifier = true;
+            break;
+        case XKB_KEY_Control_L:
+            virtualKeyCode = VK_CONTROL;
+            if (is_key_down)
+                controlKeyState |= LEFT_CTRL_PRESSED;
+            modifier = true;
+            break;
+        case XKB_KEY_Control_R:
+            virtualKeyCode = VK_CONTROL;
+            _isRightCtrlPressed = is_key_down;
+            if (is_key_down)
+                controlKeyState |= RIGHT_CTRL_PRESSED;
+            controlKeyState |= ENHANCED_KEY;
+            modifier = true;
+            break;
+        case XKB_KEY_Alt_L:
+            virtualKeyCode = VK_MENU;
+            if (is_key_down)
+                controlKeyState |= LEFT_ALT_PRESSED;
+            modifier = true;
+            break;
+        case XKB_KEY_Alt_R:
+            virtualKeyCode = VK_MENU;
+            _isRightAltPressed = is_key_down;
+            if (is_key_down)
+                controlKeyState |= RIGHT_ALT_PRESSED;
+            controlKeyState |= ENHANCED_KEY;
+            modifier = true;
+            break;
+        case XKB_KEY_Caps_Lock:
+            virtualKeyCode = VK_CAPITAL;
+            break;
+        case XKB_KEY_Num_Lock:
+            virtualKeyCode = VK_NUMLOCK;
+            break;
+        case XKB_KEY_Meta_L:
+            virtualKeyCode = VK_LWIN;
+            break;
+        case XKB_KEY_Meta_R:
+            virtualKeyCode = VK_RWIN;
+            break;
+        case XKB_KEY_Page_Up:
+            virtualKeyCode = VK_PRIOR;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Page_Down:
+            virtualKeyCode = VK_NEXT;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_End:
+            virtualKeyCode = VK_END;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Home:
+            virtualKeyCode = VK_HOME;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Left:
+            virtualKeyCode = VK_LEFT;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Up:
+            virtualKeyCode = VK_UP;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Right:
+            virtualKeyCode = VK_RIGHT;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Down:
+            virtualKeyCode = VK_DOWN;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Insert:
+            virtualKeyCode = VK_INSERT;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Delete:
+            virtualKeyCode = VK_DELETE;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_Print:
+            virtualKeyCode = VK_PRINT;
+            break;
+        case XKB_KEY_KP_Page_Up:
+            virtualKeyCode = VK_PRIOR;
+            break;
+        case XKB_KEY_KP_Page_Down:
+            virtualKeyCode = VK_NEXT;
+            break;
+        case XKB_KEY_KP_End:
+            virtualKeyCode = VK_END;
+            break;
+        case XKB_KEY_KP_Home:
+            virtualKeyCode = VK_HOME;
+            break;
+        case XKB_KEY_KP_Left:
+            virtualKeyCode = VK_LEFT;
+            break;
+        case XKB_KEY_KP_Up:
+            virtualKeyCode = VK_UP;
+            break;
+        case XKB_KEY_KP_Right:
+            virtualKeyCode = VK_RIGHT;
+            break;
+        case XKB_KEY_KP_Down:
+            virtualKeyCode = VK_DOWN;
+            break;
+        case XKB_KEY_KP_Insert:
+            virtualKeyCode = VK_INSERT;
+            break;
+        case XKB_KEY_KP_Delete:
+            virtualKeyCode = VK_DELETE;
+            break;
+        case XKB_KEY_KP_Begin:
+            virtualKeyCode = VK_NUMPAD5;
+            break;
+        case XKB_KEY_KP_0:
+            virtualKeyCode = VK_NUMPAD0;
+            break;
+        case XKB_KEY_KP_1:
+            virtualKeyCode = VK_NUMPAD1;
+            break;
+        case XKB_KEY_KP_2:
+            virtualKeyCode = VK_NUMPAD2;
+            break;
+        case XKB_KEY_KP_3:
+            virtualKeyCode = VK_NUMPAD3;
+            break;
+        case XKB_KEY_KP_4:
+            virtualKeyCode = VK_NUMPAD4;
+            break;
+        case XKB_KEY_KP_5:
+            virtualKeyCode = VK_NUMPAD5;
+            break;
+        case XKB_KEY_KP_6:
+            virtualKeyCode = VK_NUMPAD6;
+            break;
+        case XKB_KEY_KP_7:
+            virtualKeyCode = VK_NUMPAD7;
+            break;
+        case XKB_KEY_KP_8:
+            virtualKeyCode = VK_NUMPAD8;
+            break;
+        case XKB_KEY_KP_9:
+            virtualKeyCode = VK_NUMPAD9;
+            break;
+        case XKB_KEY_KP_Decimal:
+            virtualKeyCode = VK_DECIMAL;
+            break;
+        case XKB_KEY_KP_Add:
+            virtualKeyCode = VK_ADD;
+            break;
+        case XKB_KEY_KP_Subtract:
+            virtualKeyCode = VK_SUBTRACT;
+            break;
+        case XKB_KEY_KP_Multiply:
+            virtualKeyCode = VK_MULTIPLY;
+            break;
+        case XKB_KEY_KP_Divide:
+            virtualKeyCode = VK_DIVIDE;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_KP_Enter:
+            virtualKeyCode = VK_RETURN;
+            controlKeyState |= ENHANCED_KEY;
+            break;
+        case XKB_KEY_a:
+        case XKB_KEY_A:
+            virtualKeyCode = 'A';
+            break;
+        case XKB_KEY_b:
+        case XKB_KEY_B:
+            virtualKeyCode = 'B';
+            break;
+        case XKB_KEY_c:
+        case XKB_KEY_C:
+            virtualKeyCode = 'C';
+            break;
+        case XKB_KEY_d:
+        case XKB_KEY_D:
+            virtualKeyCode = 'D';
+            break;
+        case XKB_KEY_e:
+        case XKB_KEY_E:
+            virtualKeyCode = 'E';
+            break;
+        case XKB_KEY_f:
+        case XKB_KEY_F:
+            virtualKeyCode = 'F';
+            break;
+        case XKB_KEY_g:
+        case XKB_KEY_G:
+            virtualKeyCode = 'G';
+            break;
+        case XKB_KEY_h:
+        case XKB_KEY_H:
+            virtualKeyCode = 'H';
+            break;
+        case XKB_KEY_i:
+        case XKB_KEY_I:
+            virtualKeyCode = 'I';
+            break;
+        case XKB_KEY_j:
+        case XKB_KEY_J:
+            virtualKeyCode = 'J';
+            break;
+        case XKB_KEY_k:
+        case XKB_KEY_K:
+            virtualKeyCode = 'K';
+            break;
+        case XKB_KEY_l:
+        case XKB_KEY_L:
+            virtualKeyCode = 'L';
+            break;
+        case XKB_KEY_m:
+        case XKB_KEY_M:
+            virtualKeyCode = 'M';
+            break;
+        case XKB_KEY_n:
+        case XKB_KEY_N:
+            virtualKeyCode = 'N';
+            break;
+        case XKB_KEY_o:
+        case XKB_KEY_O:
+            virtualKeyCode = 'O';
+            break;
+        case XKB_KEY_p:
+        case XKB_KEY_P:
+            virtualKeyCode = 'P';
+            break;
+        case XKB_KEY_q:
+        case XKB_KEY_Q:
+            virtualKeyCode = 'Q';
+            break;
+        case XKB_KEY_r:
+        case XKB_KEY_R:
+            virtualKeyCode = 'R';
+            break;
+        case XKB_KEY_s:
+        case XKB_KEY_S:
+            virtualKeyCode = 'S';
+            break;
+        case XKB_KEY_t:
+        case XKB_KEY_T:
+            virtualKeyCode = 'T';
+            break;
+        case XKB_KEY_u:
+        case XKB_KEY_U:
+            virtualKeyCode = 'U';
+            break;
+        case XKB_KEY_v:
+        case XKB_KEY_V:
+            virtualKeyCode = 'V';
+            break;
+        case XKB_KEY_w:
+        case XKB_KEY_W:
+            virtualKeyCode = 'W';
+            break;
+        case XKB_KEY_x:
+        case XKB_KEY_X:
+            virtualKeyCode = 'X';
+            break;
+        case XKB_KEY_y:
+        case XKB_KEY_Y:
+            virtualKeyCode = 'Y';
+            break;
+        case XKB_KEY_z:
+        case XKB_KEY_Z:
+            virtualKeyCode = 'Z';
+            break;
+        case XKB_KEY_0:
+            virtualKeyCode = '0';
+            break;
+        case XKB_KEY_1:
+            virtualKeyCode = '1';
+            break;
+        case XKB_KEY_2:
+            virtualKeyCode = '2';
+            break;
+        case XKB_KEY_3:
+            virtualKeyCode = '3';
+            break;
+        case XKB_KEY_4:
+            virtualKeyCode = '4';
+            break;
+        case XKB_KEY_5:
+            virtualKeyCode = '5';
+            break;
+        case XKB_KEY_6:
+            virtualKeyCode = '6';
+            break;
+        case XKB_KEY_7:
+            virtualKeyCode = '7';
+            break;
+        case XKB_KEY_8:
+            virtualKeyCode = '8';
+            break;
+        case XKB_KEY_9:
+            virtualKeyCode = '9';
+            break;
+        case XKB_KEY_F1:
+            virtualKeyCode = VK_F1;
+            break;
+        case XKB_KEY_F2:
+            virtualKeyCode = VK_F2;
+            break;
+        case XKB_KEY_F3:
+            virtualKeyCode = VK_F3;
+            break;
+        case XKB_KEY_F4:
+            virtualKeyCode = VK_F4;
+            break;
+        case XKB_KEY_F5:
+            virtualKeyCode = VK_F5;
+            break;
+        case XKB_KEY_F6:
+            virtualKeyCode = VK_F6;
+            break;
+        case XKB_KEY_F7:
+            virtualKeyCode = VK_F7;
+            break;
+        case XKB_KEY_F8:
+            virtualKeyCode = VK_F8;
+            break;
+        case XKB_KEY_F9:
+            virtualKeyCode = VK_F9;
+            break;
+        case XKB_KEY_F10:
+            virtualKeyCode = VK_F10;
+            break;
+        case XKB_KEY_F11:
+            virtualKeyCode = VK_F11;
+            break;
+        case XKB_KEY_F12:
+            virtualKeyCode = VK_F12;
+            break;
+        case XKB_KEY_space:
+            virtualKeyCode = VK_SPACE;
+            break;
+        case XKB_KEY_grave:
+            virtualKeyCode = VK_OEM_3;
+            break;
+        case XKB_KEY_minus:
+            virtualKeyCode = VK_OEM_MINUS;
+            break;
+        case XKB_KEY_equal:
+            virtualKeyCode = VK_OEM_PLUS;
+            break;
+        case XKB_KEY_bracketleft:
+            virtualKeyCode = VK_OEM_4;
+            break;
+        case XKB_KEY_bracketright:
+            virtualKeyCode = VK_OEM_6;
+            break;
+        case XKB_KEY_semicolon:
+            virtualKeyCode = VK_OEM_1;
+            break;
+        case XKB_KEY_apostrophe:
+            virtualKeyCode = VK_OEM_7;
+            break;
+        case XKB_KEY_backslash:
+            virtualKeyCode = VK_OEM_5;
+            break;
+        case XKB_KEY_comma:
+            virtualKeyCode = VK_OEM_COMMA;
+            break;
+        case XKB_KEY_period:
+            virtualKeyCode = VK_OEM_PERIOD;
+            break;
+        case XKB_KEY_slash:
+            virtualKeyCode = VK_OEM_2;
+            break;
         }
 
         if (!modifier) {
-            if (event->modifiers() & Qt::ShiftModifier)   { controlKeyState |= SHIFT_PRESSED; }
-            if (event->modifiers() & Qt::ControlModifier) { controlKeyState |= _isRightCtrlPressed ? RIGHT_CTRL_PRESSED : LEFT_CTRL_PRESSED; }
-            if (event->modifiers() & Qt::AltModifier)     { controlKeyState |= _isRightAltPressed ? RIGHT_ALT_PRESSED : LEFT_ALT_PRESSED; }
+            if (event->modifiers() & Qt::ShiftModifier) {
+                controlKeyState |= SHIFT_PRESSED;
+            }
+            if (event->modifiers() & Qt::ControlModifier) {
+                controlKeyState |= _isRightCtrlPressed ? RIGHT_CTRL_PRESSED : LEFT_CTRL_PRESSED;
+            }
+            if (event->modifiers() & Qt::AltModifier) {
+                controlKeyState |= _isRightAltPressed ? RIGHT_ALT_PRESSED : LEFT_ALT_PRESSED;
+            }
         }
 
-        if (xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_EFFECTIVE)) { controlKeyState |= CAPSLOCK_ON; }
-        if (xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_NUM, XKB_STATE_MODS_EFFECTIVE)) { controlKeyState |= NUMLOCK_ON; }
-        if (xkb_state_led_name_is_active(_xkbData.state_us, XKB_LED_NAME_SCROLL)) { controlKeyState |= SCROLLLOCK_ON; }
+        if (xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_EFFECTIVE)) {
+            controlKeyState |= CAPSLOCK_ON;
+        }
+        if (xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_NUM, XKB_STATE_MODS_EFFECTIVE)) {
+            controlKeyState |= NUMLOCK_ON;
+        }
+        if (xkb_state_led_name_is_active(_xkbData.state_us, XKB_LED_NAME_SCROLL)) {
+            controlKeyState |= SCROLLLOCK_ON;
+        }
 
         uint uchar = 0;
         if (!event->text().isEmpty())
@@ -3279,23 +3542,24 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
             quint16 low_surrogate = (u_prime & 0x3FF) + 0xDC00;
 
             int len1 = snprintf(seq_buffer, sizeof(seq_buffer), "\x1B[%d;%d;%d;%d;%d;%d_",
-                            0, 0, high_surrogate, is_key_down, controlKeyState, 1);
+                                0, 0, high_surrogate, is_key_down, controlKeyState, 1);
             sendString(QByteArray(seq_buffer, len1));
 
             int len2 = snprintf(seq_buffer, sizeof(seq_buffer), "\x1B[%d;%d;%d;%d;%d;%d_",
-                            0, 0, low_surrogate, is_key_down, controlKeyState, 1);
+                                0, 0, low_surrogate, is_key_down, controlKeyState, 1);
             sendString(QByteArray(seq_buffer, len2));
 
         } else {
             int len = snprintf(seq_buffer, sizeof(seq_buffer), "\x1B[%d;%d;%d;%d;%d;%d_",
-                            virtualKeyCode, scanCode, uchar, is_key_down, controlKeyState, 1);
+                               virtualKeyCode, scanCode, uchar, is_key_down, controlKeyState, 1);
             sendString(QByteArray(seq_buffer, len));
         }
         return;
     }
 #endif
 
-    if (event->type() != QEvent::KeyPress) return;
+    if (event->type() != QEvent::KeyPress)
+        return;
 
     const Qt::KeyboardModifiers modifiers = event->modifiers();
     KeyboardTranslator::States states = KeyboardTranslator::NoState;
@@ -3348,9 +3612,7 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
         int cuX = _currentScreen->getCursorX();
         int cuY = _currentScreen->getCursorY();
         bool up = event->key() == Qt::Key_Up;
-        if (((up || event->key() == Qt::Key_Down) && _currentScreen->replMode() == REPL_INPUT && _currentScreen->currentTerminalDisplay()->semanticUpDown())
-            && ((up && _currentScreen->replModeStart() <= std::make_pair(cuY - 1, cuX))
-                || (!up && std::make_pair(cuY + 1, cuX) <= _currentScreen->replModeEnd()))) {
+        if (((up || event->key() == Qt::Key_Down) && _currentScreen->replMode() == REPL_INPUT && _currentScreen->currentTerminalDisplay()->semanticUpDown()) && ((up && _currentScreen->replModeStart() <= std::make_pair(cuY - 1, cuX)) || (!up && std::make_pair(cuY + 1, cuX) <= _currentScreen->replModeEnd()))) {
             entry = _keyTranslator->findEntry(up ? Qt::Key_Left : Qt::Key_Right, Qt::NoModifier, states);
             if (_targetCol == -1) {
                 _targetCol = cuX;
@@ -4053,7 +4315,7 @@ bool Vt102Emulation::processSixel(uint cc)
     default:
         break;
     }
-    QList<char32_t>& s = tokenBuffer;
+    QList<char32_t> &s = tokenBuffer;
     const int p = tokenBufferPos;
 
     if (!m_SixelStarted && (sixel() || s[0] == '!' || s[0] == '#')) {

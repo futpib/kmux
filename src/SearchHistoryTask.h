@@ -91,7 +91,7 @@ private:
     int _startLine;
 
 Q_SIGNALS:
-    void searchResults(const QSet<int>&, int);
+    void searchResults(const QSet<int> &, int);
 };
 
 }

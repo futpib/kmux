@@ -271,7 +271,7 @@ private:
     int _currentLine; // see scrollTo() , currentLine()
     int _currentResultLine;
     bool _trackOutput; // see setTrackOutput() , trackOutput()
-    int _scrollCount; // count of lines which the window has been scrolled by since
+    int _scrollCount;  // count of lines which the window has been scrolled by since
     // the last call to resetScrollCount()
 };
 }

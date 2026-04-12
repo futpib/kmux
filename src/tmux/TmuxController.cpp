@@ -236,7 +236,7 @@ void TmuxController::queryTree(TreeCallback callback)
                                   return;
                               }
                               const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-                              QMap<int, int> sessionIndex; // sessionId -> idx in sessions
+                              QMap<int, int> sessionIndex;            // sessionId -> idx in sessions
                               QMap<QPair<int, int>, int> windowIndex; // (sessionId, windowId) -> idx in that session's windows
                               for (const QString &line : lines) {
                                   const QStringList parts = line.split(QLatin1Char('\t'));

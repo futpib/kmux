@@ -37,10 +37,10 @@ using namespace Konsole;
 // because intense and faint colors are in separate columns
 const int COLOR_TABLE_ROW_LENGTH = TABLE_COLORS / 3;
 
-const int NAME_COLUMN = 0; // column 0 : color names
-const int COLOR_COLUMN = 1; // column 1 : actual colors
+const int NAME_COLUMN = 0;          // column 0 : color names
+const int COLOR_COLUMN = 1;         // column 1 : actual colors
 const int INTENSE_COLOR_COLUMN = 2; // column 2 : intense colors
-const int FAINT_COLOR_COLUMN = 3; // column 2 : faint colors
+const int FAINT_COLOR_COLUMN = 3;   // column 2 : faint colors
 
 ColorSchemeEditor::ColorSchemeEditor(bool supportsTransparentWindows, QWidget *parent)
     : QDialog(parent)

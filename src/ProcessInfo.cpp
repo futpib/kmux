@@ -1288,7 +1288,7 @@ private:
             auto argc = (int)QChar(argcs[0]).unicode();
             if (argc < 1) { // trash
                 return false;
-            } else if (argc == 1) { // just command, no args
+            } else if (argc == 1) {    // just command, no args
                 addArgument(parts[1]); // this is the full path + command
                 return true;
             }

@@ -33,7 +33,10 @@ class KONSOLEPRIVATE_EXPORT TmuxController : public QObject
 {
     Q_OBJECT
 public:
-    enum class State { Idle, Initializing, ApplyingLayout, Dragging };
+    enum class State { Idle,
+                       Initializing,
+                       ApplyingLayout,
+                       Dragging };
 
     TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent = nullptr);
     ~TmuxController() override;

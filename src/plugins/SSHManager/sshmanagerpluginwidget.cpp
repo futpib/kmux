@@ -219,8 +219,8 @@ void SSHManagerTreeWidget::triggerDelete()
 
     const QString text = selection.at(0).data(Qt::DisplayRole).toString();
     const QString dialogMessage = ui->treeView->model()->rowCount(selection.at(0))
-        ? i18n("You are about to delete the folder %1,\n with multiple SSH Configurations, are you sure?", text)
-        : i18n("You are about to delete %1, are you sure?", text);
+                                      ? i18n("You are about to delete the folder %1,\n with multiple SSH Configurations, are you sure?", text)
+                                      : i18n("You are about to delete %1, are you sure?", text);
 
     const QString dontAskAgainKey =
         ui->treeView->model()->rowCount(selection.at(0)) ? QStringLiteral("remove_ssh_folder") : QStringLiteral("remove_ssh_config");

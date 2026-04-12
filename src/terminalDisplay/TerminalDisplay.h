@@ -694,11 +694,11 @@ private:
 
     QVBoxLayout *_verticalLayout = nullptr;
 
-    int _lines = 1; // the number of lines that can be displayed in the widget
+    int _lines = 1;   // the number of lines that can be displayed in the widget
     int _columns = 1; // the number of columns that can be displayed in the widget
 
     int _forcedColumns = 0; // when >0, overrides _columns calculation in calcGeometry()
-    int _forcedLines = 0; // when >0, overrides _lines calculation in calcGeometry()
+    int _forcedLines = 0;   // when >0, overrides _lines calculation in calcGeometry()
 
     int _linesAtLastOsd = 1;
     int _columnsAtLastOsd = 1;
@@ -734,10 +734,10 @@ private:
     bool _allowMouseTracking = true;
     bool _bracketedPasteMode = false;
 
-    QPoint _iPntSel; // initial selection point
-    QPoint _pntSel; // current selection point
+    QPoint _iPntSel;        // initial selection point
+    QPoint _pntSel;         // current selection point
     QPoint _tripleSelBegin; // help avoid flicker
-    int _actSel = 0; // selection state
+    int _actSel = 0;        // selection state
     bool _wordSelectionMode = false;
     bool _lineSelectionMode = false;
     bool _preserveLineBreaks = true;
@@ -750,28 +750,28 @@ private:
     QString _wordCharacters;
     TerminalBell _bell{Enum::NotifyBell};
 
-    bool _allowBlinkingText = true; // allow text to blink
-    bool _allowBlinkingCursor = false; // allow cursor to blink
+    bool _allowBlinkingText = true;     // allow text to blink
+    bool _allowBlinkingCursor = false;  // allow cursor to blink
     bool _allowAnimatingCursor = false; // allow cursor to animate
-    bool _textBlinking = false; // text is blinking, hide it when drawing
-    bool _cursorBlinking = false; // cursor is blinking, hide it when drawing
-    bool _cursorAnimating = false; // cursor is animating, animate it when drawing
-    bool _hasTextBlinker = false; // has characters to blink
+    bool _textBlinking = false;         // text is blinking, hide it when drawing
+    bool _cursorBlinking = false;       // cursor is blinking, hide it when drawing
+    bool _cursorAnimating = false;      // cursor is animating, animate it when drawing
+    bool _hasTextBlinker = false;       // has characters to blink
     QTimer *_blinkTextTimer = nullptr;
     QTimer *_blinkCursorTimer = nullptr;
 
     bool _openLinksByDirectClick = false; // Open URL and hosts by single mouse click
 
     bool _ctrlRequiredForDrag = true; // require Ctrl key for drag selected text
-    bool _dropUrlsAsText = false; // always paste URLs as text without showing copy/move menu
+    bool _dropUrlsAsText = false;     // always paste URLs as text without showing copy/move menu
 
     Enum::TripleClickModeEnum _tripleClickMode = Enum::SelectWholeLine;
-    bool _possibleTripleClick = false; // is set in mouseDoubleClickEvent and cleared
-                                       // after QApplication::doubleClickInterval() delay
-    QPoint _tripleClickPos = QPoint(0, 0); // The position where a potential triple click was started
+    bool _possibleTripleClick = false;            // is set in mouseDoubleClickEvent and cleared
+                                                  // after QApplication::doubleClickInterval() delay
+    QPoint _tripleClickPos = QPoint(0, 0);        // The position where a potential triple click was started
     QString _doubleClickSelectedText = QString(); // selected text whose copying may be cancelled by further events; copying
     QString _doubleClickSelectedHtml = QString(); // is delayed to prevent a triple-click from generating > 1 entries in the
-                                      // clipboard history (a triple click is a double click at first ;)
+                                                  // clipboard history (a triple click is a double click at first ;)
 
     QLabel *_resizeWidget = nullptr;
     QTimer *_resizeTimer = nullptr;
@@ -804,11 +804,11 @@ private:
 
     SessionController *_sessionController = nullptr;
 
-    bool _trimLeadingSpaces = false; // trim leading spaces in selected text
+    bool _trimLeadingSpaces = false;  // trim leading spaces in selected text
     bool _trimTrailingSpaces = false; // trim trailing spaces in selected text
-    bool _mouseWheelZoom = false; // enable mouse wheel zooming or not
+    bool _mouseWheelZoom = false;     // enable mouse wheel zooming or not
 
-    int _margin = 1; // the contents margin
+    int _margin = 1;              // the contents margin
     bool _centerContents = false; // center the contents between margins
 
     KMessageWidget *_readOnlyMessageWidget = nullptr; // Message shown at the top when read-only mode gets activated

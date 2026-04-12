@@ -20,7 +20,7 @@ namespace Konsole
  * When a PopStackOnExit instance is destroyed, elements are removed from the stack
  * until the stack count is reduced the value when the PopStackOnExit instance was created.
  */
-template<class T>
+template <class T>
 class PopStackOnExit
 {
 public:

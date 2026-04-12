@@ -347,8 +347,7 @@ void TmuxResizeCoordinator::sendClientSize()
             lastSize = QSize(totalCols, totalLines);
             _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
                                       .flag(QStringLiteral("-C"))
-                                      .arg(QLatin1Char('@') + QString::number(windowId) + QLatin1Char(':') + QString::number(totalCols) + QLatin1Char('x')
-                                           + QString::number(totalLines)));
+                                      .arg(QLatin1Char('@') + QString::number(windowId) + QLatin1Char(':') + QString::number(totalCols) + QLatin1Char('x') + QString::number(totalLines)));
         } else {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: windowId=" << windowId << "size unchanged at" << lastSize << "→ skipping";
         }

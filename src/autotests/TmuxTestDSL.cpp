@@ -90,8 +90,6 @@ QStringList dedentLines(const QString &text)
     return result;
 }
 
-
-
 QChar charAt(const QStringList &lines, int row, int col)
 {
     if (row < 0 || row >= lines.size()) {
@@ -191,13 +189,13 @@ TmuxTestDSL::LayoutSpec parseRegion(const QStringList &lines, int top, int left,
     for (int col = left + 1; col < right; ++col) {
         QChar topChar = charAt(lines, top, col);
         QChar botChar = charAt(lines, bottom, col);
-        if ((topChar == QChar(0x252C) || topChar == QChar(0x253C)) // ┬ or ┼
+        if ((topChar == QChar(0x252C) || topChar == QChar(0x253C))       // ┬ or ┼
             && (botChar == QChar(0x2534) || botChar == QChar(0x253C))) { // ┴ or ┼
             // Verify the divider runs the full height
             bool fullDivider = true;
             for (int row = top + 1; row < bottom; ++row) {
                 QChar ch = charAt(lines, row, col);
-                if (ch != QChar(0x2502) && ch != QChar(0x253C) // │ or ┼
+                if (ch != QChar(0x2502) && ch != QChar(0x253C)       // │ or ┼
                     && ch != QChar(0x251C) && ch != QChar(0x2524)) { // ├ or ┤
                     fullDivider = false;
                     break;
@@ -229,13 +227,13 @@ TmuxTestDSL::LayoutSpec parseRegion(const QStringList &lines, int top, int left,
     for (int row = top + 1; row < bottom; ++row) {
         QChar leftChar = charAt(lines, row, left);
         QChar rightChar = charAt(lines, row, right);
-        if ((leftChar == QChar(0x251C) || leftChar == QChar(0x253C)) // ├ or ┼
+        if ((leftChar == QChar(0x251C) || leftChar == QChar(0x253C))         // ├ or ┼
             && (rightChar == QChar(0x2524) || rightChar == QChar(0x253C))) { // ┤ or ┼
             // Verify the divider runs the full width
             bool fullDivider = true;
             for (int col = left + 1; col < right; ++col) {
                 QChar ch = charAt(lines, row, col);
-                if (ch != QChar(0x2500) && ch != QChar(0x253C) // ─ or ┼
+                if (ch != QChar(0x2500) && ch != QChar(0x253C)       // ─ or ┼
                     && ch != QChar(0x252C) && ch != QChar(0x2534)) { // ┬ or ┴
                     fullDivider = false;
                     break;
@@ -1020,7 +1018,6 @@ void setupTmuxSession(const DiagramSpec &spec, const QString &tmuxPath, const QS
             QCOMPARE(actualHeight, expectedDims[i].second);
         }
     }
-
 }
 
 void attachKonsole(const QString &tmuxPath, const SessionContext &ctx, AttachResult &result)

@@ -258,11 +258,11 @@ void ViewSplitter::handleFocusDirection(Qt::Orientation orientation, int directi
     const auto startMapped = parentSplitter->mapTo(topSplitter, start);
 
     const int newX = orientation != Qt::Horizontal ? startMapped.x() + handleWidth
-        : direction == 1                           ? startMapped.x() + terminalDisplay->width() + handleWidth
+                     : direction == 1              ? startMapped.x() + terminalDisplay->width() + handleWidth
                                                    : startMapped.x() - handleWidth;
 
     const int newY = orientation != Qt::Vertical ? startMapped.y() + handleWidth
-        : direction == 1                         ? startMapped.y() + terminalDisplay->height() + handleWidth
+                     : direction == 1            ? startMapped.y() + terminalDisplay->height() + handleWidth
                                                  : startMapped.y() - handleWidth;
 
     const auto newPoint = QPoint(newX, newY);
@@ -411,12 +411,9 @@ void ViewSplitter::handleMinimizeMaximize(bool maximize, bool zoom)
             // This is very inexact, which is fine, because the aspect ratio of
             // both the scaled font and the terminal can differ anyway.
             auto scaleFactor = std::min(
-                (topLevelSplitter->width() - scrollBarWidth)
-                / (currentTerminalDisplay->width() - scrollBarWidth),
+                (topLevelSplitter->width() - scrollBarWidth) / (currentTerminalDisplay->width() - scrollBarWidth),
 
-                (topLevelSplitter->height() - headerBarHeight)
-                / (currentTerminalDisplay->height() - headerBarHeight)
-            );
+                (topLevelSplitter->height() - headerBarHeight) / (currentTerminalDisplay->height() - headerBarHeight));
             auto newSize = int(fontSizeBeforeMaximization * scaleFactor * 0.97);
 
             if (newSize > fontSizeBeforeMaximization) {
@@ -656,7 +653,7 @@ void Konsole::ViewSplitter::dropEvent(QDropEvent *ev)
 
             // topLevel is the splitter that's connected with the ViewManager
             // that in turn can call the SessionController.
-            Q_EMIT getToplevelSplitter()->terminalDisplayDropped(source);
+            Q_EMIT getToplevelSplitter() -> terminalDisplayDropped(source);
             source->setVisible(true);
             currentDragTarget = nullptr;
 
@@ -814,11 +811,9 @@ void Konsole::ViewSplitterHandle::mouseDoubleClickEvent(QMouseEvent *ev)
                 continue;
             }
             if (orientation() == Qt::Horizontal) {
-                moveSplitter(parentSplitter->widget(i - 1)->pos().x()
-                             + ((parentSplitter->widget(i)->pos().x() + parentSplitter->widget(i)->width() - (parentSplitter->widget(i - 1)->pos().x())) / 2));
+                moveSplitter(parentSplitter->widget(i - 1)->pos().x() + ((parentSplitter->widget(i)->pos().x() + parentSplitter->widget(i)->width() - (parentSplitter->widget(i - 1)->pos().x())) / 2));
             } else {
-                moveSplitter(parentSplitter->widget(i - 1)->pos().y()
-                             + ((parentSplitter->widget(i)->pos().y() + parentSplitter->widget(i)->height() - (parentSplitter->widget(i - 1)->pos().y())) / 2));
+                moveSplitter(parentSplitter->widget(i - 1)->pos().y() + ((parentSplitter->widget(i)->pos().y() + parentSplitter->widget(i)->height() - (parentSplitter->widget(i - 1)->pos().y())) / 2));
             }
             break;
         }

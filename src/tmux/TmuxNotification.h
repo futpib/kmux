@@ -54,7 +54,8 @@ struct TmuxSessionRenamedNotification {
     QString name;
 };
 
-struct TmuxSessionsChangedNotification {};
+struct TmuxSessionsChangedNotification {
+};
 
 struct TmuxSessionWindowChangedNotification {
     int sessionId;
@@ -84,20 +85,20 @@ struct TmuxExitNotification {
 };
 
 using TmuxNotification = std::variant<TmuxOutputNotification,
-                                       TmuxLayoutChangedNotification,
-                                       TmuxWindowAddedNotification,
-                                       TmuxWindowClosedNotification,
-                                       TmuxWindowRenamedNotification,
-                                       TmuxWindowPaneChangedNotification,
-                                       TmuxSessionChangedNotification,
-                                       TmuxSessionRenamedNotification,
-                                       TmuxSessionsChangedNotification,
-                                       TmuxSessionWindowChangedNotification,
-                                       TmuxPanePausedNotification,
-                                       TmuxPaneContinuedNotification,
-                                       TmuxClientSessionChangedNotification,
-                                       TmuxClientDetachedNotification,
-                                       TmuxExitNotification>;
+                                      TmuxLayoutChangedNotification,
+                                      TmuxWindowAddedNotification,
+                                      TmuxWindowClosedNotification,
+                                      TmuxWindowRenamedNotification,
+                                      TmuxWindowPaneChangedNotification,
+                                      TmuxSessionChangedNotification,
+                                      TmuxSessionRenamedNotification,
+                                      TmuxSessionsChangedNotification,
+                                      TmuxSessionWindowChangedNotification,
+                                      TmuxPanePausedNotification,
+                                      TmuxPaneContinuedNotification,
+                                      TmuxClientSessionChangedNotification,
+                                      TmuxClientDetachedNotification,
+                                      TmuxExitNotification>;
 
 } // namespace Konsole
 

@@ -39,9 +39,11 @@ struct PaneSpec {
 };
 
 struct LayoutSpec {
-    enum Type { Leaf, HSplit, VSplit };
+    enum Type { Leaf,
+                HSplit,
+                VSplit };
     Type type = Leaf;
-    PaneSpec pane; // Leaf only
+    PaneSpec pane;              // Leaf only
     QList<LayoutSpec> children; // Split only
 };
 

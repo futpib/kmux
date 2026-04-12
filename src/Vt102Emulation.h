@@ -16,7 +16,6 @@
 #include <QVector>
 #include <QList>
 
-
 // Konsole
 #include "Emulation.h"
 #include "Screen.h"
@@ -29,36 +28,36 @@
 class QTimer;
 class QKeyEvent;
 
-#define MODE_AppCuKeys (MODES_SCREEN + 0) // Application cursor keys (DECCKM)
-#define MODE_AppKeyPad (MODES_SCREEN + 1) //
-#define MODE_Mouse1000 (MODES_SCREEN + 2) // Send mouse X,Y position on press and release
-#define MODE_Mouse1001 (MODES_SCREEN + 3) // Use Highlight mouse tracking
-#define MODE_Mouse1002 (MODES_SCREEN + 4) // Use cell motion mouse tracking
-#define MODE_Mouse1003 (MODES_SCREEN + 5) // Use all motion mouse tracking
-#define MODE_Mouse1005 (MODES_SCREEN + 6) // Xterm-style extended coordinates
-#define MODE_Mouse1006 (MODES_SCREEN + 7) // 2nd Xterm-style extended coordinates
-#define MODE_Mouse1007 (MODES_SCREEN + 8) // XTerm Alternate Scroll mode; also check AlternateScrolling profile property
-#define MODE_Mouse1015 (MODES_SCREEN + 9) // Urxvt-style extended coordinates
-#define MODE_Mouse1016 (MODES_SCREEN + 10) // 2nd Xterm-style extended coordinates (in pixels)
-#define MODE_Ansi (MODES_SCREEN + 11) // Use US Ascii for character sets G0-G3 (DECANM)
-#define MODE_132Columns (MODES_SCREEN + 12) // 80 <-> 132 column mode switch (DECCOLM)
-#define MODE_Allow132Columns (MODES_SCREEN + 13) // Allow DECCOLM mode
-#define MODE_BracketedPaste (MODES_SCREEN + 14) // Xterm-style bracketed paste mode
-#define MODE_Sixel (MODES_SCREEN + 15) // Xterm-style bracketed paste mode
+#define MODE_AppCuKeys          (MODES_SCREEN + 0)  // Application cursor keys (DECCKM)
+#define MODE_AppKeyPad          (MODES_SCREEN + 1)  //
+#define MODE_Mouse1000          (MODES_SCREEN + 2)  // Send mouse X,Y position on press and release
+#define MODE_Mouse1001          (MODES_SCREEN + 3)  // Use Highlight mouse tracking
+#define MODE_Mouse1002          (MODES_SCREEN + 4)  // Use cell motion mouse tracking
+#define MODE_Mouse1003          (MODES_SCREEN + 5)  // Use all motion mouse tracking
+#define MODE_Mouse1005          (MODES_SCREEN + 6)  // Xterm-style extended coordinates
+#define MODE_Mouse1006          (MODES_SCREEN + 7)  // 2nd Xterm-style extended coordinates
+#define MODE_Mouse1007          (MODES_SCREEN + 8)  // XTerm Alternate Scroll mode; also check AlternateScrolling profile property
+#define MODE_Mouse1015          (MODES_SCREEN + 9)  // Urxvt-style extended coordinates
+#define MODE_Mouse1016          (MODES_SCREEN + 10) // 2nd Xterm-style extended coordinates (in pixels)
+#define MODE_Ansi               (MODES_SCREEN + 11) // Use US Ascii for character sets G0-G3 (DECANM)
+#define MODE_132Columns         (MODES_SCREEN + 12) // 80 <-> 132 column mode switch (DECCOLM)
+#define MODE_Allow132Columns    (MODES_SCREEN + 13) // Allow DECCOLM mode
+#define MODE_BracketedPaste     (MODES_SCREEN + 14) // Xterm-style bracketed paste mode
+#define MODE_Sixel              (MODES_SCREEN + 15) // Xterm-style bracketed paste mode
 #define MODE_SynchronizedUpdate (MODES_SCREEN + 16) // Synchronized update in progress
-#define MODE_Win32Input (MODES_SCREEN + 17)
-#define MODE_total (MODES_SCREEN + 18)
+#define MODE_Win32Input         (MODES_SCREEN + 17)
+#define MODE_total              (MODES_SCREEN + 18)
 
 namespace Konsole
 {
 struct CharCodes {
     // coding info
     char charset[4]; //
-    int cu_cs; // actual charset.
-    bool graphic; // Some VT100 tricks
-    bool pound; // Some VT100 tricks
+    int cu_cs;       // actual charset.
+    bool graphic;    // Some VT100 tricks
+    bool pound;      // Some VT100 tricks
     bool sa_graphic; // saved graphic
-    bool sa_pound; // saved pound
+    bool sa_pound;   // saved pound
 };
 
 /**
@@ -348,7 +347,7 @@ private:
 
     // Sixel:
 #define MAX_SIXEL_COLORS 256
-#define MAX_IMAGE_DIM 16384
+#define MAX_IMAGE_DIM    16384
     void sixelQuery(int query);
     bool processSixel(uint cc);
     void SixelModeEnable(int width, int height /*, bool preserveBackground*/);

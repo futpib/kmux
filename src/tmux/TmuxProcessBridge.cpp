@@ -64,7 +64,7 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
         return false;
     }
-    _socketFd = fds[0]; // parent reads from this end
+    _socketFd = fds[0];   // parent reads from this end
     int childFd = fds[1]; // child writes to this end (becomes stdout)
 
     // Set parent end non-blocking for QSocketNotifier

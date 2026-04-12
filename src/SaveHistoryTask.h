@@ -48,7 +48,7 @@ private:
     {
     public:
         QPointer<Session> session; // the session associated with a history save job
-        int lastLineFetched; // the last line processed in the previous data request
+        int lastLineFetched;       // the last line processed in the previous data request
         // set this to -1 at the start of the save job
 
         TerminalCharacterDecoder *decoder; // decoder used to convert terminal characters

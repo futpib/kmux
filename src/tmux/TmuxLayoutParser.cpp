@@ -176,9 +176,7 @@ QString TmuxLayoutParser::serialize(const TmuxLayoutNode &root)
 
 void TmuxLayoutParser::serializeNode(const TmuxLayoutNode &node, QString &output)
 {
-    output += QString::number(node.width) + QLatin1Char('x') + QString::number(node.height)
-        + QLatin1Char(',') + QString::number(node.xOffset)
-        + QLatin1Char(',') + QString::number(node.yOffset);
+    output += QString::number(node.width) + QLatin1Char('x') + QString::number(node.height) + QLatin1Char(',') + QString::number(node.xOffset) + QLatin1Char(',') + QString::number(node.yOffset);
 
     if (node.type == TmuxLayoutNodeType::Leaf) {
         output += QLatin1Char(',') + QString::number(node.paneId);

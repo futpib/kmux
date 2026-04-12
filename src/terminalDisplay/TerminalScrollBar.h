@@ -102,7 +102,7 @@ public Q_SLOTS:
 
     void scrollBarPositionChanged(int value);
     void highlightScrolledLinesEvent();
-    void searchLines(const QSet<int>&, int);
+    void searchLines(const QSet<int> &, int);
     void clearSearchLines();
 
     // Reimplementation to paint scrollbar markers over the standard drawing

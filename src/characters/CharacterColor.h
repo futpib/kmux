@@ -17,8 +17,8 @@ namespace Konsole
 
 // Colors
 
-#define BASE_COLORS (2 + 8)
-#define INTENSITIES 3
+#define BASE_COLORS  (2 + 8)
+#define INTENSITIES  3
 #define TABLE_COLORS (INTENSITIES * BASE_COLORS)
 
 enum ColorTableIndex {
@@ -56,8 +56,8 @@ enum ColorTableIndex {
     Color7FaintIndex,
 };
 
-#define DEFAULT_FORE_COLOR 0
-#define DEFAULT_BACK_COLOR 1
+#define DEFAULT_FORE_COLOR    0
+#define DEFAULT_BACK_COLOR    1
 
 /* CharacterColor is a union of the various color spaces.
 
@@ -78,10 +78,10 @@ enum ColorTableIndex {
 */
 
 #define COLOR_SPACE_UNDEFINED 0
-#define COLOR_SPACE_DEFAULT 1
-#define COLOR_SPACE_SYSTEM 2
-#define COLOR_SPACE_256 3
-#define COLOR_SPACE_RGB 4
+#define COLOR_SPACE_DEFAULT   1
+#define COLOR_SPACE_SYSTEM    2
+#define COLOR_SPACE_256       3
+#define COLOR_SPACE_RGB       4
 
 /**
  * Describes the color of a single character in the terminal.

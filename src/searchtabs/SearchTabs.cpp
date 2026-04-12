@@ -187,8 +187,7 @@ bool SearchTabs::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         if (obj == m_inputLine) {
-            const bool forward2list = (keyEvent->key() == Qt::Key_Up) || (keyEvent->key() == Qt::Key_Down) || (keyEvent->key() == Qt::Key_PageUp)
-                || (keyEvent->key() == Qt::Key_PageDown);
+            const bool forward2list = (keyEvent->key() == Qt::Key_Up) || (keyEvent->key() == Qt::Key_Down) || (keyEvent->key() == Qt::Key_PageUp) || (keyEvent->key() == Qt::Key_PageDown);
 
             if (forward2list) {
                 QCoreApplication::sendEvent(m_listView, event);
@@ -196,8 +195,7 @@ bool SearchTabs::eventFilter(QObject *obj, QEvent *event)
             }
 
         } else if (obj == m_listView) {
-            const bool forward2input = (keyEvent->key() != Qt::Key_Up) && (keyEvent->key() != Qt::Key_Down) && (keyEvent->key() != Qt::Key_PageUp)
-                && (keyEvent->key() != Qt::Key_PageDown) && (keyEvent->key() != Qt::Key_Tab) && (keyEvent->key() != Qt::Key_Backtab);
+            const bool forward2input = (keyEvent->key() != Qt::Key_Up) && (keyEvent->key() != Qt::Key_Down) && (keyEvent->key() != Qt::Key_PageUp) && (keyEvent->key() != Qt::Key_PageDown) && (keyEvent->key() != Qt::Key_Tab) && (keyEvent->key() != Qt::Key_Backtab);
 
             if (forward2input) {
                 QCoreApplication::sendEvent(m_inputLine, event);

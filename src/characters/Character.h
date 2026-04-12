@@ -375,8 +375,7 @@ public:
     {
         const QChar::Script script = QChar::script(lhs.baseCodePoint());
         const QChar::Script currentScript = QChar::script(baseCodePoint());
-        if (currentScript == QChar::Script_Common || script == QChar::Script_Common || currentScript == QChar::Script_Inherited
-            || script == QChar::Script_Inherited) {
+        if (currentScript == QChar::Script_Common || script == QChar::Script_Common || currentScript == QChar::Script_Inherited || script == QChar::Script_Inherited) {
             return true;
         }
         return currentScript == script;

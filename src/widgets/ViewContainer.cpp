@@ -894,7 +894,6 @@ void TabbedViewContainer::toggleMaximizeCurrentTerminal()
     activeViewSplitter()->toggleMaximizeCurrentTerminal();
 }
 
-
 void TabbedViewContainer::toggleZoomMaximizeCurrentTerminal()
 {
     if (auto *terminal = qobject_cast<TerminalDisplay *>(sender())) {

@@ -47,7 +47,7 @@ using namespace Konsole;
 // notably moveImage() and clearImage().
 // This macro converts from an X,Y position into an image offset.
 #ifndef loc
-#define loc(X, Y) ((Y)*_columns + (X))
+#define loc(X, Y) ((Y) * _columns + (X))
 #endif
 
 const Character Screen::DefaultChar = Character(' ',
@@ -291,7 +291,7 @@ int Screen::selSetSelectionEnd(int mode)
         }
     }
     setSelectionEnd(x, y, false);
-    Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+    Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
     return 0;
 }
 
@@ -681,8 +681,7 @@ void Screen::resizeImage(int new_lines, int new_columns)
             }
 
             // If need to move to line below, copy from the current line, to the next one.
-            if (lineSize > new_columns
-                && !(_lineProperties.at(currentPos).flags.f.doubleheight_bottom | _lineProperties.at(currentPos).flags.f.doubleheight_top)) {
+            if (lineSize > new_columns && !(_lineProperties.at(currentPos).flags.f.doubleheight_bottom | _lineProperties.at(currentPos).flags.f.doubleheight_top)) {
                 auto values = _screenLines.at(currentPos).mid(new_columns);
                 _screenLines[currentPos].resize(new_columns);
                 LineProperty newLineProperty = _lineProperties.at(currentPos);
@@ -1109,8 +1108,7 @@ void Screen::displayCharacter(uint c)
         return;
     } else if (category == QChar::Mark_SpacingCombining || w == 0 || Character::emoji(c) || c == 0x20E3 || (_ignoreWcWidth && c == 0x00AD)) {
         bool emoji = Character::emoji(c);
-        if (category != QChar::Mark_SpacingCombining && category != QChar::Mark_NonSpacing && category != QChar::Letter_Other && category != QChar::Other_Format
-            && !emoji && c != 0x20E3 && c != 0x00AD) {
+        if (category != QChar::Mark_SpacingCombining && category != QChar::Mark_NonSpacing && category != QChar::Letter_Other && category != QChar::Other_Format && !emoji && c != 0x20E3 && c != 0x00AD) {
             return;
         }
         // Find previous "real character" to try to combine with
@@ -1152,8 +1150,7 @@ void Screen::displayCharacter(uint c)
 
         if (c == 0x20E3) {
             // Combining Enclosing Keycap - only combines with presentation mode #,*,0-9
-            if ((currentChar.character != 0x23 && currentChar.character != 0x2A && (currentChar.character < '0' || currentChar.character > '9'))
-                || (currentChar.flags & EF_EMOJI_REPRESENTATION) == 0) {
+            if ((currentChar.character != 0x23 && currentChar.character != 0x2A && (currentChar.character < '0' || currentChar.character > '9')) || (currentChar.flags & EF_EMOJI_REPRESENTATION) == 0) {
                 // Is this the right thing TODO?
                 return;
             }
@@ -1296,10 +1293,7 @@ notcombine:
     if (c <= '~' && c > ' ') {
         currentChar.flags |= EF_ASCII_WORD;
     }
-    if (c >= 0x900
-        && (c <= 0x109f || (c >= 0x1700 && c <= 0x18af) || (c >= 0x1900 && c <= 0x1aaf) || (c >= 0x1b00 && c <= 0x1c4f) || (c >= 0xa800 && c <= 0xa82f)
-            || (c >= 0xa840 && c <= 0xa95f) || (c >= 0xa980 && c <= 0xaaff) || (c >= 0xabc0 && c <= 0xabff) || (c >= 0x10a00 && c <= 0x10a5f)
-            || (c >= 0x11000 && c <= 0x11fff))) {
+    if (c >= 0x900 && (c <= 0x109f || (c >= 0x1700 && c <= 0x18af) || (c >= 0x1900 && c <= 0x1aaf) || (c >= 0x1b00 && c <= 0x1c4f) || (c >= 0xa800 && c <= 0xa82f) || (c >= 0xa840 && c <= 0xa95f) || (c >= 0xa980 && c <= 0xaaff) || (c >= 0xabc0 && c <= 0xabff) || (c >= 0x10a00 && c <= 0x10a5f) || (c >= 0x11000 && c <= 0x11fff))) {
         currentChar.flags |= EF_BRAHMIC_WORD;
     }
 
@@ -1597,7 +1591,7 @@ void Screen::moveImage(int dest, int sourceBegin, int sourceEnd)
         const int diff = dest - sourceBegin; // Scroll by this amount
         const int scr_TL = loc(0, _history->getLines());
         const int srca = sourceBegin + scr_TL; // Translate index from screen to global
-        const int srce = sourceEnd + scr_TL; // Translate index from screen to global
+        const int srce = sourceEnd + scr_TL;   // Translate index from screen to global
         const int desta = srca + diff;
         const int deste = srce + diff;
 
@@ -1899,7 +1893,7 @@ void Screen::selectReplContigious(const int x, const int y)
     if (_replMode == REPL_INPUT && _replModeStart <= std::pair(y, x) && std::pair(y, x) <= _replModeEnd) {
         setSelectionStart(_replModeStart.second, _replModeStart.first, false);
         setSelectionEnd(_replModeEnd.second, _replModeEnd.first, true);
-        Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+        Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
         return;
     }
     int col = x;
@@ -1972,7 +1966,7 @@ void Screen::selectReplContigious(const int x, const int y)
     }
     setSelectionStart(startX, startY, false);
     setSelectionEnd(endX, endY, true);
-    Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+    Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
 }
 
 QString Screen::selectedText(const DecodingOptions options) const
@@ -2299,9 +2293,7 @@ int Screen::copyLineToStream(int line,
         int p = 0;
         for (int i = 0; i < count; i++) {
             Character c = characterBuffer[spacesCount + i];
-            if (((options & ExcludePrompt) != 0 && (c.flags & EF_REPL) == EF_REPL_PROMPT)
-                || ((options & ExcludeInput) != 0 && (c.flags & EF_REPL) == EF_REPL_INPUT)
-                || ((options & ExcludeOutput) != 0 && (c.flags & EF_REPL) == EF_REPL_OUTPUT)) {
+            if (((options & ExcludePrompt) != 0 && (c.flags & EF_REPL) == EF_REPL_PROMPT) || ((options & ExcludeInput) != 0 && (c.flags & EF_REPL) == EF_REPL_INPUT) || ((options & ExcludeOutput) != 0 && (c.flags & EF_REPL) == EF_REPL_OUTPUT)) {
                 continue;
             }
             newBuffer[p++] = c;
@@ -2498,7 +2490,7 @@ void Screen::setReplMode(int mode)
             _hasRepl = true;
             currentTerminalDisplay()->sessionController()->setVisible(QStringLiteral("monitor-prompt"), true);
         }
-        Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged(); // Enable copy action
+        Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged(); // Enable copy action
         setLineProperty(LINE_PROMPT_START << (mode - REPL_PROMPT), true);
     }
 }
@@ -2726,8 +2718,7 @@ void Screen::delPlacements(int del, qint64 id, qint64 pid, int x, int y, int z)
             }
             break;
         case 'q':
-            if (placement->col <= x && x < placement->col + placement->cols && placement->row <= y && y < placement->row + placement->rows
-                && placement->z == z) {
+            if (placement->col <= x && x < placement->col + placement->cols && placement->row <= y && y < placement->row + placement->rows && placement->z == z) {
                 remove = true;
             }
             break;

@@ -435,7 +435,6 @@ void TmuxLayoutManager::collectDisplays(ViewSplitter *splitter, QMap<int, Termin
     }
 }
 
-
 void TmuxLayoutManager::buildSplitterTree(ViewSplitter *splitter, const TmuxLayoutNode &node, QMap<int, TerminalDisplay *> &existingDisplays)
 {
     auto getOrCreateDisplay = [&](int paneId) -> TerminalDisplay * {

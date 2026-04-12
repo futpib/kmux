@@ -309,8 +309,7 @@ void TmuxGateway::sendKeys(int paneId, const QByteArray &data)
     // Literal-safe: ASCII alphanumeric, selected special chars (following iTerm2),
     // and UTF-8 multi-byte sequences (e.g. Cyrillic, CJK, emoji).
     auto isAsciiLiteral = [](char c) -> bool {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == ')' || c == ':' || c == ','
-            || c == '_';
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == ')' || c == ':' || c == ',' || c == '_';
     };
 
     auto isUtf8LeadByte = [](unsigned char c) -> bool {
@@ -381,8 +380,8 @@ void TmuxGateway::sendKeys(int paneId, const QByteArray &data)
                 i++;
             }
             sendCommand(TmuxCommand(QStringLiteral("send-keys"))
-                             .paneTarget(paneId)
-                             .arg(hexParts.join(QLatin1Char(' '))));
+                            .paneTarget(paneId)
+                            .arg(hexParts.join(QLatin1Char(' '))));
         }
     }
 }

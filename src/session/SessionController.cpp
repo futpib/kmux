@@ -1952,8 +1952,7 @@ void SessionController::clearHistoryAndReset()
 
 static QList<TerminalDisplay *> siblingDisplaysForSync(TerminalDisplay *display)
 {
-    if (!display->sessionController() || !display->sessionController()->session()
-        || display->sessionController()->session()->paneSyncPolicy() != Session::PaneSyncPolicy::SyncWithSiblings) {
+    if (!display->sessionController() || !display->sessionController()->session() || display->sessionController()->session()->paneSyncPolicy() != Session::PaneSyncPolicy::SyncWithSiblings) {
         return {};
     }
     auto *splitter = qobject_cast<ViewSplitter *>(display->parentWidget());
@@ -2094,8 +2093,7 @@ void SessionController::appendHamburgerMenuIfNeeded(QMenu *menu)
                                                  actions.end(),
                                                  [&hambugerMenuName](const QAction *action) {
                                                      return action && action->objectName() == hambugerMenuName;
-                                                 })
-        != actions.end();
+                                                 }) != actions.end();
     if (hamburgerMenuFound) {
         return;
     }

@@ -21,9 +21,9 @@
 class QString;
 class QButtonGroup;
 class QAbstractButton;
-template<typename T>
+template <typename T>
 class QList;
-template<class Key, class T>
+template <class Key, class T>
 class QMap;
 
 namespace Konsole

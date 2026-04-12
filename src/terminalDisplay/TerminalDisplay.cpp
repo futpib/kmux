@@ -340,7 +340,8 @@ TerminalDisplay::TerminalDisplay(QWidget *parent)
 
         currentCursorRect.moveTo(newX, newY);
 
-        if (qAbs(currentCursorRect.x() - targetCursorRect.x()) < 0.1 && qAbs(currentCursorRect.y() - targetCursorRect.y()) < 0.1) { }
+        if (qAbs(currentCursorRect.x() - targetCursorRect.x()) < 0.1 && qAbs(currentCursorRect.y() - targetCursorRect.y()) < 0.1) {
+        }
         update();
     });
 }
@@ -487,8 +488,7 @@ void TerminalDisplay::updateImage()
         // if the flow control warning is enabled this will interfere with the
         // scrolling optimizations and cause artifacts.  the simple solution here
         // is to just disable the optimization whilst it is visible
-        if (!((_outputSuspendedMessageWidget != nullptr) && _outputSuspendedMessageWidget->isVisible())
-            && !((_readOnlyMessageWidget != nullptr) && _readOnlyMessageWidget->isVisible())) {
+        if (!((_outputSuspendedMessageWidget != nullptr) && _outputSuspendedMessageWidget->isVisible()) && !((_readOnlyMessageWidget != nullptr) && _readOnlyMessageWidget->isVisible())) {
             // hide terminal size label to prevent it being scrolled and show again after scroll
             const bool viewResizeWidget = (_resizeWidget != nullptr) && _resizeWidget->isVisible();
             if (viewResizeWidget) {
@@ -588,8 +588,7 @@ void TerminalDisplay::updateImage()
 
                         const bool nextIsDoubleWidth = (x + len + 1 == columnsToUpdate) ? false : newLine[x + len + 1].isRightHalfOfDoubleWide();
 
-                        if (ch.foregroundColor != cf || ch.backgroundColor != clipboard || (ch.rendition.all & ~RE_EXTENDED_CHAR) != (cr & ~RE_EXTENDED_CHAR)
-                            || (dirtyMask[x + len] == 0) || LineBlockCharacters::canDraw(ch.character) != lineDraw || nextIsDoubleWidth != doubleWidth) {
+                        if (ch.foregroundColor != cf || ch.backgroundColor != clipboard || (ch.rendition.all & ~RE_EXTENDED_CHAR) != (cr & ~RE_EXTENDED_CHAR) || (dirtyMask[x + len] == 0) || LineBlockCharacters::canDraw(ch.character) != lineDraw || nextIsDoubleWidth != doubleWidth) {
                             break;
                         }
                     }
@@ -803,10 +802,10 @@ void TerminalDisplay::paintEvent(QPaintEvent *pe)
 
     if (_drawOverlay) {
         const auto y = _headerBar->isVisible() ? _headerBar->height() : 0;
-        const auto rect = _overlayEdge == Qt::LeftEdge ? QRect(0, y, width() / 2, height())
-            : _overlayEdge == Qt::TopEdge              ? QRect(0, y, width(), height() / 2)
-            : _overlayEdge == Qt::RightEdge            ? QRect(width() - width() / 2, y, width() / 2, height())
-                                                       : QRect(0, height() - height() / 2, width(), height() / 2);
+        const auto rect = _overlayEdge == Qt::LeftEdge    ? QRect(0, y, width() / 2, height())
+                          : _overlayEdge == Qt::TopEdge   ? QRect(0, y, width(), height() / 2)
+                          : _overlayEdge == Qt::RightEdge ? QRect(width() - width() / 2, y, width() / 2, height())
+                                                          : QRect(0, height() - height() / 2, width(), height() / 2);
 
         paint.setRenderHint(QPainter::Antialiasing);
         paint.setPen(Qt::NoPen);
@@ -832,7 +831,7 @@ void TerminalDisplay::drawBadge(QPainter &painter)
     }
 
     QString badgeText = session->badgeText();
-    
+
     // Don't draw if badge text is empty
     if (badgeText.isEmpty()) {
         return;
@@ -849,11 +848,11 @@ void TerminalDisplay::drawBadge(QPainter &painter)
     if (!badgeColor.isValid()) {
         badgeColor = QColor(255, 255, 255); // Default white
     }
-    
+
     if (badgeFontFamily.isEmpty()) {
         badgeFontFamily = _terminalFont->getVTFont().family(); // Use terminal font family as default
     }
-    
+
     if (badgeFontSize <= 0) {
         badgeFontSize = qMax(12, _terminalFont->fontHeight() * 3 / 4); // Default to 3/4 of terminal font height, minimum 12
     }
@@ -865,7 +864,7 @@ void TerminalDisplay::drawBadge(QPainter &painter)
     // Calculate text metrics
     QFontMetrics fontMetrics(badgeFont);
     QRect textRect = fontMetrics.boundingRect(badgeText);
-    
+
     // Position badge in top-right corner with some margin
     const int margin = 16;
     const auto headerHeight = _headerBar->isVisible() ? _headerBar->height() : 0;
@@ -888,7 +887,7 @@ void TerminalDisplay::drawBadge(QPainter &painter)
         const int padding = 8;
         const int badgeWidth = textRect.width() + (padding * 2);
         const int badgeHeight = textRect.height() + (padding * 2);
-        
+
         const int badgeX = width() - badgeWidth - margin - scrollBarWidth;
         const int badgeY = headerHeight + margin;
 
@@ -897,7 +896,7 @@ void TerminalDisplay::drawBadge(QPainter &painter)
         // Draw badge background with rounded corners
         QColor backgroundColor = badgeColor;
         backgroundColor.setAlpha(badgeTransparency);
-        
+
         painter.setPen(Qt::NoPen);
         painter.setBrush(backgroundColor);
         painter.drawRoundedRect(badgeRect, 4, 4);
@@ -1201,7 +1200,7 @@ void TerminalDisplay::calcGeometry()
 {
     const auto headerHeight = _headerBar->isVisible() ? _headerBar->height() : 0;
 
-    _scrollBar->resize(_scrollBar->sizeHint().width(), // width
+    _scrollBar->resize(_scrollBar->sizeHint().width(),        // width
                        contentsRect().height() - headerHeight // height
     );
 
@@ -1348,8 +1347,7 @@ void TerminalDisplay::mousePressEvent(QMouseEvent *ev)
         return;
     }
 
-    if (_outputSuspendedMessageWidget != nullptr && _outputSuspendedMessageWidget->isVisible()
-        && _outputSuspendedMessageWidget->frameGeometry().contains(ev->pos())) {
+    if (_outputSuspendedMessageWidget != nullptr && _outputSuspendedMessageWidget->isVisible() && _outputSuspendedMessageWidget->frameGeometry().contains(ev->pos())) {
         return;
     }
 
@@ -1402,8 +1400,7 @@ void TerminalDisplay::mousePressEvent(QMouseEvent *ev)
             //  select text or columnSelection
             if (!usesMouseTracking() && ((ev->modifiers() == Qt::ShiftModifier) || (((ev->modifiers() & Qt::ShiftModifier) != 0u) && _columnSelectionMode))) {
                 extendSelection(ev->pos());
-            } else if ((!usesMouseTracking() && !((ev->modifiers() & Qt::ShiftModifier)))
-                       || (usesMouseTracking() && ((ev->modifiers() & Qt::ShiftModifier) != 0u))) {
+            } else if ((!usesMouseTracking() && !((ev->modifiers() & Qt::ShiftModifier))) || (usesMouseTracking() && ((ev->modifiers() & Qt::ShiftModifier) != 0u))) {
                 clearSelection();
 
                 pos.ry() += _scrollBar->value();
@@ -1491,8 +1488,7 @@ void TerminalDisplay::mouseMoveEvent(QMouseEvent *ev)
         // if the mouse has moved sufficiently, we will confirm
 
         const int distance = QApplication::startDragDistance();
-        if (ev->position().x() > _dragInfo.start.x() + distance || ev->position().x() < _dragInfo.start.x() - distance
-            || ev->position().y() > _dragInfo.start.y() + distance || ev->position().y() < _dragInfo.start.y() - distance) {
+        if (ev->position().x() > _dragInfo.start.x() + distance || ev->position().x() < _dragInfo.start.x() - distance || ev->position().y() > _dragInfo.start.y() + distance || ev->position().y() < _dragInfo.start.y() - distance) {
             // we've left the drag square, we can start a real drag operation now
 
             clearSelection();
@@ -1888,8 +1884,7 @@ void TerminalDisplay::wheelEvent(QWheelEvent *ev)
         int steps = _scrollWheelState.consumeLegacySteps(ScrollState::DEFAULT_ANGLE_SCROLL_LINE);
 
         QList<TerminalDisplay *> targets;
-        if (_sessionController && _sessionController->session()
-            && _sessionController->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
+        if (_sessionController && _sessionController->session() && _sessionController->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
             if (auto *splitter = qobject_cast<ViewSplitter *>(parentWidget())) {
                 targets = splitter->getToplevelSplitter()->findChildren<TerminalDisplay *>();
             }
@@ -2463,8 +2458,7 @@ void TerminalDisplay::doPaste(QString text, bool appendReturn)
                 i18n("Confirm Paste"),
                 KStandardGuiItem::cont(),
                 KStandardGuiItem::cancel(),
-                QStringLiteral("ShowPasteHugeTextWarning"))
-            == KMessageBox::Cancel) {
+                QStringLiteral("ShowPasteHugeTextWarning")) == KMessageBox::Cancel) {
             return;
         }
     }
@@ -2827,12 +2821,12 @@ void TerminalDisplay::updateReadOnlyState(bool readonly)
     _readOnly = readonly;
 }
 
-#define SELECT_BY_MODIFIERS                                                                                                                                    \
-    if (startSelect) {                                                                                                                                         \
-        clearSelection();                                                                                                                                      \
-        _actSel = 2;                                                                                                                                           \
-        screen->selSetSelectionStart(false);                                                                                                                   \
-        _selModeByModifiers = true;                                                                                                                            \
+#define SELECT_BY_MODIFIERS                  \
+    if (startSelect) {                       \
+        clearSelection();                    \
+        _actSel = 2;                         \
+        screen->selSetSelectionStart(false); \
+        _selModeByModifiers = true;          \
     }
 
 void TerminalDisplay::keyPressEvent(QKeyEvent *event)
@@ -3306,10 +3300,10 @@ void TerminalDisplay::setSessionController(SessionController *controller)
 {
     _sessionController = controller;
     _headerBar->finishHeaderSetup(controller);
-    
+
     // Connect to session attribute changes to update badge display
     if (_sessionController && !_sessionController->session().isNull()) {
-        connect(_sessionController->session().data(), &Session::sessionAttributeChanged, 
+        connect(_sessionController->session().data(), &Session::sessionAttributeChanged,
                 this, QOverload<>::of(&QWidget::update));
     }
 }
@@ -3342,8 +3336,7 @@ void TerminalDisplay::applyProfile(const Profile::Ptr &profile)
     // set scroll-bar position
     _scrollBar->setScrollBarPosition(Enum::ScrollBarPositionEnum(profile->property<int>(Profile::ScrollBarPosition)));
     // Force hidden scrollbar for tmux panes — tmux doesn't account for scrollbar width
-    if (_sessionController && _sessionController->session()
-        && _sessionController->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
+    if (_sessionController && _sessionController->session() && _sessionController->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
         _scrollBar->setScrollBarPosition(Enum::ScrollBarHidden);
     }
     _scrollBar->setScrollFullPage(profile->property<bool>(Profile::ScrollFullPage));
@@ -3499,9 +3492,7 @@ int TerminalDisplay::bidiMap(Character *screenline,
         // The space at the start of the line, ignoring the NEAR flag.
         // Add a fake 'a' at the end of the text to avoid this.
         // Remove the 'a' after the shaping.
-        if (lineLastNonSpace > 0 && line[lineLastNonSpace - 1].unicode() == 0x0644
-            && (line[lineLastNonSpace].unicode() == 0x0627 || line[lineLastNonSpace].unicode() == 0x0625 || line[lineLastNonSpace].unicode() == 0x0623
-                || line[lineLastNonSpace].unicode() == 0x0622)) {
+        if (lineLastNonSpace > 0 && line[lineLastNonSpace - 1].unicode() == 0x0644 && (line[lineLastNonSpace].unicode() == 0x0627 || line[lineLastNonSpace].unicode() == 0x0625 || line[lineLastNonSpace].unicode() == 0x0623 || line[lineLastNonSpace].unicode() == 0x0622)) {
             if (lineLastNonSpace + 1 >= line.length()) {
                 line += u'a';
             } else {
@@ -3519,10 +3510,7 @@ int TerminalDisplay::bidiMap(Character *screenline,
         for (int i = 0; i < line.length(); i++) {
             if (line[i] != shaped_line[i]) {
                 shaped = true;
-                if (i < line.length() - 1 && line[i].unicode() == 0x0644
-                    && (line[i + 1].unicode() == 0x0627 || line[i + 1].unicode() == 0x0625 || line[i + 1].unicode() == 0x0623
-                        || line[i + 1].unicode() == 0x0622)
-                    && ((shaped_line[i] == 0x0020) != (shaped_line[i + 1] == 0x0020))) {
+                if (i < line.length() - 1 && line[i].unicode() == 0x0644 && (line[i + 1].unicode() == 0x0627 || line[i + 1].unicode() == 0x0625 || line[i + 1].unicode() == 0x0623 || line[i + 1].unicode() == 0x0622) && ((shaped_line[i] == 0x0020) != (shaped_line[i + 1] == 0x0020))) {
                     switch (shaped_line[i] == 0x0020 ? shaped_line[i + 1] : shaped_line[i]) {
                     case 0x0fefc:
                         // Un ligature final form Lam-Alef

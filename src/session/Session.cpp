@@ -327,8 +327,7 @@ void Session::setInitialWorkingDirectory(const QString &dir)
 bool Session::reportedWorkingUrlIsLocalFile()
 {
     return _reportedWorkingUrl.isLocalFile() // has "file://" prefix
-        && (_reportedWorkingUrl.host().isEmpty() || _reportedWorkingUrl.host().compare(QSysInfo::machineHostName(), Qt::CaseInsensitive) == 0)
-        && QDir{_reportedWorkingUrl.path()}.exists();
+           && (_reportedWorkingUrl.host().isEmpty() || _reportedWorkingUrl.host().compare(QSysInfo::machineHostName(), Qt::CaseInsensitive) == 0) && QDir{_reportedWorkingUrl.path()}.exists();
 }
 
 QString Session::currentWorkingDirectory()
@@ -1822,7 +1821,7 @@ void Session::zmodemFinished()
         connect(_shellProcess, &Konsole::Pty::receivedData, this, &Konsole::Session::onReceiveBlock);
 
         _shellProcess->sendData(QByteArrayLiteral("\030\030\030\030")); // Abort
-        _shellProcess->sendData(QByteArrayLiteral("\001\013\n")); // Try to get prompt back
+        _shellProcess->sendData(QByteArrayLiteral("\001\013\n"));       // Try to get prompt back
         _zmodemProgress->transferDone();
     }
 }
@@ -2229,7 +2228,7 @@ void Session::saveSession(KConfigGroup &group)
     group.writeEntry("TabActivityColor", activityColor().isValid() ? activityColor().name(QColor::HexArgb) : QString());
     group.writeEntry("SessionGuid", _uniqueIdentifier.toString());
     group.writeEntry("Encoding", QString::fromUtf8(codec()));
-    
+
     // Badge properties
     group.writeEntry("BadgeEnabled", badgeEnabled());
     group.writeEntry("BadgeText", badgeText());
@@ -2270,7 +2269,7 @@ void Session::restoreSession(KConfigGroup &group)
     if (!value.isEmpty()) {
         setCodec(value.toUtf8());
     }
-    
+
     // Badge properties
     setBadgeEnabled(group.readEntry("BadgeEnabled", false));
     setBadgeText(group.readEntry("BadgeText", QString()));
@@ -2302,7 +2301,7 @@ QString Session::validDirectory(const QString &dir) const
 QString Session::expandBadgeText(const QString &badgeText) const
 {
     QString expandedText = badgeText;
-    
+
     // Replace session variables
     // Available session variables:
     // - session.title: The current session title (user title if set, otherwise display title)
@@ -2311,14 +2310,14 @@ QString Session::expandBadgeText(const QString &badgeText) const
     // - session.directory: Current working directory
     // - session.hostname: Current hostname
     // - session.process: Current foreground process name
-    
+
     QString sessionTitle = userTitle().isEmpty() ? title(Session::DisplayedTitleRole) : userTitle();
     expandedText.replace(QStringLiteral("\\(session.title)"), sessionTitle);
     expandedText.replace(QStringLiteral("\\(session.name)"), nameTitle());
     expandedText.replace(QStringLiteral("\\(session.id)"), QString::number(_sessionId));
     expandedText.replace(QStringLiteral("\\(session.directory)"), _currentWorkingDir);
     expandedText.replace(QStringLiteral("\\(session.hostname)"), _currentHostName);
-    
+
     // Get foreground process name safely
     QString processName;
     if (_foregroundProcessInfo) {
@@ -2331,30 +2330,30 @@ QString Session::expandBadgeText(const QString &badgeText) const
         processName = QStringLiteral("unknown");
     }
     expandedText.replace(QStringLiteral("\\(session.process)"), processName);
-    
+
     // Replace environment variables
     // Pattern: \(env.VARIABLE_NAME)
     QRegularExpression envRegex(QStringLiteral("\\\\\\(env\\.([A-Za-z_][A-Za-z0-9_]*)\\)"));
     QRegularExpressionMatchIterator envIterator = envRegex.globalMatch(expandedText);
-    
+
     // Process matches in reverse order to avoid position shifts
     QList<QRegularExpressionMatch> envMatches;
     while (envIterator.hasNext()) {
         envMatches.prepend(envIterator.next());
     }
-    
+
     for (const QRegularExpressionMatch &envMatch : envMatches) {
         QString varName = envMatch.captured(1);
         QString varValue = qEnvironmentVariable(varName.toLocal8Bit().constData());
-        
+
         // If environment variable is not set, use empty string
         if (varValue.isNull()) {
             varValue = QString();
         }
-        
+
         expandedText.replace(envMatch.capturedStart(), envMatch.capturedLength(), varValue);
     }
-    
+
     return expandedText;
 }
 
@@ -2567,7 +2566,7 @@ void Session::setBadgeTransparency(int transparency)
 {
     // Clamp transparency value between 0 and 255
     int clampedTransparency = qBound(0, transparency, 255);
-    
+
     if (_badgeTransparency == clampedTransparency) {
         return;
     }

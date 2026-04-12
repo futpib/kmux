@@ -520,7 +520,7 @@ public:
      * and a non-null parent was specified in the Profile's constructor,
      * the parent's value for @p property will be returned.
      */
-    template<class T>
+    template <class T>
     T property(Property p) const;
 
     /** Sets the value of the specified @p property to @p value. */
@@ -1046,7 +1046,7 @@ inline bool Profile::canInheritProperty(Property p)
     return p != Name && p != Path;
 }
 
-template<class T>
+template <class T>
 inline T Profile::property(Property p) const
 {
     auto getVariant = [this, p]() {

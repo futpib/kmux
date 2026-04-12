@@ -279,8 +279,7 @@ void TerminalHeaderBar::applyVisibilitySettings()
 {
     // Force hidden header for tmux panes — tmux doesn't account for header height
     auto *display = qobject_cast<TerminalDisplay *>(parentWidget());
-    if (display && display->sessionController() && display->sessionController()->session()
-        && display->sessionController()->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
+    if (display && display->sessionController() && display->sessionController()->session() && display->sessionController()->session()->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
         setVisible(false);
         return;
     }

@@ -110,8 +110,7 @@ bool SaveHistoryTask::execute()
         // from.
         // this is set to -1 to indicate the job has just been started
 
-        if (((dialog->selectedNameFilter()).contains(QLatin1String("html"), Qt::CaseInsensitive))
-            || ((dialog->selectedFiles()).at(0).endsWith(QLatin1String("html"), Qt::CaseInsensitive))) {
+        if (((dialog->selectedNameFilter()).contains(QLatin1String("html"), Qt::CaseInsensitive)) || ((dialog->selectedFiles()).at(0).endsWith(QLatin1String("html"), Qt::CaseInsensitive))) {
             Profile::Ptr profile = SessionManager::instance()->sessionProfile(session);
             const auto schemeName = profile->colorScheme();
             const auto scheme = ColorSchemeManager::instance()->findColorScheme(schemeName);

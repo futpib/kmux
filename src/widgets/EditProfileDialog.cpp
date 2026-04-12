@@ -597,8 +597,8 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
     connect(_generalUi->setAsDefaultButton, &QAbstractButton::toggled, this, &Konsole::EditProfileDialog::updateButtonApply);
     const ButtonGroupOptions semanticHints = {
         _generalUi->semanticHints, // group
-        Profile::SemanticHints, // profileProperty
-        false, // preview
+        Profile::SemanticHints,    // profileProperty
+        false,                     // preview
         {
             // buttons
             {_generalUi->semanticHintsNever, Enum::HintsNever},
@@ -609,8 +609,8 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
     setupButtonGroup(semanticHints, profile);
     const ButtonGroupOptions errorBars = {
         _generalUi->errorBars, // group
-        Profile::ErrorBars, // profileProperty
-        false, // preview
+        Profile::ErrorBars,    // profileProperty
+        false,                 // preview
         {
             // buttons
             {_generalUi->errorBarsNever, Enum::HintsNever},
@@ -621,8 +621,8 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
     setupButtonGroup(errorBars, profile);
     const ButtonGroupOptions errorBackground = {
         _generalUi->errorBackground, // group
-        Profile::ErrorBackground, // profileProperty
-        false, // preview
+        Profile::ErrorBackground,    // profileProperty
+        false,                       // preview
         {
             // buttons
             {_generalUi->errorBackgroundNever, Enum::HintsNever},
@@ -633,8 +633,8 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
     setupButtonGroup(errorBackground, profile);
     const ButtonGroupOptions alternatingBars = {
         _generalUi->alternatingBars, // group
-        Profile::AlternatingBars, // profileProperty
-        false, // preview
+        Profile::AlternatingBars,    // profileProperty
+        false,                       // preview
         {
             // buttons
             {_generalUi->alternatingBarsNever, Enum::HintsNever},
@@ -645,8 +645,8 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
     setupButtonGroup(alternatingBars, profile);
     const ButtonGroupOptions alternatingBackground = {
         _generalUi->alternatingBackground, // group
-        Profile::AlternatingBackground, // profileProperty
-        false, // preview
+        Profile::AlternatingBackground,    // profileProperty
+        false,                             // preview
         {
             // buttons
             {_generalUi->alternatingBackgroundNever, Enum::HintsNever},
@@ -947,8 +947,8 @@ void EditProfileDialog::setupAppearancePage(const Profile::Ptr &profile)
 
     const ButtonGroupOptions cursorShapeOptions = {
         _appearanceUi->cursorShape, // group
-        Profile::CursorShape, // profileProperty
-        true, // preview
+        Profile::CursorShape,       // profileProperty
+        true,                       // preview
         {
             // buttons
             {_appearanceUi->cursorShapeBlock, Enum::BlockCursor},
@@ -1811,8 +1811,8 @@ void EditProfileDialog::setupScrollingPage(const Profile::Ptr &profile)
     // setup scrollbar radio
     const ButtonGroupOptions scrollBarPositionOptions = {
         _scrollingUi->scrollBarPosition, // group
-        Profile::ScrollBarPosition, // profileProperty
-        false, // preview
+        Profile::ScrollBarPosition,      // profileProperty
+        false,                           // preview
         {
             // buttons
             {_scrollingUi->scrollBarRightButton, Enum::ScrollBarRight},
@@ -1905,11 +1905,13 @@ void EditProfileDialog::toggleScrollbarMarkerSize(double pSize)
     updateTempProfileProperty(Profile::MarkerSize, pSize);
 }
 
-void EditProfileDialog::toggleScrollbarSearchLineColor(QColor color) {
+void EditProfileDialog::toggleScrollbarSearchLineColor(QColor color)
+{
     updateTempProfileProperty(Profile::SearchLineColor, color);
 }
 
-void EditProfileDialog::toggleScrollbarSearchLineOpacity(int opacity) {
+void EditProfileDialog::toggleScrollbarSearchLineOpacity(int opacity)
+{
     updateTempProfileProperty(Profile::SearchLineOpacity, opacity);
 }
 
@@ -1956,8 +1958,8 @@ void EditProfileDialog::setupMousePage(const Profile::Ptr &profile)
 
     const ButtonGroupOptions tripleClickModeOptions = {
         _mouseUi->tripleClickMode, // group
-        Profile::TripleClickMode, // profileProperty
-        false, // preview
+        Profile::TripleClickMode,  // profileProperty
+        false,                     // preview
         {
             // buttons
             {_mouseUi->tripleClickSelectsTheWholeLine, Enum::SelectWholeLine},
@@ -2131,8 +2133,8 @@ void EditProfileDialog::setupAdvancedPage(const Profile::Ptr &profile)
 
     const ButtonGroupOptions lineNums = {
         _advancedUi->lineNums, // group
-        Profile::LineNumbers, // profileProperty
-        false, // preview
+        Profile::LineNumbers,  // profileProperty
+        false,                 // preview
         {
             // buttons
             {_advancedUi->lineNumsNever, Enum::HintsNever},
@@ -2347,7 +2349,7 @@ void EditProfileDialog::toggleIgnoreWcWidth(bool ignore)
 void EditProfileDialog::toggleBadgeEnabled(bool enable)
 {
     updateTempProfileProperty(Profile::BadgeEnabled, enable);
-    
+
     // Enable/disable badge controls based on badge enabled state
     _appearanceUi->badge_label_1->setEnabled(enable);
     _appearanceUi->badgeTextEdit->setEnabled(enable);

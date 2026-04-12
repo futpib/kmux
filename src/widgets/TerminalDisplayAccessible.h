@@ -7,7 +7,7 @@
 #ifndef TERMINALDISPLAYACCESSIBLE_H
 #define TERMINALDISPLAYACCESSIBLE_H
 
-//#include <QtGlobal>
+// #include <QtGlobal>
 
 #include <QAccessibleTextInterface>
 #include <QAccessibleWidget>

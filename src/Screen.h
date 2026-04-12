@@ -23,20 +23,20 @@
 #include "../characters/Character.h"
 #include "konsoleprivate_export.h"
 
-#define MODE_Origin 0
-#define MODE_Wrap 1
-#define MODE_Insert 2
-#define MODE_Screen 3
-#define MODE_Cursor 4
-#define MODE_NewLine 5
-#define MODE_AppScreen 6
+#define MODE_Origin       0
+#define MODE_Wrap         1
+#define MODE_Insert       2
+#define MODE_Screen       3
+#define MODE_Cursor       4
+#define MODE_NewLine      5
+#define MODE_AppScreen    6
 #define MODE_SelectCursor 7
-#define MODES_SCREEN 8
+#define MODES_SCREEN      8
 
-#define REPL_None 0
-#define REPL_PROMPT 1
-#define REPL_INPUT 2
-#define REPL_OUTPUT 3
+#define REPL_None         0
+#define REPL_PROMPT       1
+#define REPL_INPUT        2
+#define REPL_OUTPUT       3
 
 struct TerminalGraphicsPlacement_t {
     QPixmap pixmap;
@@ -45,7 +45,9 @@ struct TerminalGraphicsPlacement_t {
     int z, X, Y, col, row, cols, rows;
     qreal opacity;
     bool scrolling;
-    enum source { Sixel, iTerm, Kitty } source;
+    enum source { Sixel,
+                  iTerm,
+                  Kitty } source;
 };
 
 namespace Konsole
@@ -801,8 +803,8 @@ private:
     int _columns;
 
     typedef QVector<Character> ImageLine; // [0..columns]
-    std::vector<ImageLine> _screenLines; // [lines]
-    int _screenLinesSize; // _screenLines.size()
+    std::vector<ImageLine> _screenLines;  // [lines]
+    int _screenLinesSize;                 // _screenLines.size()
 
     int _scrolledLines;
     QRect _lastScrolledRegion;
@@ -859,9 +861,9 @@ private:
     QBitArray _tabStops;
 
     // selection -------------------
-    int _selBegin; // The first location selected.
-    int _selTopLeft; // TopLeft Location.
-    int _selBottomRight; // Bottom Right Location.
+    int _selBegin;            // The first location selected.
+    int _selTopLeft;          // TopLeft Location.
+    int _selBottomRight;      // Bottom Right Location.
     bool _blockSelectionMode; // Column selection mode
 
     // effective colors and rendition ------------

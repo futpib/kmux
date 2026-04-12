@@ -17,7 +17,10 @@ namespace Konsole
 {
 namespace LineBlockCharacters
 {
-enum LineType { LtNone = 0, LtDouble = 1, LtLight = 2, LtHeavy = 3 };
+enum LineType { LtNone = 0,
+                LtDouble = 1,
+                LtLight = 2,
+                LtHeavy = 3 };
 
 // PackedLineTypes is an 8-bit number representing types of 4 line character's lines. Each line is
 // represented by 2 bits. Lines order, starting from MSB: top, right, bottom, left.
@@ -145,7 +148,7 @@ static constexpr const quint8 PackedLineTypesLut[] = {
 /* clang-format on */
 
 // Bitwise rotate left
-template<typename T>
+template <typename T>
 inline static T rotateBitsLeft(T value, quint8 amount)
 {
     static_assert(std::is_unsigned<T>(), "T must be unsigned type");
@@ -410,7 +413,8 @@ static inline bool drawDashedLineCharacter(QPainter &paint, int x, int y, int w,
 
     static const int LinesNumMax = 4;
 
-    enum Orientation { Horizontal, Vertical };
+    enum Orientation { Horizontal,
+                       Vertical };
     struct {
         int linesNum;
         Orientation orientation;
@@ -689,13 +693,13 @@ static inline bool drawLegacyCharacter(QPainter &paint, int x, int y, int w, int
         }
         points[12] = QPointF(x + w / 2.0, y + h / 2.0);
         QList<std::string> chars = {
-            "014",   "018",   "024",   "028",   "034",  "027;8", "02;8",  "017;8", // 0x1fb3c - 0x1fb43
-            "01;8",  "07;8",  "01:8",  "498",   "098",  "4:8",   "0:8",   "4;8", // 44 - 4b
-            "037:8", "03:8",  "03798", "0398",  "0378", "0298",  "13;84", "13;8", // 4c - 53
-            "23;84", "23;8",  "3;84",  "237",   "23;",  "137",   "13;",   "037", // 54 - 5b
-            "13;:",  "03;94", "03;9",  "03;:4", // 5c-5f
-            "03;:",  "03;4",  "7;:",   "3;:",   "7;9",  "3;9",   "7;8",   "23;9", // 60-67
-            "0<3;8", "03<;8", "03;<8", "03;8<", "03<",  "3;<",   "<;8",   "0<8" // 68-6f
+            "014", "018", "024", "028", "034", "027;8", "02;8", "017;8",       // 0x1fb3c - 0x1fb43
+            "01;8", "07;8", "01:8", "498", "098", "4:8", "0:8", "4;8",         // 44 - 4b
+            "037:8", "03:8", "03798", "0398", "0378", "0298", "13;84", "13;8", // 4c - 53
+            "23;84", "23;8", "3;84", "237", "23;", "137", "13;", "037",        // 54 - 5b
+            "13;:", "03;94", "03;9", "03;:4",                                  // 5c-5f
+            "03;:", "03;4", "7;:", "3;:", "7;9", "3;9", "7;8", "23;9",         // 60-67
+            "0<3;8", "03<;8", "03;<8", "03;8<", "03<", "3;<", "<;8", "0<8"     // 68-6f
         };
         std::string str = chars[code - 0x13c];
         QVector<QPointF> vec;
@@ -862,9 +866,7 @@ void draw(QPainter &paint, const QRect &cellRect, const uint &chr, bool bold)
     }
 
     // Each function below returns true when it has drawn the character, false otherwise.
-    drawBasicLineCharacter(paint, x, y, w, h, code, bold) || drawDashedLineCharacter(paint, x, y, w, h, code, bold)
-        || drawRoundedCornerLineCharacter(paint, x, y, w, h, code, bold) || drawDiagonalLineCharacter(paint, x, y, w, h, code, bold)
-        || drawBlockCharacter(paint, x, y, w, h, code, bold);
+    drawBasicLineCharacter(paint, x, y, w, h, code, bold) || drawDashedLineCharacter(paint, x, y, w, h, code, bold) || drawRoundedCornerLineCharacter(paint, x, y, w, h, code, bold) || drawDiagonalLineCharacter(paint, x, y, w, h, code, bold) || drawBlockCharacter(paint, x, y, w, h, code, bold);
 }
 
 } // namespace LineBlockCharacters

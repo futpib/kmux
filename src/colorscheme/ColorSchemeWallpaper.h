@@ -61,7 +61,7 @@ public:
     void load();
 
     /** Returns true if wallpaper available and drawn */
-    bool draw(QPainter &painter, const QRect& rect, qreal bgColorOpacity, const QColor &backgroundColor);
+    bool draw(QPainter &painter, const QRect &rect, qreal bgColorOpacity, const QColor &backgroundColor);
 
     bool isNull() const;
 

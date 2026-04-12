@@ -331,7 +331,7 @@ void TerminalPainter::drawContents(Character *image,
         //(instead of textArea.topLeft() * painter-scale)
         QString line;
 #define MAX_LINE_WIDTH 1024
-#define vis2log(x) ((bidiEnabled && (x) <= lastNonSpace) ? line2log[vis2line[x]] : (x))
+#define vis2log(x)     ((bidiEnabled && (x) <= lastNonSpace) ? line2log[vis2line[x]] : (x))
         int log2line[MAX_LINE_WIDTH];
         int line2log[MAX_LINE_WIDTH];
         uint16_t shapemap[MAX_LINE_WIDTH];
@@ -569,8 +569,7 @@ QRegion TerminalPainter::highlightScrolledLinesRegion(TerminalScrollBar *scrollB
     int nb_lines = abs(m_parentDisplay->screenWindow()->scrollCount());
     if (nb_lines > 0 && m_parentDisplay->scrollBar()->maximum() > 0) {
         QRect new_highlight;
-        bool addToCurrentHighlight = scrollBar->highlightScrolledLines().isTimerActive()
-            && (m_parentDisplay->screenWindow()->scrollCount() * scrollBar->highlightScrolledLines().getPreviousScrollCount() > 0);
+        bool addToCurrentHighlight = scrollBar->highlightScrolledLines().isTimerActive() && (m_parentDisplay->screenWindow()->scrollCount() * scrollBar->highlightScrolledLines().getPreviousScrollCount() > 0);
         if (addToCurrentHighlight) {
             const int oldScrollCount = scrollBar->highlightScrolledLines().getPreviousScrollCount();
             if (m_parentDisplay->screenWindow()->scrollCount() > 0) {
@@ -611,8 +610,7 @@ QRegion TerminalPainter::highlightScrolledLinesRegion(TerminalScrollBar *scrollB
 
 void TerminalPainter::drawBackground(QPainter &painter, const QRect &rect, const QColor &backgroundColor, bool useOpacitySetting)
 {
-    if (!m_parentDisplay->wallpaper()->isNull()
-        && m_parentDisplay->wallpaper()->draw(painter, rect, useOpacitySetting ? m_parentDisplay->terminalColor()->opacity() : 1.0, backgroundColor)) {
+    if (!m_parentDisplay->wallpaper()->isNull() && m_parentDisplay->wallpaper()->draw(painter, rect, useOpacitySetting ? m_parentDisplay->terminalColor()->opacity() : 1.0, backgroundColor)) {
     } else if (qAlpha(m_parentDisplay->terminalColor()->blendColor()) < 0xff && useOpacitySetting) {
 #if defined(Q_OS_MACOS)
         // TODO: On MacOS, using CompositionMode doesn't work. Altering the
@@ -868,8 +866,7 @@ void TerminalPainter::drawBelowText(QPainter &painter,
     for (int i = 0;; i++) {
         int x = vis2log(i + startX);
 
-        if (first || i == width || style[x].rendition.all != style[lastX].rendition.all || style[x].foregroundColor != style[lastX].foregroundColor
-            || style[x].backgroundColor != style[lastX].backgroundColor) {
+        if (first || i == width || style[x].rendition.all != style[lastX].rendition.all || style[x].foregroundColor != style[lastX].foregroundColor || style[x].backgroundColor != style[lastX].backgroundColor) {
             if (first) {
                 first = false;
             } else {
@@ -942,9 +939,7 @@ void TerminalPainter::drawAboveText(QPainter &painter,
     for (int i = 0;; i++) {
         int x = vis2log(i + startX);
 
-        if (first || i == width || ((style[x].rendition.all ^ style[lastX].rendition.all) & RE_MASK_ABOVE)
-            || ((style[x].flags ^ style[lastX].flags) & EF_UNDERLINE_COLOR) || style[x].foregroundColor != style[lastX].foregroundColor
-            || style[x].backgroundColor != style[lastX].backgroundColor) {
+        if (first || i == width || ((style[x].rendition.all ^ style[lastX].rendition.all) & RE_MASK_ABOVE) || ((style[x].flags ^ style[lastX].flags) & EF_UNDERLINE_COLOR) || style[x].foregroundColor != style[lastX].foregroundColor || style[x].backgroundColor != style[lastX].backgroundColor) {
             if (first) {
                 first = false;
             } else {
@@ -961,23 +956,20 @@ void TerminalPainter::drawAboveText(QPainter &painter,
                 }
                 if ((i == width || style[x].rendition.f.overline == 0) && startOverline >= 0) {
                     QPen pen(foregroundColor);
-                    qreal y = rect.y() + m_parentDisplay->terminalFont()->fontAscent() - m_parentDisplay->terminalFont()->overlinePos()
-                        + m_parentDisplay->terminalFont()->lineSpacing() / static_cast<qreal>(2);
+                    qreal y = rect.y() + m_parentDisplay->terminalFont()->fontAscent() - m_parentDisplay->terminalFont()->overlinePos() + m_parentDisplay->terminalFont()->lineSpacing() / static_cast<qreal>(2);
                     pen.setWidth(m_parentDisplay->terminalFont()->lineWidth());
                     painter.setPen(pen);
                     painter.drawLine(QLineF(rect.x() + fontWidth * startOverline, y, rect.x() + fontWidth * i - 1, y));
                     startOverline = -1;
                 }
                 int underline = style[lastX].rendition.f.underline;
-                if ((i == width || style[x].rendition.f.underline != underline || ((style[x].flags ^ style[lastX].flags) & EF_UNDERLINE_COLOR))
-                    && startUnderline >= 0) {
+                if ((i == width || style[x].rendition.f.underline != underline || ((style[x].flags ^ style[lastX].flags) & EF_UNDERLINE_COLOR)) && startUnderline >= 0) {
                     QPen pen(foregroundColor);
                     if (ulColorTable != nullptr && (style[lastX].flags & EF_UNDERLINE_COLOR) != 0) {
                         pen.setColor(ulColorTable[((style[lastX].flags & EF_UNDERLINE_COLOR)) / EF_UNDERLINE_COLOR_1 - 1].color(colorTable));
                     }
                     const int lw = m_parentDisplay->terminalFont()->lineWidth();
-                    qreal y = rect.y() + m_parentDisplay->terminalFont()->fontAscent() + m_parentDisplay->terminalFont()->underlinePos()
-                        + m_parentDisplay->terminalFont()->lineSpacing() / static_cast<qreal>(2);
+                    qreal y = rect.y() + m_parentDisplay->terminalFont()->fontAscent() + m_parentDisplay->terminalFont()->underlinePos() + m_parentDisplay->terminalFont()->lineSpacing() / static_cast<qreal>(2);
                     if (underline == RE_UNDERLINE_DOUBLE || underline == RE_UNDERLINE_CURL) {
                         y = rect.bottom() - 1;
                     }

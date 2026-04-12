@@ -33,7 +33,7 @@ public:
     };
     enum Role {
         NodeTypeRole = Qt::UserRole + 1,
-        IdRole, // tmux id (session/window/pane)
+        IdRole,       // tmux id (session/window/pane)
         IsActiveRole, // the currently active pane/window/session
         ScoreRole,
     };

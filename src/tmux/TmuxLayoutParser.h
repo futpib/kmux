@@ -17,7 +17,9 @@
 namespace Konsole
 {
 
-enum class TmuxLayoutNodeType { Leaf, HSplit, VSplit };
+enum class TmuxLayoutNodeType { Leaf,
+                                HSplit,
+                                VSplit };
 
 struct TmuxLayoutNode {
     TmuxLayoutNodeType type;
@@ -25,7 +27,7 @@ struct TmuxLayoutNode {
     int height = 0;
     int xOffset = 0;
     int yOffset = 0;
-    int paneId = -1; // leaf only
+    int paneId = -1;                // leaf only
     QList<TmuxLayoutNode> children; // split only
 };
 

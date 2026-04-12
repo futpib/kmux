@@ -541,17 +541,19 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
                      QStringLiteral("#{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList paneLines = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (paneLines.size() != 2) return false;
+        if (paneLines.size() != 2)
+            return false;
         QStringList pane0 = paneLines[0].split(QLatin1Char(' '));
         QStringList pane1 = paneLines[1].split(QLatin1Char(' '));
-        if (pane0.size() != 2 || pane1.size() != 2) return false;
+        if (pane0.size() != 2 || pane1.size() != 2)
+            return false;
         int w0 = pane0[0].toInt();
         int h0 = pane0[1].toInt();
         int w1 = pane1[0].toInt();
         int h1 = pane1[1].toInt();
-        return w0 == expectedLeftWidth && w1 == expectedRightWidth
-            && h0 == expectedWindowHeight && h1 == expectedWindowHeight;
-    }(), 10000);
+        return w0 == expectedLeftWidth && w1 == expectedRightWidth && h0 == expectedWindowHeight && h1 == expectedWindowHeight;
+    }(),
+                             10000);
 
     // Also verify tmux window size matches
     {
@@ -636,7 +638,8 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QString title = paneSession->getDynamicTitle();
         return title.contains(QStringLiteral("tmp")) || title.contains(QStringLiteral("bash"));
-    }(), 10000);
+    }(),
+                             10000);
 
     // Verify that the tab title for the tmux window is set from #{window_name}
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
@@ -792,7 +795,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
             }
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
     QVERIFY(paneSplitter);
 
     // Find the new pane's display (the one that isn't the original)
@@ -875,7 +879,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
             }
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
     QVERIFY(paneSplitter);
 
     // Find the pane sessions (all sessions are pane sessions)
@@ -916,7 +921,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
             }
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
     QVERIFY(paneSplitter);
 
     // Find the new display (the one not in existingTerminals)
@@ -999,7 +1005,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
             }
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
     QVERIFY(paneSplitter);
 
     // Find pane0's session (all sessions are pane sessions)
@@ -1052,7 +1059,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
             }
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
     QVERIFY(paneSplitter);
 
     // Find the new display
@@ -1181,9 +1189,11 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
                      QStringLiteral("#{pane_width}")});
         check.waitForFinished(3000);
         QStringList paneWidths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (paneWidths.size() != 2) return false;
+        if (paneWidths.size() != 2)
+            return false;
         return paneWidths[0].toInt() == expectedLeftCols && paneWidths[1].toInt() == expectedRightCols;
-    }(), 10000);
+    }(),
+                             10000);
 
     // 5. Run 'stty size' in each pane and verify PTY dimensions match.
     // tmux defers TIOCSWINSZ (PTY resize) through its server loop, so we
@@ -1201,7 +1211,8 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
                         paneTarget,
                         QStringLiteral("-l"),
                         QStringLiteral("stty size\n")});
-        if (!sendKeys.waitForFinished(3000)) return false;
+        if (!sendKeys.waitForFinished(3000))
+            return false;
         QTest::qWait(300);
 
         // Capture and check
@@ -1346,10 +1357,12 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
                      QStringLiteral("#{pane_height}")});
         check.waitForFinished(3000);
         QStringList paneHeights = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (paneHeights.size() != 3) return false;
+        if (paneHeights.size() != 3)
+            return false;
         // Pane order: %0 (left), %1 (top-right), %2 (bottom-right)
         return paneHeights[1].toInt() == expectedTopRightLines && paneHeights[2].toInt() == expectedBottomRightLines;
-    }(), 10000);
+    }(),
+                             10000);
 
     // 6. Run 'stty size' in each nested pane and verify PTY dimensions match
     auto runSttyAndCheck = [&](const QString &paneTarget, int expectedLines, int expectedCols) -> bool {
@@ -1362,7 +1375,8 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
                         paneTarget,
                         QStringLiteral("-l"),
                         QStringLiteral("stty size\n")});
-        if (!sendKeys.waitForFinished(3000)) return false;
+        if (!sendKeys.waitForFinished(3000))
+            return false;
         QTest::qWait(300);
 
         QProcess capture;
@@ -1391,7 +1405,6 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
-
 
 void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
 {
@@ -1495,13 +1508,15 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
                      QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList panes = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (panes.size() != 4) return false;
+        if (panes.size() != 4)
+            return false;
 
         // Check that at least one pane's width changed from initial
         bool anyChanged = false;
         for (const auto &line : panes) {
             QStringList parts = line.split(QLatin1Char(' '));
-            if (parts.size() != 3) return false;
+            if (parts.size() != 3)
+                return false;
             QString paneId = parts[0];
             int width = parts[1].toInt();
             if (initialWidths.contains(paneId) && width != initialWidths[paneId]) {
@@ -1509,7 +1524,8 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
             }
         }
         return anyChanged;
-    }(), 10000);
+    }(),
+                             10000);
 
     // Now verify the dimensions match the layout we sent.
     // Query tmux for the window layout string and verify it parses correctly.
@@ -1613,13 +1629,16 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
                      QStringLiteral("#{pane_width}")});
         check.waitForFinished(3000);
         QStringList widths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (widths.size() != 4) return false;
+        if (widths.size() != 4)
+            return false;
         // Initially all panes were 26 wide; after resize at least one should differ
         for (const auto &w : widths) {
-            if (w.toInt() != 26) return true;
+            if (w.toInt() != 26)
+                return true;
         }
         return false;
-    }(), 10000);
+    }(),
+                             10000);
 
     // Record the post-resize layout from tmux
     QProcess layoutCheck;
@@ -1674,7 +1693,8 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
-    }(), 10000);
+    }(),
+                             10000);
 
     // Wait for layout to shrink
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
@@ -1690,7 +1710,8 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
         check.waitForFinished(3000);
         QString layout = QString::fromUtf8(check.readAllStandardOutput()).trimmed();
         return layout != postResizeLayout;
-    }(), 10000);
+    }(),
+                             10000);
 
     QProcess constrainedCheck;
     constrainedCheck.start(tmuxPath,
@@ -1726,7 +1747,8 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() == 1;
-    }(), 10000);
+    }(),
+                             10000);
 
     // Process events so Konsole reacts to %client-detached → refreshClientCount
     QTest::qWait(500);
@@ -1815,12 +1837,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
                      QStringLiteral("#{pane_id} #{pane_width} #{pane_height}")});
         check.waitForFinished(3000);
         QStringList panes = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (panes.size() != 4) return false;
+        if (panes.size() != 4)
+            return false;
 
         bool anyChanged = false;
         for (const auto &line : panes) {
             QStringList parts = line.split(QLatin1Char(' '));
-            if (parts.size() != 3) return false;
+            if (parts.size() != 3)
+                return false;
             QString paneId = parts[0];
             int width = parts[1].toInt();
             if (constrainedWidths.contains(paneId) && width != constrainedWidths[paneId]) {
@@ -1828,7 +1852,8 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
             }
         }
         return anyChanged;
-    }(), 15000);
+    }(),
+                             15000);
 
     // Verify the layout string is valid and accepted by tmux
     QProcess recoveredCheck;
@@ -1977,7 +2002,8 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
-    }(), 10000);
+    }(),
+                             10000);
 
     // 6. Wait for %layout-change to propagate — poll display->columns() until it shrinks
     QTRY_VERIFY_WITH_TIMEOUT(display->columns() < initialColumns, 15000);
@@ -1998,11 +2024,12 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
     QVERIFY2(page, "Expected top-level splitter to be inside a TabPageWidget");
     QVERIFY2(page->isConstrained(), "Expected TabPageWidget to be constrained");
     QSize constrained = page->constrainedSize();
-    QVERIFY2(constrained.width() < originalPixelSize.width()
-                 || constrained.height() < originalPixelSize.height(),
+    QVERIFY2(constrained.width() < originalPixelSize.width() || constrained.height() < originalPixelSize.height(),
              qPrintable(QStringLiteral("Expected constrained size smaller than %1x%2, got %3x%4")
-                            .arg(originalPixelSize.width()).arg(originalPixelSize.height())
-                            .arg(constrained.width()).arg(constrained.height())));
+                            .arg(originalPixelSize.width())
+                            .arg(originalPixelSize.height())
+                            .arg(constrained.width())
+                            .arg(constrained.height())));
 
     // 9. Cleanup: kill the background script process
     scriptProc.terminate();
@@ -2154,7 +2181,8 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
         check.waitForFinished(3000);
         QStringList clients = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         return clients.size() >= 2;
-    }(), 10000);
+    }(),
+                             10000);
 
     // 6. Wait for %layout-change to propagate — both panes should shrink
     QTRY_VERIFY_WITH_TIMEOUT(leftDisplay->columns() < initialLeftCols || rightDisplay->columns() < initialRightCols, 15000);
@@ -2163,7 +2191,9 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
     int totalCols = leftDisplay->columns() + 1 + rightDisplay->columns(); // +1 for separator
     QVERIFY2(totalCols <= 40,
              qPrintable(QStringLiteral("Expected total columns <= 40 but got %1 (%2 + 1 + %3)")
-                            .arg(totalCols).arg(leftDisplay->columns()).arg(rightDisplay->columns())));
+                            .arg(totalCols)
+                            .arg(leftDisplay->columns())
+                            .arg(rightDisplay->columns())));
     QVERIFY2(leftDisplay->lines() <= 12,
              qPrintable(QStringLiteral("Expected left lines <= 12 but got %1").arg(leftDisplay->lines())));
     QVERIFY2(rightDisplay->lines() <= 12,
@@ -2174,10 +2204,10 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
     QVERIFY2(page, "Expected splitter to be inside a TabPageWidget");
     QVERIFY2(page->isConstrained(), "Expected TabPageWidget to be constrained");
     QSize constrained = page->constrainedSize();
-    QVERIFY2(constrained.width() < originalLeftPixelSize.width() + originalRightPixelSize.width()
-                 || constrained.height() < originalLeftPixelSize.height(),
+    QVERIFY2(constrained.width() < originalLeftPixelSize.width() + originalRightPixelSize.width() || constrained.height() < originalLeftPixelSize.height(),
              qPrintable(QStringLiteral("Expected constrained size to shrink, got %1x%2")
-                            .arg(constrained.width()).arg(constrained.height())));
+                            .arg(constrained.width())
+                            .arg(constrained.height())));
 
     // 9. Cleanup: kill the background script process
     scriptProc.terminate();
@@ -2488,7 +2518,8 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
                      QStringLiteral("#{window_zoomed_flag}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed() == QStringLiteral("1");
-    }(), 10000);
+    }(),
+                             10000);
 
     // Verify Konsole splitter is maximized
     QTRY_VERIFY_WITH_TIMEOUT(paneSplitter->terminalMaximized(), 5000);
@@ -2509,7 +2540,8 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
                      QStringLiteral("#{window_zoomed_flag}")});
         check.waitForFinished(3000);
         return QString::fromUtf8(check.readAllStandardOutput()).trimmed() == QStringLiteral("0");
-    }(), 10000);
+    }(),
+                             10000);
 
     // Verify Konsole splitter is no longer maximized
     QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 5000);
@@ -2716,10 +2748,13 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     QVERIFY2(paneSplitter->terminalMaximized(), "Expected splitter to still be maximized after layout changes");
     QVERIFY2(zoomedDisplay->columns() == zoomedColumns,
              qPrintable(QStringLiteral("Expected zoomed columns to remain %1 but got %2 (pre-zoom was %3)")
-                            .arg(zoomedColumns).arg(zoomedDisplay->columns()).arg(preZoomColumns)));
+                            .arg(zoomedColumns)
+                            .arg(zoomedDisplay->columns())
+                            .arg(preZoomColumns)));
     QVERIFY2(zoomedDisplay->lines() == zoomedLines,
              qPrintable(QStringLiteral("Expected zoomed lines to remain %1 but got %2")
-                            .arg(zoomedLines).arg(zoomedDisplay->lines())));
+                            .arg(zoomedLines)
+                            .arg(zoomedDisplay->lines())));
 
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
@@ -2896,7 +2931,8 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
     QTRY_VERIFY_WITH_TIMEOUT([&]() {
         QString dir = paneSession->currentWorkingDirectory();
         return dir.contains(QStringLiteral("tmp"));
-    }(), 10000);
+    }(),
+                             10000);
 
     // Request a horizontal split, passing the working directory
     controller->requestSplitPane(paneId, Qt::Horizontal, QStringLiteral("/tmp"));
@@ -2933,10 +2969,12 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
                      QStringLiteral("#{pane_current_path}")});
         check.waitForFinished(3000);
         QStringList paths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        if (paths.size() != 2) return false;
+        if (paths.size() != 2)
+            return false;
         // Both the original pane and the new pane should be in /tmp
         return paths[0].contains(QStringLiteral("tmp")) && paths[1].contains(QStringLiteral("tmp"));
-    }(), 10000);
+    }(),
+                             10000);
 
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
@@ -3019,10 +3057,12 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
                      QStringLiteral("#{pane_current_path}")});
         check.waitForFinished(3000);
         QStringList paths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        if (paths.size() != 2) return false;
+        if (paths.size() != 2)
+            return false;
         // The new window's pane should be in /tmp
         return paths[1].contains(QStringLiteral("tmp"));
-    }(), 10000);
+    }(),
+                             10000);
 
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
@@ -4081,7 +4121,7 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
     const auto &windowTabs = controller->windowToTabIndex();
     int twoPaneWindowId = -1;
     int onePaneWindowId = -1;
-    int movePaneId = -1; // pane to move from the 2-pane window
+    int movePaneId = -1;   // pane to move from the 2-pane window
     int targetPaneId = -1; // pane in the 1-pane window
     for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
         if (controller->paneCountForWindow(it.key()) == 2) {

@@ -54,7 +54,7 @@ QString FileFilter::concatRegexPattern(QString wordCharacters) const
          * on the HotSpot creation we verify if this is indeed a file, so there's
          * no problem on testing on random words on the screen.
          */
-        QStringLiteral(R"RX('[^'\n]+')RX") // Matches everything between single quotes.
+        QStringLiteral(R"RX('[^'\n]+')RX")    // Matches everything between single quotes.
         + QStringLiteral(R"RX(|"[^\n"]+")RX") // Matches everything inside double quotes
         // Matches a contiguous line of alphanumeric characters plus some special ones
         // defined in the profile. With a special case for strings starting with '/' which

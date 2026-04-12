@@ -259,8 +259,7 @@ void TmuxTreeModel::setScore(const QModelIndex &index, int score)
         _sessions[index.row()].score = score;
     } else if (level == 2 && sRow >= 0 && sRow < _sessions.size() && index.row() >= 0 && index.row() < _sessions[sRow].windows.size()) {
         _sessions[sRow].windows[index.row()].score = score;
-    } else if (level == 3 && sRow >= 0 && sRow < _sessions.size() && wRow >= 0 && wRow < _sessions[sRow].windows.size() && index.row() >= 0
-               && index.row() < _sessions[sRow].windows[wRow].panes.size()) {
+    } else if (level == 3 && sRow >= 0 && sRow < _sessions.size() && wRow >= 0 && wRow < _sessions[sRow].windows.size() && index.row() >= 0 && index.row() < _sessions[sRow].windows[wRow].panes.size()) {
         _sessions[sRow].windows[wRow].panes[index.row()].score = score;
     }
 }

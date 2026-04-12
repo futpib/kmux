@@ -11,7 +11,7 @@
 #include "TerminalCharacterDecoder.h"
 
 class QTextStream;
-template<typename>
+template <typename>
 class QList;
 
 namespace Konsole

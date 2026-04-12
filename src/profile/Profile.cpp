@@ -252,7 +252,7 @@ static QString defaultShell()
     return {};
 #endif // HAVE_GETPWUID
 
-#else // Q_OS_WIN
+#else  // Q_OS_WIN
     auto shell = GetWindowPowerShell();
     if (shell.isEmpty()) {
         shell = GetWindowsShell();

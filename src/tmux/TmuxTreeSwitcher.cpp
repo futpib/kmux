@@ -229,17 +229,13 @@ bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
         if (obj == _inputLine) {
-            const bool forward = (keyEvent->key() == Qt::Key_Up) || (keyEvent->key() == Qt::Key_Down) || (keyEvent->key() == Qt::Key_PageUp)
-                || (keyEvent->key() == Qt::Key_PageDown) || (keyEvent->key() == Qt::Key_Left) || (keyEvent->key() == Qt::Key_Right);
+            const bool forward = (keyEvent->key() == Qt::Key_Up) || (keyEvent->key() == Qt::Key_Down) || (keyEvent->key() == Qt::Key_PageUp) || (keyEvent->key() == Qt::Key_PageDown) || (keyEvent->key() == Qt::Key_Left) || (keyEvent->key() == Qt::Key_Right);
             if (forward) {
                 QCoreApplication::sendEvent(_treeView, event);
                 return true;
             }
         } else if (obj == _treeView) {
-            const bool backToInput = (keyEvent->key() != Qt::Key_Up) && (keyEvent->key() != Qt::Key_Down) && (keyEvent->key() != Qt::Key_PageUp)
-                && (keyEvent->key() != Qt::Key_PageDown) && (keyEvent->key() != Qt::Key_Tab) && (keyEvent->key() != Qt::Key_Backtab)
-                && (keyEvent->key() != Qt::Key_Left) && (keyEvent->key() != Qt::Key_Right) && (keyEvent->key() != Qt::Key_Return)
-                && (keyEvent->key() != Qt::Key_Enter);
+            const bool backToInput = (keyEvent->key() != Qt::Key_Up) && (keyEvent->key() != Qt::Key_Down) && (keyEvent->key() != Qt::Key_PageUp) && (keyEvent->key() != Qt::Key_PageDown) && (keyEvent->key() != Qt::Key_Tab) && (keyEvent->key() != Qt::Key_Backtab) && (keyEvent->key() != Qt::Key_Left) && (keyEvent->key() != Qt::Key_Right) && (keyEvent->key() != Qt::Key_Return) && (keyEvent->key() != Qt::Key_Enter);
             if (backToInput) {
                 QCoreApplication::sendEvent(_inputLine, event);
                 return true;

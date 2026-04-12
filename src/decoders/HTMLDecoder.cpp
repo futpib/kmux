@@ -70,8 +70,7 @@ void HTMLDecoder::decodeLine(const Character *const characters, int count, LineP
 
     for (int i = 0; i < count; i++) {
         // check if appearance of character is different from previous char
-        if (characters[i].rendition.all != _lastRendition || characters[i].foregroundColor != _lastForeColor
-            || characters[i].backgroundColor != _lastBackColor) {
+        if (characters[i].rendition.all != _lastRendition || characters[i].foregroundColor != _lastForeColor || characters[i].backgroundColor != _lastBackColor) {
             if (_innerSpanOpen) {
                 closeSpan(text);
                 _innerSpanOpen = false;

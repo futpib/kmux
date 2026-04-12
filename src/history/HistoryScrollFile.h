@@ -47,8 +47,8 @@ public:
 private:
     qint64 startOfLine(const int lineno) const;
 
-    mutable HistoryFile _index; // lines Row(qint64)
-    mutable HistoryFile _cells; // text  Row(Character)
+    mutable HistoryFile _index;     // lines Row(qint64)
+    mutable HistoryFile _cells;     // text  Row(Character)
     mutable HistoryFile _lineflags; // flags Row(unsigned char)
 
     struct reflowData { // data to reflow lines

@@ -13,7 +13,7 @@
 #include "Profile.h"
 
 class QVariant;
-template<typename, typename>
+template <typename, typename>
 class QHash;
 
 namespace Konsole

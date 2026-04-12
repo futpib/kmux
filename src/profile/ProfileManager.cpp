@@ -447,8 +447,8 @@ void ProfileManager::loadShortcuts()
     const QLatin1String suffix(".profile");
     auto findByName = [this, suffix](const QString &name) {
         return std::find_if(_profiles.cbegin(), _profiles.cend(), [&name, suffix](const Profile::Ptr &p) {
-            return p->name() == name //
-                || (p->name() + suffix) == name; // For backwards compatibility
+            return p->name() == name                //
+                   || (p->name() + suffix) == name; // For backwards compatibility
         });
     };
 

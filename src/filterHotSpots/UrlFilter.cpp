@@ -47,7 +47,7 @@ static const char scheme_or_www[] = "\\b(?:www\\.|[a-z][a-z0-9+\\-.]*+://";
 static const char scheme_or_www_end[] = ")";
 
 // unreserved / pct-encoded / sub-delims
-#define COMMON_1 "a-z0-9\\-._~%!$&'*+,;="
+#define COMMON_1               "a-z0-9\\-._~%!$&'*+,;="
 #define BALANCED_PARENS(CHARS) "(?:[" CHARS "]++(\\((?:[" CHARS "]++|(?-1))*+\\))?+)"
 
 /* clang-format off */

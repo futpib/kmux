@@ -208,7 +208,7 @@ void SSHManagerPlugin::requestConnection(QSortFilterProxyModel *filterModel,
         sshCommand += data.name;
     } else {
         // if (!data.useSshConfig)
-        // useSshConfig is false aka not set, so we just a assume a manual entry in terms of an entry that was added manually to the sshmanager 
+        // useSshConfig is false aka not set, so we just a assume a manual entry in terms of an entry that was added manually to the sshmanager
         if (data.sshKey.length()) {
             sshCommand += QStringLiteral("-i %1 ").arg(data.sshKey);
         }
@@ -220,7 +220,7 @@ void SSHManagerPlugin::requestConnection(QSortFilterProxyModel *filterModel,
         if (!data.username.isEmpty()) {
             sshCommand += data.username + QLatin1Char('@');
         }
-        
+
         if (!data.host.isEmpty()) {
             sshCommand += data.host;
         }

@@ -62,8 +62,8 @@ HRESULT ConPtyProcess::initializeStartupInfoAttachedToPseudoConsole(STARTUPINFOE
         if (pStartupInfo->lpAttributeList && InitializeProcThreadAttributeList(pStartupInfo->lpAttributeList, 1, 0, &attrListSize)) {
             // Set Pseudo Console attribute
             hr = UpdateProcThreadAttribute(pStartupInfo->lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hPC, sizeof(HPCON), NULL, NULL)
-                ? S_OK
-                : HRESULT_FROM_WIN32(GetLastError());
+                     ? S_OK
+                     : HRESULT_FROM_WIN32(GetLastError());
         } else {
             hr = HRESULT_FROM_WIN32(GetLastError());
         }
@@ -142,18 +142,18 @@ bool ConPtyProcess::startProcess(const QString &shellPath,
     }
 
     // Launch ping to Q_EMIT some text back via the pipe
-    hr = CreateProcess(NULL, // No module name - use Command Line
-                       cmdArg.data(), // Command Line
-                       NULL, // Process handle not inheritable
-                       NULL, // Thread handle not inheritable
-                       FALSE, // Inherit handles
+    hr = CreateProcess(NULL,                                                      // No module name - use Command Line
+                       cmdArg.data(),                                             // Command Line
+                       NULL,                                                      // Process handle not inheritable
+                       NULL,                                                      // Thread handle not inheritable
+                       FALSE,                                                     // Inherit handles
                        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, // Creation flags
-                       envArg, // Environment block
-                       workingDir.toStdWString().data(), // Use parent's starting directory
-                       &m_shellStartupInfo.StartupInfo, // Pointer to STARTUPINFO
-                       &m_shellProcessInformation) // Pointer to PROCESS_INFORMATION
-        ? S_OK
-        : GetLastError();
+                       envArg,                                                    // Environment block
+                       workingDir.toStdWString().data(),                          // Use parent's starting directory
+                       &m_shellStartupInfo.StartupInfo,                           // Pointer to STARTUPINFO
+                       &m_shellProcessInformation)                                // Pointer to PROCESS_INFORMATION
+             ? S_OK
+             : GetLastError();
 
     if (hr != S_OK) {
         m_lastError = QStringLiteral("ConPty Error: Cannot create process -> %1").arg(hr);

@@ -140,7 +140,7 @@ struct ItemToString {
 
 namespace QTest
 {
-template<>
+template <>
 char *toString(const std::vector<TestEmulation::Item> &items)
 {
     QStringList res;

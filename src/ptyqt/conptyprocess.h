@@ -24,7 +24,7 @@ typedef VOID *HPCON;
 #define TOO_OLD_WINSDK 0
 #endif
 
-template<typename T>
+template <typename T>
 std::vector<T> vectorFromString(const std::basic_string<T> &str)
 {
     return std::vector<T>(str.begin(), str.end());
@@ -35,11 +35,11 @@ std::vector<T> vectorFromString(const std::basic_string<T> &str)
 class WindowsContext
 {
 public:
-    typedef HRESULT (*CreatePseudoConsolePtr)(COORD size, // ConPty Dimensions
-                                              HANDLE hInput, // ConPty Input
+    typedef HRESULT (*CreatePseudoConsolePtr)(COORD size,     // ConPty Dimensions
+                                              HANDLE hInput,  // ConPty Input
                                               HANDLE hOutput, // ConPty Output
-                                              DWORD dwFlags, // ConPty Flags
-                                              HPCON *phPC); // ConPty Reference
+                                              DWORD dwFlags,  // ConPty Flags
+                                              HPCON *phPC);   // ConPty Reference
 
     typedef HRESULT (*ResizePseudoConsolePtr)(HPCON hPC, COORD size);
 

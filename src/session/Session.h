@@ -95,14 +95,16 @@ public:
     explicit Session(QObject *parent = nullptr);
     ~Session() override;
 
-    enum class PaneSyncPolicy { Independent, SyncWithSiblings };
+    enum class PaneSyncPolicy { Independent,
+                                SyncWithSiblings };
 
     PaneSyncPolicy paneSyncPolicy() const;
     void setPaneSyncPolicy(PaneSyncPolicy policy);
 
 protected:
     /** Tag type for constructing a Session without a PTY. */
-    struct NoPtyTag {};
+    struct NoPtyTag {
+    };
 
     /**
      * Constructs a session without creating a PTY.
@@ -111,7 +113,6 @@ protected:
     explicit Session(NoPtyTag, QObject *parent = nullptr);
 
 public:
-
     /* Returns the process info so the plugins can peek at it's name */
     ProcessInfo *getProcessInfo();
 
@@ -487,9 +488,9 @@ public:
         CurrentDirectory = 7, // From VTE (supposedly 6 was for dir, 7 for file, but whatever)
         TextColor = 10,
         BackgroundColor = 11,
-        SessionName = 30, // Non-standard
-        SessionIcon = 32, // Non-standard
-        SessionColor = 34, // Non-standard
+        SessionName = 30,   // Non-standard
+        SessionIcon = 32,   // Non-standard
+        SessionColor = 34,  // Non-standard
         ProfileChange = 50, // this clashes with Xterm's font change command
         ResetTextColor = 110,
         ResetBackgroundColor = 111,

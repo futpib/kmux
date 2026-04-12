@@ -18,7 +18,10 @@ class IPtyProcess : public QObject
 {
     Q_OBJECT
 public:
-    enum PtyType { UnixPty = 0, WinPty = 1, ConPty = 2, AutoPty = 3 };
+    enum PtyType { UnixPty = 0,
+                   WinPty = 1,
+                   ConPty = 2,
+                   AutoPty = 3 };
 
     IPtyProcess()
         : m_pid(0)

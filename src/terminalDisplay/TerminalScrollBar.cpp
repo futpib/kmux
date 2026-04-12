@@ -110,12 +110,14 @@ void TerminalScrollBar::setMarkerSize(double pSize)
     update();
 }
 
-void TerminalScrollBar::setSearchHighlightLineColor(QColor color) {
+void TerminalScrollBar::setSearchHighlightLineColor(QColor color)
+{
     _searchHighlightLineColor = color;
     update();
 }
 
-void TerminalScrollBar::setSearchHighlightLineOpacity(int lineOpacity) {
+void TerminalScrollBar::setSearchHighlightLineOpacity(int lineOpacity)
+{
     _lineOpacity = lineOpacity;
     update();
 }
@@ -198,8 +200,7 @@ void TerminalScrollBar::scrollImage(int lines, const QRect &screenWindowRegion, 
     const int SCROLLBAR_CONTENT_GAP = 1;
     QRect scrollRect;
     if (_scrollbarLocation == Enum::ScrollBarLeft) {
-        scrollRect.setLeft(scrollBarWidth + SCROLLBAR_CONTENT_GAP
-                           + (_highlightScrolledLines.isEnabled() ? _highlightScrolledLines.HIGHLIGHT_SCROLLED_LINES_WIDTH : 0));
+        scrollRect.setLeft(scrollBarWidth + SCROLLBAR_CONTENT_GAP + (_highlightScrolledLines.isEnabled() ? _highlightScrolledLines.HIGHLIGHT_SCROLLED_LINES_WIDTH : 0));
         scrollRect.setRight(display->width());
     } else {
         scrollRect.setLeft(_highlightScrolledLines.isEnabled() ? _highlightScrolledLines.HIGHLIGHT_SCROLLED_LINES_WIDTH : 0);
@@ -281,7 +282,7 @@ void TerminalScrollBar::paintEvent(QPaintEvent *event)
     p.setPen(Qt::NoPen);
 
     p.setBrush(searchLineColor);
-    for (int y: std::as_const(_searchLines)) {
+    for (int y : std::as_const(_searchLines)) {
         y = (y * height()) / _terminalLines;
         p.drawRoundedRect(2, y, width() - 4, stripeHeight, cornerRadius, cornerRadius);
     }
@@ -292,21 +293,23 @@ void TerminalScrollBar::paintEvent(QPaintEvent *event)
     }
 }
 
-void TerminalScrollBar::searchLines(const QSet<int>& indexSet, int lines) {
+void TerminalScrollBar::searchLines(const QSet<int> &indexSet, int lines)
+{
     if (indexSet.isEmpty()) {
         _searchLines.clear();
     } else {
         _searchLines = indexSet;
     }
 
-    if(sender()) {
+    if (sender()) {
         _terminalLines = lines;
     }
 
     update();
 }
 
-void TerminalScrollBar::clearSearchLines() {
+void TerminalScrollBar::clearSearchLines()
+{
     searchLines(QSet<int>{}, 1000);
 }
 
@@ -327,11 +330,12 @@ void TerminalScrollBar::mouseDoubleClickEvent(QMouseEvent *event)
     }
 }
 
-void TerminalScrollBar::mouseMoveEvent(QMouseEvent *event) {
+void TerminalScrollBar::mouseMoveEvent(QMouseEvent *event)
+{
     int posY = event->pos().y();
     bool showToolTip = false;
 
-    for (int y: std::as_const(_searchLines)) {
+    for (int y : std::as_const(_searchLines)) {
         int x = y;
         y = (y * height()) / _terminalLines;
         if (abs(y - posY) <= 3) {

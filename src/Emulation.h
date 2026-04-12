@@ -498,7 +498,6 @@ protected:
      */
     virtual bool receiveRawData(const char *text, int length);
 
-
     /**
      * Sets the active screen.  The terminal has two screens, primary and alternate.
      * The primary screen is used by default.  When certain interactive programs such

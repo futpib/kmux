@@ -98,7 +98,7 @@ bool ColorSchemeWallpaper::isNull() const
     return _path.isEmpty();
 }
 
-bool ColorSchemeWallpaper::draw(QPainter &painter, const QRect& rect, qreal bgColorOpacity, const QColor &backgroundColor)
+bool ColorSchemeWallpaper::draw(QPainter &painter, const QRect &rect, qreal bgColorOpacity, const QColor &backgroundColor)
 {
     if ((_picture == nullptr) || _picture->isNull()) {
         return false;
