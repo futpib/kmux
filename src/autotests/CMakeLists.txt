@@ -57,6 +57,7 @@ ecm_add_tests(
     TmuxLayoutParserTest.cpp
     TmuxPaneStateRecoveryTest.cpp
     ViewManagerTest.cpp
+    MainWindowTest.cpp
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
 
