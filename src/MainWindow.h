@@ -28,6 +28,7 @@
 class KActionMenu;
 class KHamburgerMenu;
 class KToggleAction;
+class QFileSystemWatcher;
 
 namespace Konsole
 {
@@ -247,6 +248,8 @@ private:
     std::optional<int> _progress;
     bool _blurEnabled = false;
     bool _firstShowEvent = true;
+
+    QFileSystemWatcher *_stateFileWatcher = nullptr;
 
     // indicates that we got a command line argument that overwrites showing/hidding
     std::optional<bool> _windowArgsShowMenuBar;

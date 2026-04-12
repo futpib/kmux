@@ -12,10 +12,13 @@
 
 // Qt
 #include <QCloseEvent>
+#include <QFile>
+#include <QFileSystemWatcher>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QScreen>
+#include <QTimer>
 #include <QWindow>
 #if HAVE_DBUS
 #include <QDBusConnection>
@@ -93,6 +96,27 @@ QString dumpToolbars(const QMainWindow *w)
         out << QStringLiteral("%1=%2").arg(b->objectName(), b->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden"));
     }
     return out.join(QLatin1Char(' '));
+}
+
+int readStateLenFromDisk(const QString &path)
+{
+    // Reparse from disk (bypassing KConfig cache) to see what's actually on disk right now.
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return -1;
+    }
+    const QByteArray contents = f.readAll();
+    int i = contents.indexOf("\nState=");
+    if (i < 0) {
+        return -2;
+    }
+    i += 7;
+    int end = contents.indexOf('\n', i);
+    if (end < 0) {
+        end = contents.size();
+    }
+    const QByteArray b64 = contents.mid(i, end - i);
+    return QByteArray::fromBase64(b64).size();
 }
 
 QString dumpToolbarGroups(const KConfig *config)
@@ -1150,6 +1174,21 @@ void MainWindow::applyKonsoleSettings()
     qCDebug(KonsoleDebug) << "applyKonsoleSettings: after setAutoSaveSettings toolbars=[" << dumpToolbars(this) << "]"
                           << "autoSaveGroup=" << autoSaveConfigGroup().name() << "file=" << autoSaveConfigGroup().config()->name();
 
+    if (!_stateFileWatcher) {
+        const QString path = autoSaveGroup.config()->name();
+        _stateFileWatcher = new QFileSystemWatcher(this);
+        _stateFileWatcher->addPath(path);
+        connect(_stateFileWatcher, &QFileSystemWatcher::fileChanged, this, [this, path](const QString &changedPath) {
+            qCDebug(KonsoleDebug) << "stateFile CHANGED path=" << changedPath << "onDiskStateLen=" << readStateLenFromDisk(path) << "toolbars=["
+                                  << dumpToolbars(this) << "]";
+            // Some editors/KConfig write atomically (rename over file), which removes the watch — re-add it.
+            if (!_stateFileWatcher->files().contains(path)) {
+                _stateFileWatcher->addPath(path);
+            }
+        });
+        qCDebug(KonsoleDebug) << "stateFile WATCH installed path=" << path << "onDiskStateLen=" << readStateLenFromDisk(path);
+    }
+
     updateWindowCaption();
     updateProgress();
 }
@@ -1325,9 +1364,15 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
     if (auto *bar = qobject_cast<KToolBar *>(obj)) {
         if (event->type() == QEvent::Show) {
-            qCDebug(KonsoleDebug) << "toolbar SHOW" << bar->objectName() << "allToolbars=[" << dumpToolbars(this) << "]";
+            const KConfigGroup g = autoSaveConfigGroup();
+            qCDebug(KonsoleDebug) << "toolbar SHOW" << bar->objectName() << "allToolbars=[" << dumpToolbars(this)
+                                  << "] inMemoryStateLen=" << g.readEntry("State", QByteArray()).size()
+                                  << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name());
         } else if (event->type() == QEvent::Hide) {
-            qCDebug(KonsoleDebug) << "toolbar HIDE" << bar->objectName() << "allToolbars=[" << dumpToolbars(this) << "]";
+            const KConfigGroup g = autoSaveConfigGroup();
+            qCDebug(KonsoleDebug) << "toolbar HIDE" << bar->objectName() << "allToolbars=[" << dumpToolbars(this)
+                                  << "] inMemoryStateLen=" << g.readEntry("State", QByteArray()).size()
+                                  << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name());
         }
     }
 
