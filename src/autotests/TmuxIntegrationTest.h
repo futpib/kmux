@@ -61,6 +61,7 @@ private Q_SLOTS:
     void testMovePaneFromTwoToOneFromKonsole();
     void testFractalSplitDownRight8();
     void testNewTabFromTmuxPane();
+    void testDetachViewBreaksPane();
     void testClosePaneFromSessionControllerConfirmed();
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();

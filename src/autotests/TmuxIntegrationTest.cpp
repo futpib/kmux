@@ -4313,6 +4313,78 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testDetachViewBreaksPane()
+{
+    // Ctrl+Shift+H (detach-view action) on a tmux pane should break the pane
+    // out into a new tmux window (= new Konsole tab).
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Start with a 2-pane window so there's something to break out
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+
+    // Wait for the 2-pane splitter to appear
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *s = container->viewSplitterAt(0);
+            return s && s->findChildren<TerminalDisplay *>().size() == 2;
+        }(),
+        10000);
+    QCOMPARE(container->count(), 1);
+
+    // Trigger the detach-view action (Ctrl+Shift+H)
+    QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-view"));
+    QVERIFY2(detachAction, "detach-view action not found");
+    detachAction->trigger();
+
+    // A new tab should appear with the broken-out pane
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    // Each tab should have exactly 1 pane
+    for (int i = 0; i < container->count(); ++i) {
+        auto *s = container->viewSplitterAt(i);
+        QVERIFY(s);
+        QCOMPARE(s->findChildren<TerminalDisplay *>().size(), 1);
+    }
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 2);
+
+    // Tab bar should be visible with 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(container->tabBar()->isVisible(), 5000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()
 {
     // Closing a single pane in a multi-pane window via SessionController::closeSession
