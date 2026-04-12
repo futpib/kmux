@@ -56,9 +56,12 @@ jobs:
           pacman -Syu --noconfirm --needed \
             base-devel cmake ninja git \
             extra-cmake-modules \
-            qt6-base \
-            kcoreaddons \
-            clang
+            qt6-base qt6-multimedia qt6-5compat qt6-tools \
+            kcoreaddons kconfig kio kparts kcrash knotifications \
+            kxmlgui kbookmarks kiconthemes kconfigwidgets kwindowsystem \
+            kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
+            ktextwidgets kwidgetsaddons kservice ki18n \
+            icu clang
 
       - name: Configure (generates .clang-format via KDEClangFormat)
         run: cmake -B build -G Ninja

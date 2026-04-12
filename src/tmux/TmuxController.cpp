@@ -44,6 +44,7 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     connect(_gateway, &TmuxGateway::windowRenamed, this, &TmuxController::onWindowRenamed);
     connect(_gateway, &TmuxGateway::windowPaneChanged, this, &TmuxController::onWindowPaneChanged);
     connect(_gateway, &TmuxGateway::sessionChanged, this, &TmuxController::onSessionChanged);
+    connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::onSessionWindowChanged);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
     connect(_gateway, &TmuxGateway::panePaused, _paneManager, &TmuxPaneManager::pausePane);
     connect(_gateway, &TmuxGateway::paneContinued, _paneManager, &TmuxPaneManager::continuePane);
@@ -87,6 +88,31 @@ void TmuxController::initialize()
                           [this](bool success, const QString &response) {
                               handleListWindowsResponse(success, response);
                           });
+
+    // Determine the currently active pane — tmux doesn't send an initial
+    // %window-pane-changed on attach, so we have to ask.
+    _gateway->sendCommand(
+        TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(QStringLiteral("#{pane_id} #{pane_active} #{window_active}")),
+        [this](bool success, const QString &response) {
+            if (!success)
+                return;
+            // Find the pane that is active within the active window
+            const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                const QStringList parts = line.split(QLatin1Char(' '));
+                if (parts.size() < 3)
+                    continue;
+                bool paneActive = parts[1].toInt() != 0;
+                bool windowActive = parts[2].toInt() != 0;
+                if (paneActive && windowActive) {
+                    QString paneStr = parts[0];
+                    if (paneStr.startsWith(QLatin1Char('%'))) {
+                        _activePaneId = paneStr.mid(1).toInt();
+                    }
+                    break;
+                }
+            }
+        });
 }
 
 TmuxGateway *TmuxController::gateway() const
@@ -176,6 +202,87 @@ void TmuxController::requestDetach()
     _gateway->detach();
 }
 
+void TmuxController::requestSelectWindow(int windowId)
+{
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("select-window")).windowTarget(windowId));
+}
+
+void TmuxController::requestSelectPane(int paneId)
+{
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("select-pane")).paneTarget(paneId));
+}
+
+void TmuxController::requestSwitchSession(int sessionId)
+{
+    TmuxCommand cmd(QStringLiteral("switch-client"));
+    cmd.flag(QStringLiteral("-t")).arg(QStringLiteral("$") + QString::number(sessionId));
+    _gateway->sendCommand(cmd);
+}
+
+void TmuxController::queryTree(TreeCallback callback)
+{
+    // list-panes -a with a format that includes session/window/pane + active flags.
+    // Fields separated by tabs; records separated by newlines.
+    const QString fmt = QStringLiteral(
+        "#{session_id}\t#{session_name}\t#{session_attached}\t"
+        "#{window_id}\t#{window_name}\t#{window_active}\t"
+        "#{pane_id}\t#{pane_title}\t#{pane_active}");
+    int currentSessionId = _sessionId;
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(fmt),
+                          [callback, currentSessionId](bool success, const QString &response) {
+                              QList<SessionDescriptor> sessions;
+                              if (!success) {
+                                  callback(sessions);
+                                  return;
+                              }
+                              const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                              QMap<int, int> sessionIndex; // sessionId -> idx in sessions
+                              QMap<QPair<int, int>, int> windowIndex; // (sessionId, windowId) -> idx in that session's windows
+                              for (const QString &line : lines) {
+                                  const QStringList parts = line.split(QLatin1Char('\t'));
+                                  if (parts.size() < 9)
+                                      continue;
+                                  int sessionId = parts[0].mid(1).toInt(); // strip $
+                                  QString sessionName = parts[1];
+                                  bool sessionAttached = parts[2].toInt() != 0;
+                                  int windowId = parts[3].mid(1).toInt(); // strip @
+                                  QString windowName = parts[4];
+                                  bool windowActive = parts[5].toInt() != 0;
+                                  int paneId = parts[6].mid(1).toInt(); // strip %
+                                  QString paneTitle = parts[7];
+                                  bool paneActive = parts[8].toInt() != 0;
+
+                                  if (!sessionIndex.contains(sessionId)) {
+                                      SessionDescriptor s;
+                                      s.sessionId = sessionId;
+                                      s.name = sessionName;
+                                      s.active = (sessionId == currentSessionId) || sessionAttached;
+                                      sessionIndex[sessionId] = sessions.size();
+                                      sessions.append(s);
+                                  }
+                                  SessionDescriptor &s = sessions[sessionIndex[sessionId]];
+
+                                  auto wKey = qMakePair(sessionId, windowId);
+                                  if (!windowIndex.contains(wKey)) {
+                                      WindowDescriptor w;
+                                      w.windowId = windowId;
+                                      w.name = windowName;
+                                      w.active = windowActive;
+                                      windowIndex[wKey] = s.windows.size();
+                                      s.windows.append(w);
+                                  }
+                                  WindowDescriptor &w = s.windows[windowIndex[wKey]];
+
+                                  PaneDescriptor p;
+                                  p.paneId = paneId;
+                                  p.title = paneTitle;
+                                  p.active = paneActive;
+                                  w.panes.append(p);
+                              }
+                              callback(sessions);
+                          });
+}
+
 bool TmuxController::hasPane(int paneId) const
 {
     return _paneManager->hasPane(paneId);
@@ -209,6 +316,26 @@ int TmuxController::windowCount() const
 int TmuxController::paneCountForWindow(int windowId) const
 {
     return _windowPanes.value(windowId).size();
+}
+
+QList<int> TmuxController::panesForWindow(int windowId) const
+{
+    return _windowPanes.value(windowId);
+}
+
+Session *TmuxController::sessionForPane(int paneId) const
+{
+    return _paneManager->sessionForPane(paneId);
+}
+
+int TmuxController::sessionId() const
+{
+    return _sessionId;
+}
+
+QString TmuxController::sessionName() const
+{
+    return _sessionName;
 }
 
 const QMap<int, int> &TmuxController::windowToTabIndex() const
@@ -536,6 +663,35 @@ void TmuxController::onSessionChanged(int sessionId, const QString &name)
     _sessionName = name;
     cleanup();
     initialize();
+}
+
+void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
+{
+    if (sessionId != _sessionId) {
+        return;
+    }
+    // tmux just switched the active window in our session. Query the
+    // active pane of that window so our _activePaneId stays in sync.
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).windowTarget(windowId).format(QStringLiteral("#{pane_id} #{pane_active}")),
+                          [this](bool success, const QString &response) {
+                              if (!success)
+                                  return;
+                              const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                              for (const QString &line : lines) {
+                                  const QStringList parts = line.split(QLatin1Char(' '));
+                                  if (parts.size() < 2)
+                                      continue;
+                                  if (parts[1].toInt() != 0) {
+                                      QString paneStr = parts[0];
+                                      if (paneStr.startsWith(QLatin1Char('%'))) {
+                                          int paneId = paneStr.mid(1).toInt();
+                                          _activePaneId = paneId;
+                                          focusPane(paneId);
+                                      }
+                                      break;
+                                  }
+                              }
+                          });
 }
 
 void TmuxController::cleanup()

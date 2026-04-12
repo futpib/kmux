@@ -13,6 +13,8 @@
 #include <QSet>
 #include <QTimer>
 
+#include <functional>
+
 #include "konsoleprivate_export.h"
 
 namespace Konsole
@@ -51,6 +53,32 @@ public:
     void requestToggleZoomPane(int paneId);
     void requestBreakPane(int paneId);
     void requestDetach();
+    void requestSelectWindow(int windowId);
+    void requestSelectPane(int paneId);
+    void requestSwitchSession(int sessionId);
+
+    // Asynchronously query tmux for all sessions on the server.
+    // Callback receives a list of {sessionId, sessionName, windows}
+    // where each window has {windowId, windowName, panes (id+title)}.
+    struct PaneDescriptor {
+        int paneId = -1;
+        QString title;
+        bool active = false;
+    };
+    struct WindowDescriptor {
+        int windowId = -1;
+        QString name;
+        bool active = false;
+        QList<PaneDescriptor> panes;
+    };
+    struct SessionDescriptor {
+        int sessionId = -1;
+        QString name;
+        bool active = false;
+        QList<WindowDescriptor> windows;
+    };
+    using TreeCallback = std::function<void(QList<SessionDescriptor>)>;
+    void queryTree(TreeCallback callback);
 
     bool hasPane(int paneId) const;
     int activePaneId() const;
@@ -58,6 +86,10 @@ public:
     int windowIdForPane(int paneId) const;
     int windowCount() const;
     int paneCountForWindow(int windowId) const;
+    QList<int> panesForWindow(int windowId) const;
+    Session *sessionForPane(int paneId) const;
+    int sessionId() const;
+    QString sessionName() const;
 
     const QMap<int, int> &windowToTabIndex() const;
 
@@ -74,6 +106,7 @@ private Q_SLOTS:
     void onWindowRenamed(int windowId, const QString &name);
     void onWindowPaneChanged(int windowId, int paneId);
     void onSessionChanged(int sessionId, const QString &name);
+    void onSessionWindowChanged(int sessionId, int windowId);
     void onExit(const QString &reason);
 
 private:
