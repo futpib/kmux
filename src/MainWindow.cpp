@@ -80,19 +80,6 @@
 
 using namespace Konsole;
 
-namespace
-{
-QString dumpToolbars(const QMainWindow *w)
-{
-    QStringList out;
-    const auto bars = w->findChildren<KToolBar *>();
-    for (const KToolBar *b : bars) {
-        out << QStringLiteral("%1=%2").arg(b->objectName(), b->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden"));
-    }
-    return out.join(QLatin1Char(' '));
-}
-}
-
 MainWindow::MainWindow()
     : KXmlGuiWindow()
     , _viewManager(nullptr)
@@ -312,9 +299,7 @@ void MainWindow::activeViewChanged(SessionController *controller)
     }
 
     controller->setShowMenuAction(_toggleMenuBarAction);
-    qCDebug(KonsoleDebug) << "activeViewChanged: before addClient toolbars=[" << dumpToolbars(this) << "]";
     guiFactory()->addClient(controller);
-    qCDebug(KonsoleDebug) << "activeViewChanged: after  addClient toolbars=[" << dumpToolbars(this) << "]";
 
     // update session title to match newly activated session
     activeViewTitleChanged(controller);
@@ -592,10 +577,6 @@ void MainWindow::viewFullScreen(bool fullScreen)
 
 void MainWindow::applyMainWindowSettings(const KConfigGroup &config)
 {
-    qCDebug(KonsoleDebug) << "applyMainWindowSettings: group=" << config.name() << "file=" << config.config()->name()
-                          << "hasStateKey=" << config.hasKey("State") << "stateLen=" << config.readEntry("State", QByteArray()).size() << "toolbarsBefore=["
-                          << dumpToolbars(this) << "]";
-
     KMainWindow::applyMainWindowSettings(config);
 
     // Override the menubar state from the config file
@@ -611,8 +592,6 @@ void MainWindow::applyMainWindowSettings(const KConfigGroup &config)
     }
 
     _toggleMenuBarAction->setChecked(menuBar()->isVisibleTo(this));
-
-    qCDebug(KonsoleDebug) << "applyMainWindowSettings: toolbarsAfter=[" << dumpToolbars(this) << "]";
 }
 
 BookmarkHandler *MainWindow::bookmarkHandler() const
@@ -1308,8 +1287,6 @@ QWidget *MainWindow::createContainer(QWidget *parent, int index, const QDomEleme
     QWidget *createdContainer = KXmlGuiWindow::createContainer(parent, index, element, containerAction);
     if (element.tagName() == QLatin1String("ToolBar")) {
         KAcceleratorManager::setNoAccel(createdContainer);
-        qCDebug(KonsoleDebug) << "createContainer: created toolbar" << createdContainer->objectName() << "visible=" << createdContainer->isVisible()
-                              << "allToolbars=[" << dumpToolbars(this) << "]";
     }
     return createdContainer;
 }
