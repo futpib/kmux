@@ -1109,8 +1109,12 @@ void MainWindow::applyKonsoleSettings()
 
     _viewManager->activeContainer()->setNavigationBehavior(KonsoleSettings::newTabBehavior());
 
-    // Save the toolbar/menu/dockwidget states and the window geometry
-    setAutoSaveSettings();
+    // Save the toolbar/menu/dockwidget states and the window geometry in
+    // the state config (~/.local/state/kmuxstaterc) rather than the default
+    // config file, so window/toolbar state lives next to other transient
+    // window state instead of kmuxrc.
+    KConfigGroup autoSaveGroup = KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow"));
+    setAutoSaveSettings(autoSaveGroup);
 
     updateWindowCaption();
     updateProgress();

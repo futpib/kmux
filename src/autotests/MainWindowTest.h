@@ -20,6 +20,7 @@ private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
     void testSessionToolbarVisibilityPersists();
+    void testApplyReadsSameFileAsSaveWrote();
 
 private:
     QTemporaryDir m_homeDir;

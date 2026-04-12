@@ -9,6 +9,8 @@
 #include "../MainWindow.h"
 #include "../ViewManager.h"
 
+#include <KConfigGroup>
+#include <KSharedConfig>
 #include <KToolBar>
 #include <QAction>
 #include <QCoreApplication>
@@ -120,6 +122,47 @@ void MainWindowTest::testSessionToolbarVisibilityPersists()
         QVERIFY(bar);
         QVERIFY2(!bar->isVisible(), "sessionToolbar should still be hidden on second run — setting did not persist");
     });
+}
+
+void MainWindowTest::testApplyReadsSameFileAsSaveWrote()
+{
+    // Reproduces the file-split bug observed in the real app:
+    //   - setAutoSaveSettings() saves MainWindow state to one file.
+    //   - On restart applyMainWindowSettings() reads from a different file
+    //     — hasStateKey=false — so sessionToolbar comes back visible.
+    // First run: toggle sessionToolbar off and close so save runs.
+    openCloseWindow([](MainWindow *mw) {
+        KToolBar *bar = findToolBar(mw, QStringLiteral("sessionToolbar"));
+        QVERIFY(bar);
+        QVERIFY(triggerShowToolbarToggle(mw, QStringLiteral("sessionToolbar")));
+        QCoreApplication::processEvents();
+    });
+
+    // Second run: open a fresh window and ask KMainWindow which group it
+    // treats as its autosave group. That group's State= key must be the
+    // one that was just saved — otherwise save and restore are talking
+    // to different files and sessionToolbar visibility can't be restored.
+    auto *mw = new MainWindow();
+    mw->viewManager()->newSession(mw->viewManager()->defaultProfile(), QString());
+    mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(mw));
+    QCoreApplication::processEvents();
+
+    const KConfigGroup autoGroup = mw->autoSaveConfigGroup();
+    const QString autoFile = autoGroup.config()->name();
+    const int stateLen = autoGroup.readEntry("State", QByteArray()).size();
+
+    qWarning() << "autoSave file=" << autoFile << "group=" << autoGroup.name() << "stateLen=" << stateLen;
+
+    QPointer<MainWindow> guard(mw);
+    mw->close();
+    while (guard) {
+        QCoreApplication::processEvents();
+    }
+
+    QVERIFY2(stateLen > 0,
+             "applyMainWindowSettings read an empty State= on second run — "
+             "save and restore are talking to different config files");
 }
 
 QTEST_MAIN(MainWindowTest)
