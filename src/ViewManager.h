@@ -397,6 +397,7 @@ private Q_SLOTS:
     // called when the "Detach View" menu item is selected
     void detachActiveView();
     void detachActiveTab();
+    void detachFromTmux();
 
     // called when a session terminates - the view manager will delete any
     // views associated with the session

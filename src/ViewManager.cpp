@@ -242,6 +242,12 @@ void ViewManager::setupActions()
     connect(action, &QAction::triggered, this, &ViewManager::detachActiveTab);
     _multiTabOnlyActions << action;
 
+    action = collection->addAction(QStringLiteral("detach-from-tmux"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
+    action->setText(i18nc("@action:inmenu", "Detach from tmux Session"));
+    connect(action, &QAction::triggered, this, &ViewManager::detachFromTmux);
+
     // keyboard shortcut only actions
     action = new QAction(i18nc("@action Shortcut entry", "Next Tab"), this);
     const QList<QKeySequence> nextViewActionKeys{QKeySequence{Qt::SHIFT | Qt::Key_Right}, QKeySequence{Qt::CTRL | Qt::Key_PageDown}};
@@ -570,6 +576,17 @@ void ViewManager::detachActiveView()
         Q_EMIT terminalsDetached(newSplitter, detachedSessions);
         focusAnotherTerminal(activeSplitter->getToplevelSplitter());
         toggleActionsBasedOnState();
+    }
+}
+
+void ViewManager::detachFromTmux()
+{
+    Session *activeSession = _pluggedController ? _pluggedController->session().data() : nullptr;
+    if (activeSession && activeSession->paneSyncPolicy() == Session::PaneSyncPolicy::SyncWithSiblings) {
+        auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
+        if (ctrl) {
+            ctrl->requestDetach();
+        }
     }
 }
 

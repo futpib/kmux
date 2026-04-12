@@ -4385,6 +4385,61 @@ void TmuxIntegrationTest::testDetachViewBreaksPane()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testDetachFromTmuxAction()
+{
+    // The detach-from-tmux action should exist in the action collection
+    // and trigger a tmux detach — the tmux subprocess disconnects but the
+    // tmux server keeps running.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-from-tmux"));
+    QVERIFY2(detachAction, "detach-from-tmux action not found");
+
+    // Watch for the bridge disconnecting after detach
+    QSignalSpy disconnectSpy(attach.bridge, &TmuxProcessBridge::disconnected);
+
+    detachAction->trigger();
+
+    // The bridge should disconnect (tmux control client exits on detach)
+    QTRY_VERIFY_WITH_TIMEOUT(disconnectSpy.count() >= 1, 10000);
+
+    // The tmux server itself should still be running — we can still query it
+    QProcess listSessions;
+    listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
+    QVERIFY(listSessions.waitForFinished(5000));
+    QCOMPARE(listSessions.exitCode(), 0);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()
 {
     // Closing a single pane in a multi-pane window via SessionController::closeSession
