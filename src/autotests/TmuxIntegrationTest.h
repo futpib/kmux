@@ -66,6 +66,17 @@ private Q_SLOTS:
     void testClosePaneFromSessionControllerConfirmed();
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();
+    void testParseSinglePane();
+    void testParseTwoHorizontalPanes();
+    void testParseTwoVerticalPanes();
+    void testParseNestedLayout();
+    void testParseFooterMetadata();
+    void testParsePaneAnnotations();
+    void testParseMultilineCommand();
+    void testParseFourPaneGrid();
+    void testParseThreeHorizontalPanes();
+    void testParseEmptyPanes();
+    void testCountPanes();
 
 private:
     QTemporaryDir m_tmuxTmpDir;

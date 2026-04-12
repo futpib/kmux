@@ -61,14 +61,6 @@ ecm_add_tests(
 )
 
 ecm_add_test(
-    TmuxTestDSL.cpp
-    TmuxTestDSLTest.cpp
-    TEST_NAME TmuxTestDSLTest
-    LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
-)
-
-ecm_add_test(
-    TmuxTestDSL.cpp
     TmuxIntegrationTest.cpp
     TEST_NAME TmuxIntegrationTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
