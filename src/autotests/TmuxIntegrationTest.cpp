@@ -4663,6 +4663,92 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteDetach()
     delete attach.mw.data();
 }
 
+// C-b n → tmux's default `next-window`. With two tmux windows, invoking the
+// prefix palette and pressing `n` must advance tmux to the next window, which
+// kmux observes via %session-window-changed → active pane moves to the other
+// window's pane.
+void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Create a second window so there's somewhere to switch to.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    // Make sure we attach with window 0 active so `next-window` advances to
+    // the new one we just created.
+    QProcess selectFirst;
+    selectFirst.start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(ctx.sessionName)});
+    QVERIFY(selectFirst.waitForFinished(5000));
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() >= 2 && controller->activePaneId() >= 0, 10000);
+
+    int initialWindowId = controller->windowIdForPane(controller->activePaneId());
+    QVERIFY(initialWindowId >= 0);
+
+    // Open the palette with the tmux prefix.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+
+    // Press `n` — tmux's default binding is `next-window`.
+    QTest::keyClick(palette, Qt::Key_N);
+
+    // Wait for tmux to advance the active window. The active pane should now
+    // belong to a different window from the one we started on.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0 && controller->windowIdForPane(controller->activePaneId()) != initialWindowId, 10000);
+
+    // And kmux's view container should have followed — the tab for the new
+    // active window is the one currently shown.
+    int newWindowId = controller->windowIdForPane(controller->activePaneId());
+    int expectedTabIndex = controller->windowToTabIndex().value(newWindowId, -1);
+    QVERIFY(expectedTabIndex >= 0);
+    QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->activeContainer()->currentIndex(), expectedTabIndex, 10000);
+
+    // Keyboard focus should land on that new pane's TerminalDisplay — so a
+    // following keystroke goes into the right shell, not the previous pane
+    // or the (now-closed) palette.
+    Session *newPaneSession = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(newPaneSession);
+    const auto newPaneViews = newPaneSession->views();
+    QVERIFY(!newPaneViews.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(newPaneViews.first()), 10000);
+
+    delete attach.mw.data();
+}
+
 namespace
 {
 // Helper: set up a tmux session with 2 windows: window 0 has 2 panes (split),
