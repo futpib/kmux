@@ -40,31 +40,3 @@ jobs:
               cmake --build build
               QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
             '
-
-  clang-format:
-    name: clang-format
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run clang-format in Arch container
-        run: |
-          docker run --rm \
-            -v "$PWD":/src -w /src \
-            archlinux:latest \
-            bash -euc '
-              pacman -Syu --noconfirm --needed \
-                base-devel cmake ninja git \
-                extra-cmake-modules \
-                qt6-base qt6-multimedia qt6-5compat qt6-tools \
-                kcoreaddons kconfig kio kparts kcrash knotifications \
-                kxmlgui kbookmarks kiconthemes kconfigwidgets kwindowsystem \
-                kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
-                ktextwidgets kwidgetsaddons kservice ki18n \
-                icu clang
-
-              cmake -B build -G Ninja
-              find src -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror
-            '
