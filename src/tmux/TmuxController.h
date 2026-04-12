@@ -121,6 +121,7 @@ private:
     void setWindowTabTitle(int windowId, const QString &name);
     void refreshPaneTitles();
     void handleListWindowsResponse(bool success, const QString &response);
+    void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
 
     TmuxGateway *_gateway;
     ViewManager *_viewManager;

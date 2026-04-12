@@ -416,7 +416,20 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
         }
     };
 
+    // Helper to collect all pane IDs from a layout tree.
+    std::function<void(const TmuxLayoutNode &, QSet<int> &)> collectPaneIds = [&](const TmuxLayoutNode &node, QSet<int> &out) {
+        if (node.type == TmuxLayoutNodeType::Leaf) {
+            out.insert(node.paneId);
+        } else {
+            for (const auto &child : node.children) {
+                collectPaneIds(child, out);
+            }
+        }
+    };
+
     // _state is already Initializing (which subsumes ApplyingLayout)
+    QSet<int> newWindowIds;
+    QSet<int> newPaneIds;
     const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &line : lines) {
         int windowId;
@@ -431,8 +444,15 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
             collectPaneDimensions(parsed.value());
             applyWindowLayout(windowId, parsed.value());
             setWindowTabTitle(windowId, windowName);
+            newWindowIds.insert(windowId);
+            collectPaneIds(parsed.value(), newPaneIds);
         }
     }
+
+    // Remove windows/panes that belong to a previous session (or were
+    // closed while detached). Done after applying the new layout so that
+    // the view container is never empty during the transition.
+    removeStaleWindowsAndPanes(newWindowIds, newPaneIds);
 
     // Query pane state for each window before capturing history
     for (auto it = _windowPanes.constBegin(); it != _windowPanes.constEnd(); ++it) {
@@ -587,6 +607,24 @@ void TmuxController::onWindowClosed(int windowId)
     _windowPanes.remove(windowId);
 }
 
+void TmuxController::removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds)
+{
+    const auto trackedWindows = _windowToTabIndex.keys();
+    for (int windowId : trackedWindows) {
+        if (!newWindowIds.contains(windowId)) {
+            onWindowClosed(windowId);
+        }
+    }
+    // Destroy orphaned pane sessions (shouldn't normally happen once windows
+    // have been pruned, but guard against layout drift).
+    const auto trackedPanes = _paneManager->allPaneIds();
+    for (int paneId : trackedPanes) {
+        if (!newPaneIds.contains(paneId)) {
+            _paneManager->destroyPaneSession(paneId);
+        }
+    }
+}
+
 void TmuxController::onWindowRenamed(int windowId, const QString &name)
 {
     setWindowTabTitle(windowId, name);
@@ -661,7 +699,15 @@ void TmuxController::onSessionChanged(int sessionId, const QString &name)
 {
     _sessionId = sessionId;
     _sessionName = name;
-    cleanup();
+    // Don't tear down old windows/panes before the new session's are in place:
+    // doing so empties the view container and closes the MainWindow via
+    // ViewManager::empty(). Instead, reinitialize from tmux — applyWindowLayout
+    // will create new tabs for the new session's windows — and prune whatever
+    // windows/panes aren't part of the new session at the end of
+    // handleListWindowsResponse.
+    _paneTitleTimer->stop();
+    _resizeCoordinator->stop();
+    _stateRecovery->clear();
     initialize();
 }
 

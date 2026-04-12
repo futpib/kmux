@@ -70,6 +70,7 @@ private Q_SLOTS:
     void testTreeSwitcherEscapeClosesNoChange();
     void testTreeSwitcherFuzzyFilter();
     void testTreeSwitcherSwitchesSession();
+    void testTreeSwitcherSwitchesSessionWithTwoPanes();
     void testTreeSwitcherStaleSessionIsNoop();
     void testTreeSwitcherActivatePaneAlreadyActiveIsNoop();
     void testTreeSwitcherActivateCurrentWindowIsNoop();

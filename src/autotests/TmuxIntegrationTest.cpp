@@ -4898,6 +4898,118 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSession()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testTreeSwitcherSwitchesSessionWithTwoPanes()
+{
+    // Session A has 1 pane, session B has 2 panes. After switching via the
+    // tree switcher, the active window of the controller should contain 2 panes.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctxA;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctxA);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+    });
+
+    // Create session B on the same socket with a first pane
+    const QString sessionBName = ctxA.sessionName + QStringLiteral("-B");
+    QProcess newSessionB;
+    newSessionB.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctxA.socketPath,
+                       QStringLiteral("new-session"),
+                       QStringLiteral("-d"),
+                       QStringLiteral("-s"),
+                       sessionBName,
+                       QStringLiteral("sleep 60")});
+    QVERIFY(newSessionB.waitForFinished(5000));
+    QCOMPARE(newSessionB.exitCode(), 0);
+
+    auto cleanupB = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctxA.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), sessionBName});
+        kill.waitForFinished(5000);
+    });
+
+    // Split session B's window to get a second pane
+    QProcess splitB;
+    splitB.start(tmuxPath,
+                 {QStringLiteral("-S"),
+                  ctxA.socketPath,
+                  QStringLiteral("split-window"),
+                  QStringLiteral("-t"),
+                  sessionBName + QStringLiteral(":0"),
+                  QStringLiteral("sleep 60")});
+    QVERIFY(splitB.waitForFinished(5000));
+    QCOMPARE(splitB.exitCode(), 0);
+
+    // Attach to session A
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+
+    int initialSessionId = controller->sessionId();
+    QVERIFY(initialSessionId >= 0);
+
+    // Sanity: session A has 1 pane in its active window
+    int initialWindowId = controller->windowIdForPane(controller->activePaneId());
+    QCOMPARE(controller->paneCountForWindow(initialWindowId), 1);
+
+    // Open the tree switcher and find session B
+    auto *switcher = new TmuxTreeSwitcher(attach.mw->viewManager(), controller);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 2, 10000);
+
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QModelIndex sessionBIdx;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        QModelIndex idx = model->index(i, 0);
+        if (idx.data(TmuxTreeModel::NodeTypeRole).toInt() == TmuxTreeModel::SessionNode && idx.data(TmuxTreeModel::IdRole).toInt() != initialSessionId) {
+            sessionBIdx = idx;
+            break;
+        }
+    }
+    QVERIFY2(sessionBIdx.isValid(), "Session B should appear in the tree");
+
+    int sessionBId = sessionBIdx.data(TmuxTreeModel::IdRole).toInt();
+
+    switcher->treeView()->setCurrentIndex(sessionBIdx);
+    switcher->activateCurrent();
+
+    // Wait for the session switch to land
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionId(), sessionBId, 10000);
+
+    // After the switch, the controller's window map should reflect session B:
+    // exactly one window, containing 2 panes.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() == 1, 10000);
+    const auto &windowTabs = controller->windowToTabIndex();
+    QVERIFY(!windowTabs.isEmpty());
+    int bWindowId = windowTabs.firstKey();
+    QTRY_COMPARE_WITH_TIMEOUT(controller->paneCountForWindow(bWindowId), 2, 10000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
 {
     // If the user selects a session that has since been killed on the
