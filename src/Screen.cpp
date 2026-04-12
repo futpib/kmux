@@ -291,7 +291,9 @@ int Screen::selSetSelectionEnd(int mode)
         }
     }
     setSelectionEnd(x, y, false);
-    Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
+    // clang-format off
+    Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+    // clang-format on
     return 0;
 }
 
@@ -1893,7 +1895,9 @@ void Screen::selectReplContigious(const int x, const int y)
     if (_replMode == REPL_INPUT && _replModeStart <= std::pair(y, x) && std::pair(y, x) <= _replModeEnd) {
         setSelectionStart(_replModeStart.second, _replModeStart.first, false);
         setSelectionEnd(_replModeEnd.second, _replModeEnd.first, true);
-        Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
+        // clang-format off
+        Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+        // clang-format on
         return;
     }
     int col = x;
@@ -1966,7 +1970,9 @@ void Screen::selectReplContigious(const int x, const int y)
     }
     setSelectionStart(startX, startY, false);
     setSelectionEnd(endX, endY, true);
-    Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged();
+    // clang-format off
+    Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged();
+    // clang-format on
 }
 
 QString Screen::selectedText(const DecodingOptions options) const
@@ -2490,7 +2496,9 @@ void Screen::setReplMode(int mode)
             _hasRepl = true;
             currentTerminalDisplay()->sessionController()->setVisible(QStringLiteral("monitor-prompt"), true);
         }
-        Q_EMIT currentTerminalDisplay() -> screenWindow()->selectionChanged(); // Enable copy action
+        // clang-format off
+        Q_EMIT currentTerminalDisplay()->screenWindow()->selectionChanged(); // Enable copy action
+        // clang-format on
         setLineProperty(LINE_PROMPT_START << (mode - REPL_PROMPT), true);
     }
 }
