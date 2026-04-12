@@ -8,6 +8,8 @@
 #include "MainWindow.h"
 #include "config-konsole.h"
 
+#include <cstdio>
+
 // Qt
 #include <QCloseEvent>
 #include <QMenu>
@@ -1298,13 +1300,16 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     qCDebug(KonsoleDebug) << "closeEvent: ENTER toolbars=[" << dumpToolbars(this) << "]" << "autoSaveGroup=" << autoSaveConfigGroup().name()
                           << "autoSaveFile=" << autoSaveConfigGroup().config()->name()
-                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size();
+                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size() << "accepted=" << event->isAccepted();
+    std::fflush(stderr);
 
     KXmlGuiWindow::closeEvent(event);
 
-    qCDebug(KonsoleDebug) << "closeEvent: LEAVE savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size()
+    qCDebug(KonsoleDebug) << "closeEvent: LEAVE accepted=" << event->isAccepted()
+                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size()
                           << "autoSaveFile=" << autoSaveConfigGroup().config()->name()
                           << "toolbarGroupsAfter=" << dumpToolbarGroups(autoSaveConfigGroup().config());
+    std::fflush(stderr);
 }
 
 void MainWindow::triggerAction(const QString &name) const
@@ -1318,6 +1323,14 @@ void MainWindow::triggerAction(const QString &name) const
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (auto *bar = qobject_cast<KToolBar *>(obj)) {
+        if (event->type() == QEvent::Show) {
+            qCDebug(KonsoleDebug) << "toolbar SHOW" << bar->objectName() << "allToolbars=[" << dumpToolbars(this) << "]";
+        } else if (event->type() == QEvent::Hide) {
+            qCDebug(KonsoleDebug) << "toolbar HIDE" << bar->objectName() << "allToolbars=[" << dumpToolbars(this) << "]";
+        }
+    }
+
     if (!_pluggedController.isNull() && obj == _pluggedController->view()) {
         switch (event->type()) {
         case QEvent::MouseButtonPress:
@@ -1355,6 +1368,11 @@ QWidget *MainWindow::createContainer(QWidget *parent, int index, const QDomEleme
         KAcceleratorManager::setNoAccel(createdContainer);
         qCDebug(KonsoleDebug) << "createContainer: created ToolBar name=" << createdContainer->objectName() << "visible=" << createdContainer->isVisible()
                               << "allToolbars=[" << dumpToolbars(this) << "]";
+        // Watch show/hide so we see when the user toggles visibility via
+        // Settings → Toolbars Shown (that path goes straight through
+        // KToolBar::setVisible, bypassing saveNewToolbarConfig and
+        // applyMainWindowSettings).
+        createdContainer->installEventFilter(this);
     } else {
         qCDebug(KonsoleDebug) << "createContainer: tag=" << element.tagName() << "name=" << createdContainer->objectName();
     }
