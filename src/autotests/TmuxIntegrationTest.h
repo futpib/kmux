@@ -60,6 +60,10 @@ private Q_SLOTS:
     void testMovePaneFromTwoToOneFromTmux();
     void testMovePaneFromTwoToOneFromKonsole();
     void testFractalSplitDownRight8();
+    void testNewTabFromTmuxPane();
+    void testClosePaneFromSessionControllerConfirmed();
+    void testClosePaneFromSessionControllerCancelled();
+    void testCloseTabFromContainerConfirmed();
 
 private:
     QTemporaryDir m_tmuxTmpDir;

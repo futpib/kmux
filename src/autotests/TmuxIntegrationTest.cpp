@@ -8,11 +8,13 @@
 #include "TmuxTestDSL.h"
 
 #include <KActionCollection>
+#include <KMessageBox>
 #include <QPointer>
 #include <QProcess>
 #include <QResizeEvent>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QTabBar>
 #include <QTest>
 
 #include "../Emulation.h"
@@ -4249,6 +4251,256 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
     QCOMPARE(lines.size(), 3); // 3 total panes across 2 windows
 
     // Cleanup
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testNewTabFromTmuxPane()
+{
+    // When the user invokes New Tab (Ctrl+T) while focused on a tmux pane,
+    // a new tmux window should be created without any confirmation dialog.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+
+    // Trigger the New Tab action (Ctrl+Shift+T)
+    QAction *newTabAction = attach.mw->actionCollection()->action(QStringLiteral("new-tab"));
+    QVERIFY2(newTabAction, "new-tab action not found");
+    newTabAction->trigger();
+
+    // A new tmux tab should appear without any dialog
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 2);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()
+{
+    // Closing a single pane in a multi-pane window via SessionController::closeSession
+    // should show a confirmation dialog. Preset "don't ask again" = PrimaryAction
+    // so the close proceeds without blocking the test.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    ViewSplitter *paneSplitter = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    // Preset "don't ask again" to Close Pane (PrimaryAction)
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ConfirmCloseTmuxPane"), KMessageBox::PrimaryAction);
+
+    // Close one of the panes via its SessionController
+    auto terminals = paneSplitter->findChildren<TerminalDisplay *>();
+    QCOMPARE(terminals.size(), 2);
+    auto *controller = terminals.first()->sessionController();
+    QVERIFY(controller);
+    controller->closeSession();
+
+    // Pane count should drop to 1 (single pane remaining, the window is not closed)
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+            if (!c || c->count() != 1)
+                return false;
+            auto *s = c->viewSplitterAt(0);
+            return s && s->findChildren<TerminalDisplay *>().size() == 1;
+        }(),
+        10000);
+
+    // Reset the setting so other tests aren't affected
+    KMessageBox::enableAllMessages();
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testClosePaneFromSessionControllerCancelled()
+{
+    // When "don't ask again" = SecondaryAction (Cancel), closeSession should
+    // do nothing — the pane stays.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────┬────────────────────────────────────────┐
+        │ cmd: sleep 60                          │ cmd: sleep 60                          │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        │                                        │                                        │
+        └────────────────────────────────────────┴────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    ViewSplitter *paneSplitter = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            for (int i = 0; i < container->count(); ++i) {
+                auto *splitter = container->viewSplitterAt(i);
+                if (splitter && splitter->findChildren<TerminalDisplay *>().size() == 2) {
+                    paneSplitter = splitter;
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    // Preset "don't ask again" = Cancel (SecondaryAction)
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ConfirmCloseTmuxPane"), KMessageBox::SecondaryAction);
+
+    auto terminals = paneSplitter->findChildren<TerminalDisplay *>();
+    QCOMPARE(terminals.size(), 2);
+    auto *sc = terminals.first()->sessionController();
+    sc->closeSession();
+
+    // Give async tmux work a moment to potentially produce layout changes
+    QTest::qWait(500);
+
+    // Still 2 panes — close was cancelled
+    QCOMPARE(paneSplitter->findChildren<TerminalDisplay *>().size(), 2);
+
+    KMessageBox::enableAllMessages();
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testCloseTabFromContainerConfirmed()
+{
+    // When the user clicks the X on a tab (closeTerminalTab path) or uses Ctrl+W,
+    // a confirmation dialog appears. Preset "don't ask again" so the close proceeds.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Add a second tmux window so we have 2 tabs — closing one shouldn't tear down kmux
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    // Preset "don't ask again" to Close Tab (PrimaryAction)
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ConfirmCloseTmuxWindow"), KMessageBox::PrimaryAction);
+
+    // Trigger tab close via the tab bar's tabCloseRequested signal —
+    // this is what clicking the X invokes.
+    QTabBar *tabBar = container->tabBar();
+    QVERIFY(tabBar);
+    QMetaObject::invokeMethod(tabBar, "tabCloseRequested", Qt::DirectConnection, Q_ARG(int, 0));
+
+    // One tab should be gone
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+
+    KMessageBox::enableAllMessages();
+
     delete attach.mw.data();
 }
 

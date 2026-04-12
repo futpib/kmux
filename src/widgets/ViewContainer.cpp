@@ -842,20 +842,16 @@ void TabbedViewContainer::closeTmuxTab(const QList<TerminalDisplay *> &terminals
         return;
     }
 
-    // Offer Detach / Kill / Cancel for all tmux tab closes
-    int result = KMessageBox::questionTwoActionsCancel(
-        window(),
-        i18n("Do you want to detach from the tmux session or kill this window?"),
-        i18n("Close Tmux Window"),
-        KGuiItem(i18nc("@action:button", "Detach"), QStringLiteral("network-disconnect")),
-        KGuiItem(i18nc("@action:button", "Kill Window"), QStringLiteral("application-exit")));
+    int result = KMessageBox::warningTwoActions(window(),
+                                                i18n("Close this tab? The processes running in it will be terminated."),
+                                                i18n("Confirm Close"),
+                                                KGuiItem(i18nc("@action:button", "Close Tab"), QStringLiteral("application-exit")),
+                                                KStandardGuiItem::cancel(),
+                                                QStringLiteral("ConfirmCloseTmuxWindow"));
 
     if (result == KMessageBox::PrimaryAction) {
-        controller->requestDetach();
-    } else if (result == KMessageBox::SecondaryAction) {
         controller->requestCloseWindow(windowId);
     }
-    // Cancel: do nothing
 }
 
 ViewManager *TabbedViewContainer::connectedViewManager()

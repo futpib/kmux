@@ -671,20 +671,8 @@ void MainWindow::newTab()
     if (_pluggedController && _pluggedController->session()) {
         auto *controller = TmuxControllerRegistry::instance()->controllerForSession(_pluggedController->session());
         if (controller) {
-            int result = KMessageBox::questionTwoActionsCancel(
-                this,
-                i18n("The current session is a tmux pane. Would you like to create a new tmux tab or a local tab?"),
-                i18n("New Tab"),
-                KGuiItem(i18nc("@action:button", "Tmux Tab"), QStringLiteral("utilities-terminal")),
-                KGuiItem(i18nc("@action:button", "Local Tab"), QStringLiteral("tab-new")),
-                KStandardGuiItem::cancel(),
-                QStringLiteral("NewTabFromTmuxOpensTmux"));
-            if (result == KMessageBox::PrimaryAction) {
-                controller->requestNewWindow(_pluggedController->session()->currentWorkingDirectory());
-                return;
-            } else if (result == KMessageBox::Cancel) {
-                return;
-            }
+            controller->requestNewWindow(_pluggedController->session()->currentWorkingDirectory());
+            return;
         }
     }
     Profile::Ptr defaultProfile = ProfileManager::instance()->defaultProfile();
