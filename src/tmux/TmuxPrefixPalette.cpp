@@ -47,10 +47,10 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
     _treeView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _treeView->setFocusPolicy(Qt::NoFocus);
     _treeView->setSelectionMode(QAbstractItemView::NoSelection);
+    _treeView->setHeaderHidden(true);
     layout->addWidget(_treeView, 1);
 
     _model = new QStandardItemModel(this);
-    _model->setHorizontalHeaderLabels({i18nc("@title:column tmux prefix key", "Key"), i18nc("@title:column tmux command", "Command")});
     _treeView->setModel(_model);
 
     populateModel();
