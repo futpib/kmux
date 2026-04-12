@@ -241,7 +241,7 @@ void TabbedViewContainer::konsoleConfigChanged()
 
     // ASAN issue if using sessionController->isKonsolePart(), just
     // duplicate code for now
-    if (qApp->applicationName() != QLatin1String("konsole")) {
+    if (qApp->applicationName() != QLatin1String("kmux")) {
         tabBar()->setVisible(false);
     } else {
         // if we start with --show-tabbar or --hide-tabbar we ignore the preferences.

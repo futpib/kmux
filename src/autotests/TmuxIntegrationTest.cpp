@@ -42,6 +42,9 @@ using namespace Konsole;
 
 void TmuxIntegrationTest::initTestCase()
 {
+    // Set the application name so isKonsolePart() and tab bar visibility
+    // logic treat this test binary the same as the real kmux executable.
+    QCoreApplication::setApplicationName(QStringLiteral("kmux"));
     QVERIFY(m_tmuxTmpDir.isValid());
 }
 
@@ -4303,6 +4306,9 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
     QCOMPARE(controller->windowCount(), 2);
+
+    // The tab bar should be visible now that there are 2 tabs
+    QTRY_VERIFY_WITH_TIMEOUT(container->tabBar()->isVisible(), 5000);
 
     delete attach.mw.data();
 }
