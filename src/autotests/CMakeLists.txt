@@ -55,9 +55,15 @@ ecm_add_tests(
     TerminalInterfaceTest.cpp
     TerminalTest.cpp
     TmuxLayoutParserTest.cpp
-    TmuxPaneStateRecoveryTest.cpp
     ViewManagerTest.cpp
     MainWindowTest.cpp
+    LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
+)
+
+ecm_add_test(
+    TmuxTestDSL.cpp
+    TmuxPaneStateRecoveryTest.cpp
+    TEST_NAME TmuxPaneStateRecoveryTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
 
@@ -76,6 +82,7 @@ ecm_add_test(
 )
 
 ecm_add_test(
+    TmuxTestDSL.cpp
     TmuxProcessBridgeTest.cpp
     TEST_NAME TmuxProcessBridgeTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
