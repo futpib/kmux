@@ -27,13 +27,15 @@ bool CompositeWidgetFocusWatcher::eventFilter(QObject *watched, QEvent *event)
         disconnect(this, &CompositeWidgetFocusWatcher::compositeFocusChanged, watched, nullptr);
         break;
     case QEvent::FocusIn:
-        Q_EMIT compositeFocusChanged(true);
+        Q_EMIT compositeFocusChanged(true, static_cast<QFocusEvent *>(event)->reason());
         break;
-    case QEvent::FocusOut:
-        if (static_cast<QFocusEvent *>(event)->reason() != Qt::PopupFocusReason) {
-            Q_EMIT compositeFocusChanged(false);
+    case QEvent::FocusOut: {
+        const auto reason = static_cast<QFocusEvent *>(event)->reason();
+        if (reason != Qt::PopupFocusReason) {
+            Q_EMIT compositeFocusChanged(false, reason);
         }
         break;
+    }
     default:
         break;
     }

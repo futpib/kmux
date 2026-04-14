@@ -465,7 +465,7 @@ private Q_SLOTS:
     void switchToTerminalDisplay(TerminalDisplay *terminalDisplay);
 
     // called when a SessionController gains focus
-    void controllerChanged(SessionController *controller);
+    void controllerChanged(SessionController *controller, Qt::FocusReason reason = Qt::OtherFocusReason);
 
     /**
      * Disconnect this ViewManager and MainWindow from @p controller

@@ -172,7 +172,7 @@ Q_SIGNALS:
      * This can be used by other classes to plug the controller's actions into a window's
      * menus.
      */
-    void viewFocused(SessionController *controller);
+    void viewFocused(SessionController *controller, Qt::FocusReason reason = Qt::OtherFocusReason);
 
     void rawTitleChanged();
 
@@ -324,7 +324,7 @@ private Q_SLOTS:
     void updateFilterList(
         const QExplicitlySharedDataPointer<Profile> &profile); // Called when the profile has changed, so we might need to change the list of filters
 
-    void viewFocusChangeHandler(bool focused);
+    void viewFocusChangeHandler(bool focused, Qt::FocusReason reason);
     void interactionHandler();
     void snapshot(); // called periodically as the user types
     // to take a snapshot of the state of the

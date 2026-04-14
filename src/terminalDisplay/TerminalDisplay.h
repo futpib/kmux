@@ -549,7 +549,7 @@ Q_SIGNALS:
     void activationRequest(const QString &xdgActivationToken);
     void sendStringToEmu(const QByteArray &local8BitString);
 
-    void compositeFocusChanged(bool focused);
+    void compositeFocusChanged(bool focused, Qt::FocusReason reason = Qt::OtherFocusReason);
 
     void peekPrimaryRequested(bool doPeek);
 

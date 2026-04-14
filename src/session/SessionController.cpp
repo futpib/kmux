@@ -300,12 +300,12 @@ void SessionController::trackOutput(QKeyEvent *event)
     view()->screenWindow()->setTrackOutput(true);
 }
 
-void SessionController::viewFocusChangeHandler(bool focused)
+void SessionController::viewFocusChangeHandler(bool focused, Qt::FocusReason reason)
 {
     if (focused) {
         // notify the world that the view associated with this session has been focused
         // used by the view manager to update the title of the MainWindow widget containing the view
-        Q_EMIT viewFocused(this);
+        Q_EMIT viewFocused(this, reason);
 
         // when the view is focused, set bell events from the associated session to be delivered
         // by the focused view

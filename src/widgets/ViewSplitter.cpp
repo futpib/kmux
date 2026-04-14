@@ -281,7 +281,11 @@ void ViewSplitter::handleFocusDirection(Qt::Orientation orientation, int directi
         }
     }
     if (focusTerminal != nullptr) {
-        focusTerminal->setFocus(Qt::OtherFocusReason);
+        // ShortcutFocusReason marks this as user-initiated focus navigation so
+        // downstream consumers (e.g. the tmux select-pane echo in
+        // ViewManager::controllerChanged) can distinguish it from programmatic
+        // focus changes made in response to external events.
+        focusTerminal->setFocus(Qt::ShortcutFocusReason);
     }
 }
 
@@ -320,7 +324,7 @@ void ViewSplitter::focusNext(int dir)
     auto targetTerminal = terminals.at(targetId);
 
     if (targetTerminal) {
-        targetTerminal->setFocus(Qt::OtherFocusReason);
+        targetTerminal->setFocus(Qt::ShortcutFocusReason);
     }
 }
 

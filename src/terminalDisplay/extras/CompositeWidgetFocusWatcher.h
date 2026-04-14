@@ -26,7 +26,7 @@ public:
     bool eventFilter(QObject *watched, QEvent *event) Q_DECL_OVERRIDE;
 
 Q_SIGNALS:
-    void compositeFocusChanged(bool focused);
+    void compositeFocusChanged(bool focused, Qt::FocusReason reason);
 
 private:
     void registerWidgetAndChildren(QWidget *widget);

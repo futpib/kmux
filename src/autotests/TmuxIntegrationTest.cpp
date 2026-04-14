@@ -5847,6 +5847,138 @@ void TmuxIntegrationTest::testFractalSplitDownRight8()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    if (tmuxPath.isEmpty()) {
+        QSKIP("tmux command not found.");
+    }
+
+    // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │ columns: 256                                                                   │
+        │ lines: 64                                                                      │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    // "Split horizontally" = draw a horizontal divider = split-view-top-bottom.
+    // "Split vertically"   = draw a vertical divider   = split-view-left-right.
+    QAction *splitHorizontally = attach.mw->actionCollection()->action(QStringLiteral("split-view-top-bottom"));
+    QAction *splitVertically = attach.mw->actionCollection()->action(QStringLiteral("split-view-left-right"));
+    QAction *focusAbove = attach.mw->actionCollection()->action(QStringLiteral("focus-view-above"));
+    QVERIFY2(splitHorizontally, "split-view-top-bottom action not found");
+    QVERIFY2(splitVertically, "split-view-left-right action not found");
+    QVERIFY2(focusAbove, "focus-view-above action not found");
+
+    auto findSplitterWithPaneCount = [&](int expected) -> ViewSplitter * {
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return nullptr;
+        for (int t = 0; t < container->count(); ++t) {
+            auto *splitter = container->viewSplitterAt(t);
+            if (splitter && splitter->findChildren<TerminalDisplay *>().size() == expected) {
+                return splitter;
+            }
+        }
+        return nullptr;
+    };
+
+    // 1. Split horizontally: top | bottom (focus bottom).
+    splitHorizontally->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT(findSplitterWithPaneCount(2) != nullptr, 10000);
+
+    // 2. Split vertically: split the bottom pane into bottom-left | bottom-right (focus bottom-right).
+    splitVertically->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT(findSplitterWithPaneCount(3) != nullptr, 10000);
+
+    // 3. Focus the topmost pane (the original top pane that still spans full width).
+    // Wait for tmux to ack the select-pane (controllerChanged → requestSelectPane)
+    // so the next split targets the now-active top pane rather than the previously
+    // active bottom-right one. ctrl->activePaneId() is updated synchronously from
+    // tmux notifications.
+    auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(ctrl);
+    const int topPaneId = 0; // First pane created in this session.
+    focusAbove->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT(ctrl->activePaneId() == topPaneId, 5000);
+
+    // 4. Split vertically: split the top pane into top-left | top-right (focus top-right).
+    splitVertically->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT(findSplitterWithPaneCount(4) != nullptr, 10000);
+    ViewSplitter *paneSplitter = findSplitterWithPaneCount(4);
+    QVERIFY(paneSplitter);
+
+    // Expected structure: outer vertical splitter (top/bottom), each child a horizontal
+    // splitter (left/right) with two TerminalDisplays.
+    QCOMPARE(paneSplitter->orientation(), Qt::Vertical);
+    QCOMPARE(paneSplitter->count(), 2);
+    auto *topSplitter = qobject_cast<ViewSplitter *>(paneSplitter->widget(0));
+    auto *bottomSplitter = qobject_cast<ViewSplitter *>(paneSplitter->widget(1));
+    QVERIFY2(topSplitter, "Expected top child to be a ViewSplitter");
+    QVERIFY2(bottomSplitter, "Expected bottom child to be a ViewSplitter");
+    QCOMPARE(topSplitter->orientation(), Qt::Horizontal);
+    QCOMPARE(bottomSplitter->orientation(), Qt::Horizontal);
+    QCOMPARE(topSplitter->count(), 2);
+    QCOMPARE(bottomSplitter->count(), 2);
+
+    auto *topLeft = qobject_cast<TerminalDisplay *>(topSplitter->widget(0));
+    auto *topRight = qobject_cast<TerminalDisplay *>(topSplitter->widget(1));
+    auto *bottomLeft = qobject_cast<TerminalDisplay *>(bottomSplitter->widget(0));
+    auto *bottomRight = qobject_cast<TerminalDisplay *>(bottomSplitter->widget(1));
+    QVERIFY(topLeft);
+    QVERIFY(topRight);
+    QVERIFY(bottomLeft);
+    QVERIFY(bottomRight);
+
+    // Assert all four panes are equally sized (within 1px rounding tolerance).
+    auto approxEqual = [](int a, int b) {
+        return std::abs(a - b) <= 1;
+    };
+    const QList<int> outerSizes = paneSplitter->sizes();
+    QCOMPARE(outerSizes.size(), 2);
+    QVERIFY2(approxEqual(outerSizes[0], outerSizes[1]),
+             qPrintable(QStringLiteral("Outer top/bottom sizes not equal: %1 vs %2").arg(outerSizes[0]).arg(outerSizes[1])));
+
+    const QList<int> topSizes = topSplitter->sizes();
+    QCOMPARE(topSizes.size(), 2);
+    QVERIFY2(approxEqual(topSizes[0], topSizes[1]), qPrintable(QStringLiteral("Top left/right sizes not equal: %1 vs %2").arg(topSizes[0]).arg(topSizes[1])));
+
+    const QList<int> bottomSizes = bottomSplitter->sizes();
+    QCOMPARE(bottomSizes.size(), 2);
+    QVERIFY2(approxEqual(bottomSizes[0], bottomSizes[1]),
+             qPrintable(QStringLiteral("Bottom left/right sizes not equal: %1 vs %2").arg(bottomSizes[0]).arg(bottomSizes[1])));
+
+    // Top-right pane is the newly-split one and should have focus.
+    QTRY_VERIFY_WITH_TIMEOUT(topRight->hasFocus(), 5000);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 QTEST_MAIN(TmuxIntegrationTest)
 
 #include "moc_TmuxIntegrationTest.cpp"

@@ -1064,7 +1064,7 @@ void ViewManager::removeController(SessionController *controller)
     controller->deleteLater();
 }
 
-void ViewManager::controllerChanged(SessionController *controller)
+void ViewManager::controllerChanged(SessionController *controller, Qt::FocusReason reason)
 {
     if (controller == _pluggedController) {
         return;
@@ -1075,6 +1075,29 @@ void ViewManager::controllerChanged(SessionController *controller)
 
     _pluggedController = controller;
     Q_EMIT activeViewChanged(controller);
+
+    // If the newly-focused view is a tmux pane, tell tmux to match. tmux's
+    // active-pane state drives requestSplitPane() and other pane-target
+    // operations, and Qt focus changes (arrow-key nav, clicks) would otherwise
+    // leave it pointing at the previously-active pane.
+    //
+    // Only echo user-initiated focus changes: clicks, shortcut-driven focus nav
+    // (focus-view-above etc.), and tab traversal. Programmatic focus changes —
+    // in particular our own focusPane() call in response to a tmux notification
+    // — use OtherFocusReason and must not be echoed, or we'd loop.
+    const bool userInitiated =
+        reason == Qt::MouseFocusReason || reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason || reason == Qt::ShortcutFocusReason;
+    if (!userInitiated) {
+        return;
+    }
+    if (Session *session = controller->session()) {
+        if (auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(session)) {
+            const int paneId = ctrl->paneIdForSession(session);
+            if (paneId >= 0 && paneId != ctrl->activePaneId()) {
+                ctrl->requestSelectPane(paneId);
+            }
+        }
+    }
 }
 
 SessionController *ViewManager::activeViewController() const

@@ -649,6 +649,9 @@ bool TmuxController::focusPane(int paneId)
     const auto displays = session->views();
     if (!displays.isEmpty()) {
         auto *display = displays.first();
+        // OtherFocusReason marks this as programmatic (driven by a tmux
+        // notification), so the echo-to-tmux path in
+        // ViewManager::controllerChanged skips it and avoids a feedback loop.
         display->setFocus(Qt::OtherFocusReason);
         return true;
     }
