@@ -16,6 +16,7 @@
 #include "ViewManager.h"
 #include "terminalDisplay/TerminalDisplay.h"
 #include "terminalDisplay/TerminalFonts.h"
+#include "widgets/TabPageWidget.h"
 #include "widgets/ViewContainer.h"
 #include "widgets/ViewSplitter.h"
 
@@ -264,59 +265,6 @@ void TmuxResizeCoordinator::sendClientSize()
         return;
     }
 
-    std::function<QSize(QWidget *)> computeSize = [&](QWidget *widget) -> QSize {
-        auto *td = qobject_cast<TerminalDisplay *>(widget);
-        if (td) {
-            // Report available widget capacity from pixel size, not the current
-            // (possibly forced) grid size. This ensures Konsole tells tmux the
-            // full size it can display when it regains focus.
-            QRect cr = td->contentRect();
-            int cols = qBound(1, cr.width() / td->terminalFont()->fontWidth(), 1023);
-            int lines = qMax(1, cr.height() / td->terminalFont()->fontHeight());
-            qCDebug(KonsoleTmuxResize) << "  computeSize display:" << td
-                                       << "contentRect=" << cr
-                                       << "fontW=" << td->terminalFont()->fontWidth()
-                                       << "fontH=" << td->terminalFont()->fontHeight()
-                                       << "→ cols=" << cols << "lines=" << lines
-                                       << "(grid: columns=" << td->columns() << "lines=" << td->lines() << ")";
-            return QSize(cols, lines);
-        }
-        auto *sp = qobject_cast<ViewSplitter *>(widget);
-        if (!sp || sp->count() == 0) {
-            return QSize(0, 0);
-        }
-        if (sp->count() == 1) {
-            return computeSize(sp->widget(0));
-        }
-
-        bool horizontal = (sp->orientation() == Qt::Horizontal);
-        int sumAxis = 0;
-        int maxCross = 0;
-        for (int i = 0; i < sp->count(); ++i) {
-            QSize childSize = computeSize(sp->widget(i));
-            if (horizontal) {
-                sumAxis += childSize.width();
-                maxCross = qMax(maxCross, childSize.height());
-            } else {
-                sumAxis += childSize.height();
-                maxCross = qMax(maxCross, childSize.width());
-            }
-        }
-        sumAxis += sp->count() - 1;
-
-        QSize result;
-        if (horizontal) {
-            result = QSize(sumAxis, maxCross);
-        } else {
-            result = QSize(maxCross, sumAxis);
-        }
-        qCDebug(KonsoleTmuxResize) << "  computeSize splitter:" << sp
-                                   << "orientation=" << (horizontal ? "H" : "V")
-                                   << "count=" << sp->count()
-                                   << "→" << result;
-        return result;
-    };
-
     qCDebug(KonsoleTmuxResize) << "sendClientSize: activeTabIndex=" << container->currentIndex();
 
     const auto &windowToTab = _controller->windowToTabIndex();
@@ -324,18 +272,48 @@ void TmuxResizeCoordinator::sendClientSize()
         int windowId = it.key();
         int tabIndex = it.value();
 
-        auto *windowSplitter = container->viewSplitterAt(tabIndex);
+        TabPageWidget *page = container->tabPageAt(tabIndex);
+        if (!page) {
+            qCDebug(KonsoleTmuxResize) << "sendClientSize: no page for windowId=" << windowId << "tabIndex=" << tabIndex;
+            continue;
+        }
+
+        auto *windowSplitter = page->splitter();
         if (!windowSplitter) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: no splitter for windowId=" << windowId << "tabIndex=" << tabIndex;
             continue;
         }
 
-        QSize totalSize = computeSize(windowSplitter);
-        int totalCols = totalSize.width();
-        int totalLines = totalSize.height();
+        // Measure the page (the full tab area), not the splitter or pane
+        // content rectangles. When this client is inactive the splitter is
+        // pinned by constrainSplitterToLayout to a sub-area of the page, and
+        // per-pane contentRect excludes TerminalDisplay's inner margins — so
+        // walking the pane tree under-reports by ~1 col per layout apply,
+        // which with two clients creates a shrink feedback loop on each
+        // focus swap. The page size is the client's true capacity and
+        // mirrors what constrainSplitterToLayout compares against.
+        auto displays = windowSplitter->findChildren<TerminalDisplay *>();
+        if (displays.isEmpty()) {
+            qCDebug(KonsoleTmuxResize) << "sendClientSize: no displays for windowId=" << windowId;
+            continue;
+        }
+        auto *td = displays.first();
+        int fontWidth = td->terminalFont()->fontWidth();
+        int fontHeight = td->terminalFont()->fontHeight();
+        if (fontWidth <= 0 || fontHeight <= 0) {
+            qCDebug(KonsoleTmuxResize) << "sendClientSize: bad font metrics for windowId=" << windowId << "fontW=" << fontWidth << "fontH=" << fontHeight;
+            continue;
+        }
+
+        QSize pageSize = page->size();
+        int totalCols = qBound(1, pageSize.width() / fontWidth, 1023);
+        int totalLines = qMax(1, pageSize.height() / fontHeight);
+
+        qCDebug(KonsoleTmuxResize) << "  computeSize page: windowId=" << windowId << "pageSize=" << pageSize << "fontW=" << fontWidth << "fontH=" << fontHeight
+                                   << "→ cols=" << totalCols << "lines=" << totalLines;
 
         if (totalCols <= 0 || totalLines <= 0) {
-            qCDebug(KonsoleTmuxResize) << "sendClientSize: skipping windowId=" << windowId << "totalSize=" << totalSize << "(non-positive)";
+            qCDebug(KonsoleTmuxResize) << "sendClientSize: skipping windowId=" << windowId << "totalSize=" << QSize(totalCols, totalLines) << "(non-positive)";
             continue;
         }
 
