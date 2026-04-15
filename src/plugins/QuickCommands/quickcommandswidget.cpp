@@ -196,7 +196,7 @@ void QuickCommandsWidget::invokeCommand(const QModelIndex &idx)
     priv->controller->session()->sendTextToTerminal(data.command, QLatin1Char('\r'));
 
     if (priv->controller->session()->views().count()) {
-        priv->controller->session()->views().at(0)->setFocus();
+        priv->controller->session()->views().at(0)->setFocus(Qt::MouseFocusReason);
     }
 }
 
@@ -225,7 +225,7 @@ void QuickCommandsWidget::runCommand()
     const QString command = ui->command->toPlainText();
     priv->controller->session()->sendTextToTerminal(command, QLatin1Char('\r'));
     if (priv->controller->session()->views().count()) {
-        priv->controller->session()->views().at(0)->setFocus();
+        priv->controller->session()->views().at(0)->setFocus(Qt::MouseFocusReason);
     }
 }
 

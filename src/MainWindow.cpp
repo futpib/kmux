@@ -833,7 +833,10 @@ Session *MainWindow::createSSHSession(Profile::Ptr profile, const QUrl &url)
 
 void MainWindow::setFocus()
 {
-    _viewManager->activeView()->setFocus();
+    // Invoked via a hotkey (drop-down window toggle), so pass ShortcutFocusReason
+    // down to the active TerminalDisplay — this lets ViewManager's user-initiated
+    // focus echo fire and keep tmux's active pane in sync.
+    _viewManager->activeView()->setFocus(Qt::ShortcutFocusReason);
 }
 
 void MainWindow::newWindow()

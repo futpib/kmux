@@ -1700,7 +1700,10 @@ void SessionController::searchHistory(bool showSearchBar)
 
             removeSearchFilter();
 
-            view()->setFocus(Qt::ActiveWindowFocusReason);
+            // Closing the search bar is user-driven (Escape/toggle shortcut), so
+            // use ShortcutFocusReason — ViewManager::controllerChanged treats this
+            // as user-initiated and echoes to tmux as select-pane.
+            view()->setFocus(Qt::ShortcutFocusReason);
         }
     }
 }

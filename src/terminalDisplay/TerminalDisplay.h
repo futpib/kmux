@@ -89,6 +89,14 @@ public:
     explicit TerminalDisplay(QWidget *parent = nullptr);
     ~TerminalDisplay() override;
 
+    // Every focus change on a TerminalDisplay flows through
+    // ViewManager::controllerChanged, which echoes user-initiated reasons
+    // (Mouse/Tab/Backtab/Shortcut) to tmux as select-pane and drops the rest
+    // to avoid feedback loops. Forcing callers to pick a reason makes that
+    // choice deliberate and catches accidental defaults at compile time.
+    void setFocus() = delete;
+    using QWidget::setFocus;
+
     void showDragTarget(const QPoint &cursorPos);
     void hideDragTarget();
 

@@ -228,7 +228,7 @@ void SSHManagerPlugin::requestConnection(QSortFilterProxyModel *filterModel,
 
     controller->session()->sendTextToTerminal(sshCommand, QLatin1Char('\r'));
     if (controller->session()->views().count()) {
-        controller->session()->views().at(0)->setFocus();
+        controller->session()->views().at(0)->setFocus(Qt::MouseFocusReason);
     }
 }
 

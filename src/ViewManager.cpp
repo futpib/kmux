@@ -455,7 +455,7 @@ void ViewManager::switchToView(int index)
     _viewContainer->setCurrentIndex(index);
 }
 
-void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisplay)
+void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisplay, Qt::FocusReason reason)
 {
     if (!terminalDisplay) {
         return;
@@ -467,7 +467,7 @@ void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisp
     auto toplevelSplitter = splitter->getToplevelSplitter();
 
     // Focus the TermialDisplay
-    terminalDisplay->setFocus();
+    terminalDisplay->setFocus(reason);
 
     if (_viewContainer->viewSplitterAt(_viewContainer->currentIndex()) != toplevelSplitter) {
         // Focus the tab
@@ -557,7 +557,7 @@ void ViewManager::activateLastUsedView(bool reverse)
         }
     }
 
-    switchToTerminalDisplay(_terminalDisplayHistory[_terminalDisplayHistoryIndex]);
+    switchToTerminalDisplay(_terminalDisplayHistory[_terminalDisplayHistoryIndex], Qt::ShortcutFocusReason);
 }
 
 void ViewManager::lastUsedView()
@@ -576,7 +576,7 @@ void ViewManager::toggleTwoViews()
         return;
     }
 
-    switchToTerminalDisplay(_terminalDisplayHistory.at(1));
+    switchToTerminalDisplay(_terminalDisplayHistory.at(1), Qt::ShortcutFocusReason);
 }
 
 void ViewManager::detachActiveView()
@@ -861,8 +861,11 @@ void ViewManager::focusAnotherTerminal(ViewSplitter *toplevelSplitter)
     }
 
     if (_terminalDisplayHistory.count() >= 1) {
-        // Give focus to the last used terminal tab
-        switchToTerminalDisplay(_terminalDisplayHistory[0]);
+        // Give focus to the last used terminal tab.
+        // Programmatic recovery after a session closed — tmux already drove
+        // its own %window-pane-changed for the closing pane, so we must not
+        // echo this back as a select-pane.
+        switchToTerminalDisplay(_terminalDisplayHistory[0], Qt::OtherFocusReason);
     }
 }
 
@@ -972,8 +975,9 @@ void ViewManager::splitView(Qt::Orientation orientation, bool fromNextTab)
 
     toggleActionsBasedOnState();
 
-    // focus the new container if created, else keep the currently focused view
-    focused->setFocus();
+    // focus the new container if created, else keep the currently focused view.
+    // Non-tmux path only — the tmux split branch above returns early.
+    focused->setFocus(Qt::OtherFocusReason);
 }
 
 void ViewManager::expandActiveContainer()
@@ -1136,7 +1140,9 @@ void ViewManager::setCurrentView(TerminalDisplay *view)
 {
     auto parentSplitter = qobject_cast<ViewSplitter *>(view->parentWidget());
     _viewContainer->setCurrentWidget(parentSplitter->getToplevelSplitter());
-    view->setFocus();
+    // Scriptable/DBus API: treat as shortcut-equivalent user intent so tmux's
+    // active pane tracks external clients calling setCurrentView().
+    view->setFocus(Qt::ShortcutFocusReason);
     setCurrentSession(_sessionMap[view]->sessionId());
 }
 
@@ -1608,7 +1614,9 @@ void ViewManager::setCurrentSession(int sessionId)
 
     auto *display = session->views().at(0);
     if (display != nullptr) {
-        display->setFocus(Qt::OtherFocusReason);
+        // Scriptable/DBus API and internal setCurrentView path — both are
+        // user-intent switches, so echo to tmux via the user-initiated reason.
+        display->setFocus(Qt::ShortcutFocusReason);
 
         auto *splitter = qobject_cast<ViewSplitter *>(display->parent());
         if (splitter != nullptr) {

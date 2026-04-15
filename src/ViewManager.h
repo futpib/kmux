@@ -462,7 +462,7 @@ private Q_SLOTS:
     // in the current container
     void switchToView(int index);
     // gives focus and switches the terminal display, changing tab if needed
-    void switchToTerminalDisplay(TerminalDisplay *terminalDisplay);
+    void switchToTerminalDisplay(TerminalDisplay *terminalDisplay, Qt::FocusReason reason);
 
     // called when a SessionController gains focus
     void controllerChanged(SessionController *controller, Qt::FocusReason reason = Qt::OtherFocusReason);

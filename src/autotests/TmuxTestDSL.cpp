@@ -1085,7 +1085,7 @@ void applyKonsoleLayout(const DiagramSpec &spec, ViewManager *vm)
     // Handle focus
     for (const auto &pair : pairs) {
         if (pair.second.focused.has_value() && pair.second.focused.value()) {
-            pair.first->setFocus();
+            pair.first->setFocus(Qt::OtherFocusReason);
         }
     }
 }

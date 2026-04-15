@@ -1440,7 +1440,7 @@ void TerminalDisplay::mouseMoveEvent(QMouseEvent *ev)
     }
 
     if (!hasFocus() && KonsoleSettings::focusFollowsMouse()) {
-        setFocus();
+        setFocus(Qt::MouseFocusReason);
     }
 
     if (_possibleTripleClick && (ev->pos() - _tripleClickPos).manhattanLength() > 20) {

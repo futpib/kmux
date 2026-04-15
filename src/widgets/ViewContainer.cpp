@@ -496,7 +496,10 @@ void TabbedViewContainer::activateView(const QString & /*xdgActivationToken*/)
         if (tabPage) {
             setCurrentWidget(tabPage);
         }
-        widget->setFocus();
+        // XDG activation request: external app is asking us to focus this
+        // terminal in response to user action elsewhere — treat as shortcut-
+        // initiated so tmux's select-pane echo fires.
+        widget->setFocus(Qt::ShortcutFocusReason);
     }
 }
 
