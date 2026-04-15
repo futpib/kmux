@@ -65,6 +65,7 @@ private Q_SLOTS:
     void testMovePaneFromTwoToOneFromKonsole();
     void testFractalSplitDownRight8();
     void testFourEqualPanesTopRightFocused();
+    void testSplitShortcutFocusInitialSplitAgain();
     void testNewTabFromTmuxPane();
     void testDetachViewBreaksPane();
     void testDetachFromTmuxAction();

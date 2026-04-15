@@ -5979,6 +5979,154 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     delete attach.mw.data();
 }
 
+// Ctrl+Shift+( (split-view-left-right) then focus-back to the original pane
+// and Ctrl+Shift+) (split-view-top-bottom) must yield a nested layout:
+// outer Horizontal splitter with children [Vertical(original, newBottom), firstRight].
+// This exercises both keyboard shortcuts and the user-initiated focus echo
+// that keeps tmux's active pane in sync so the second split targets the
+// originally focused pane and not the first-split's right pane.
+void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    if (tmuxPath.isEmpty()) {
+        QSKIP("tmux command not found.");
+    }
+
+    // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │ columns: 256                                                                   │
+        │ lines: 64                                                                      │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(ctrl);
+    const int originalPaneId = ctrl->paneIdForSession(sessions.first());
+    QVERIFY(originalPaneId >= 0);
+
+    auto originalViews = sessions.first()->views();
+    QVERIFY(!originalViews.isEmpty());
+    auto *originalDisplay = originalViews.first();
+
+    auto findSplitterWithPaneCount = [&](int expected) -> ViewSplitter * {
+        auto *container = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
+        if (!container)
+            return nullptr;
+        for (int t = 0; t < container->count(); ++t) {
+            auto *splitter = container->viewSplitterAt(t);
+            if (splitter && splitter->findChildren<TerminalDisplay *>().size() == expected) {
+                return splitter;
+            }
+        }
+        return nullptr;
+    };
+
+    // Focus the initial display so the shortcut resolves against its window.
+    originalDisplay->setFocus(Qt::OtherFocusReason);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(originalDisplay), 5000);
+
+    // 1. Ctrl+Shift+( → split-view-left-right. The shortcut is declared as
+    // `Ctrl+(` (Qt::CTRL | Qt::Key_ParenLeft). QTest::keyClick posts that key
+    // with only ControlModifier to match the declared sequence; the Shift is
+    // implicit in Key_ParenLeft. New pane appears on the right and takes focus.
+    QTest::keyClick(originalDisplay, Qt::Key_ParenLeft, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(findSplitterWithPaneCount(2) != nullptr, 10000);
+    ViewSplitter *twoPaneSplitter = findSplitterWithPaneCount(2);
+    QVERIFY(twoPaneSplitter);
+    QCOMPARE(twoPaneSplitter->orientation(), Qt::Horizontal);
+
+    // Identify the first-split's new display (the one that isn't the original).
+    auto twoTerminals = twoPaneSplitter->findChildren<TerminalDisplay *>();
+    QCOMPARE(twoTerminals.size(), 2);
+    TerminalDisplay *firstRightDisplay = nullptr;
+    for (auto *td : twoTerminals) {
+        if (td != originalDisplay) {
+            firstRightDisplay = td;
+            break;
+        }
+    }
+    QVERIFY2(firstRightDisplay, "Expected a new TerminalDisplay after first split");
+    QTRY_VERIFY_WITH_TIMEOUT(firstRightDisplay->hasFocus(), 5000);
+
+    // 2. Focus back to the initial (left) pane via the focus-view-left shortcut action.
+    // Using the action path routes through ShortcutFocusReason, which echoes to tmux
+    // via requestSelectPane — required so the next split targets the original pane.
+    QAction *focusLeft = attach.mw->actionCollection()->action(QStringLiteral("focus-view-left"));
+    QVERIFY2(focusLeft, "focus-view-left action not found");
+    focusLeft->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT(ctrl->activePaneId() == originalPaneId, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(originalDisplay->hasFocus(), 5000);
+
+    // 3. Ctrl+Shift+) → split-view-top-bottom on the now-active original pane.
+    // Declared as `Ctrl+)` (Qt::CTRL | Qt::Key_ParenRight); same rationale as above.
+    QTest::keyClick(originalDisplay, Qt::Key_ParenRight, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(findSplitterWithPaneCount(3) != nullptr, 10000);
+    ViewSplitter *paneSplitter = findSplitterWithPaneCount(3);
+    QVERIFY(paneSplitter);
+
+    // Find the second-split's new display (not original, not firstRight).
+    auto allTerminals = paneSplitter->findChildren<TerminalDisplay *>();
+    QCOMPARE(allTerminals.size(), 3);
+    TerminalDisplay *newBottomDisplay = nullptr;
+    for (auto *td : allTerminals) {
+        if (td != originalDisplay && td != firstRightDisplay) {
+            newBottomDisplay = td;
+            break;
+        }
+    }
+    QVERIFY2(newBottomDisplay, "Expected a new TerminalDisplay after second split");
+    QTRY_VERIFY_WITH_TIMEOUT(newBottomDisplay->hasFocus(), 5000);
+
+    // 4. Assert final layout:
+    //   Horizontal[ Vertical[original, newBottom], firstRight ]
+    QCOMPARE(paneSplitter->orientation(), Qt::Horizontal);
+    QCOMPARE(paneSplitter->count(), 2);
+
+    auto *leftChild = qobject_cast<ViewSplitter *>(paneSplitter->widget(0));
+    auto *rightChild = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    QVERIFY2(leftChild, "Expected left child of outer splitter to be a ViewSplitter");
+    QVERIFY2(rightChild, "Expected right child of outer splitter to be a TerminalDisplay");
+    QCOMPARE(rightChild, firstRightDisplay);
+
+    QCOMPARE(leftChild->orientation(), Qt::Vertical);
+    QCOMPARE(leftChild->count(), 2);
+    auto *topDisplay = qobject_cast<TerminalDisplay *>(leftChild->widget(0));
+    auto *bottomDisplay = qobject_cast<TerminalDisplay *>(leftChild->widget(1));
+    QVERIFY2(topDisplay, "Expected top child of nested splitter to be a TerminalDisplay");
+    QVERIFY2(bottomDisplay, "Expected bottom child of nested splitter to be a TerminalDisplay");
+    QCOMPARE(topDisplay, originalDisplay);
+    QCOMPARE(bottomDisplay, newBottomDisplay);
+
+    // Cleanup
+    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 QTEST_MAIN(TmuxIntegrationTest)
 
 #include "moc_TmuxIntegrationTest.cpp"
