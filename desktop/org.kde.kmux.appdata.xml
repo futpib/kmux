@@ -3,61 +3,61 @@
   <id>org.kde.kmux.desktop</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0+</project_license>
-  <name>Konsole</name>
+  <name>kmux</name>
   <name xml:lang="ar">كونسول</name>
-  <name xml:lang="ast">Konsole</name>
-  <name xml:lang="az">Konsole</name>
-  <name xml:lang="be">Konsole</name>
-  <name xml:lang="bg">Konsole</name>
+  <name xml:lang="ast">kmux</name>
+  <name xml:lang="az">kmux</name>
+  <name xml:lang="be">kmux</name>
+  <name xml:lang="bg">kmux</name>
   <name xml:lang="bs">Konzola</name>
-  <name xml:lang="ca">Konsole</name>
-  <name xml:lang="ca-valencia">Konsole</name>
-  <name xml:lang="cs">Konsole</name>
-  <name xml:lang="da">Konsole</name>
-  <name xml:lang="de">Konsole</name>
-  <name xml:lang="el">Konsole</name>
-  <name xml:lang="en-GB">Konsole</name>
+  <name xml:lang="ca">kmux</name>
+  <name xml:lang="ca-valencia">kmux</name>
+  <name xml:lang="cs">kmux</name>
+  <name xml:lang="da">kmux</name>
+  <name xml:lang="de">kmux</name>
+  <name xml:lang="el">kmux</name>
+  <name xml:lang="en-GB">kmux</name>
   <name xml:lang="eo">Konzolo</name>
-  <name xml:lang="es">Konsole</name>
+  <name xml:lang="es">kmux</name>
   <name xml:lang="et">Konsool</name>
-  <name xml:lang="eu">Konsole</name>
-  <name xml:lang="fi">Konsole</name>
-  <name xml:lang="fr">Konsole</name>
-  <name xml:lang="gl">Konsole</name>
-  <name xml:lang="he">Konsole</name>
-  <name xml:lang="hu">Konsole</name>
-  <name xml:lang="ia">Konsole</name>
-  <name xml:lang="id">Konsole</name>
-  <name xml:lang="ie">Konsole</name>
-  <name xml:lang="is">Konsole</name>
-  <name xml:lang="it">Konsole</name>
-  <name xml:lang="ka">Konsole</name>
-  <name xml:lang="ko">Konsole</name>
+  <name xml:lang="eu">kmux</name>
+  <name xml:lang="fi">kmux</name>
+  <name xml:lang="fr">kmux</name>
+  <name xml:lang="gl">kmux</name>
+  <name xml:lang="he">kmux</name>
+  <name xml:lang="hu">kmux</name>
+  <name xml:lang="ia">kmux</name>
+  <name xml:lang="id">kmux</name>
+  <name xml:lang="ie">kmux</name>
+  <name xml:lang="is">kmux</name>
+  <name xml:lang="it">kmux</name>
+  <name xml:lang="ka">kmux</name>
+  <name xml:lang="ko">kmux</name>
   <name xml:lang="lt">Konsolė</name>
-  <name xml:lang="lv">Konsole</name>
+  <name xml:lang="lv">kmux</name>
   <name xml:lang="ml">കൺസോൾ</name>
-  <name xml:lang="nb">Konsole</name>
-  <name xml:lang="nl">Konsole</name>
-  <name xml:lang="nn">Konsole</name>
+  <name xml:lang="nb">kmux</name>
+  <name xml:lang="nl">kmux</name>
+  <name xml:lang="nn">kmux</name>
   <name xml:lang="pa">ਕਨਸੋਲ</name>
   <name xml:lang="pl">Konsola</name>
-  <name xml:lang="pt">Konsole</name>
-  <name xml:lang="pt-BR">Konsole</name>
+  <name xml:lang="pt">kmux</name>
+  <name xml:lang="pt-BR">kmux</name>
   <name xml:lang="ro">Konsolă</name>
-  <name xml:lang="ru">Konsole</name>
+  <name xml:lang="ru">kmux</name>
   <name xml:lang="sa">सान्त्वनम्</name>
-  <name xml:lang="sk">Konsole</name>
-  <name xml:lang="sl">Konsole</name>
+  <name xml:lang="sk">kmux</name>
+  <name xml:lang="sl">kmux</name>
   <name xml:lang="sr">Конзола</name>
-  <name xml:lang="sr-Latn">Konsole</name>
+  <name xml:lang="sr-Latn">kmux</name>
   <name xml:lang="sr-ijekavian">Конзола</name>
-  <name xml:lang="sr-ijekavianlatin">Konsole</name>
+  <name xml:lang="sr-ijekavianlatin">kmux</name>
   <name xml:lang="sv">Terminal</name>
   <name xml:lang="ta">கான்சோல்</name>
-  <name xml:lang="tr">Konsole</name>
-  <name xml:lang="uk">Konsole</name>
-  <name xml:lang="zh-CN">Konsole 命令行终端</name>
-  <name xml:lang="zh-TW">Konsole</name>
+  <name xml:lang="tr">kmux</name>
+  <name xml:lang="uk">kmux</name>
+  <name xml:lang="zh-CN">kmux 命令行终端</name>
+  <name xml:lang="zh-TW">kmux</name>
   <summary>Use the command line interface</summary>
   <summary xml:lang="ar">استعمل واجهة سطر الأوامر</summary>
   <summary xml:lang="be">Выкарыстоўваць інтэрфейс каманднага радка</summary>
@@ -102,52 +102,52 @@
     <name translate="no">KDE</name>
   </developer>
   <description>
-    <p>Konsole is a terminal to run a command shell. It provides a command line interface for directly controlling your computer.</p>
+    <p>kmux is a terminal to run a command shell. It provides a command line interface for directly controlling your computer.</p>
     <p xml:lang="ar">كونسول هو محطة لتشغيل الأوامر في الصدفة. يوفر واجهة سطر أوامر للتحكم المباشر في حاسوبك.</p>
-    <p xml:lang="az">Konsole, əmr təbəqəsini işlətmək üçün bir terminaldır. Kompüterinizi birbaşa idarə etmək üçün bir sətir interfeysi təmin edir.</p>
-    <p xml:lang="be">Konsole - гэта тэрмінал для запуску каманднай абалонкі. Праграма дае доступ да інтэрфейсу каманднага радка для непасрэднага кіравання камп'ютарам.</p>
-    <p xml:lang="bg">Konsole е терминален емулатор за изпълнение на команди на обвивката. Той предоставя интерфейс за команден ред и директен контрол върху вашия компютър.</p>
-    <p xml:lang="ca">El Konsole és un terminal per a executar un intèrpret d'ordres. Proporciona una interfície de línia d'ordres per a controlar directament l'ordinador.</p>
-    <p xml:lang="ca-valencia">Konsole és un terminal per a executar un intèrpret d'ordres. Proporciona una interfície de línia d'ordres per a controlar directament l'ordinador.</p>
-    <p xml:lang="cs">Konsole je terminál pro spouštění příkazů v shellu. Poskytuje příkazovou řádku pro přímé ovládání vašeho počítače.</p>
-    <p xml:lang="da">Konsole er en terminal til at køre en kommandoskal. Den giver en kommandolinjegrænseflade til at styre din computer direkte.</p>
-    <p xml:lang="de">Konsole ist ein Terminal zum Ausführen einer Befehls-Shell. Es stellt eine Befehlszeile-Schnittstelle zur direkten Steuerung Ihres Rechner zur Verfügung.</p>
-    <p xml:lang="el">Το Konsole είναι ένα τερματικό για την εκτέλεση ενός σεναρίου φλοιού. Παρέχει ένα περιβάλλον χρήστη για να ελέγχετε απευθείας τον υπολογιστή σας.</p>
-    <p xml:lang="en-GB">Konsole is a terminal to run a command shell. It provides a command line interface for directly controlling your computer.</p>
-    <p xml:lang="eo">Konsole estas terminalo por ruli komandan ŝelon. Ĝi provizas komandlinian interfacon por rekte stiri vian komputilon.</p>
-    <p xml:lang="es">Konsole es un emulador de terminal que ejecuta un intérprete de órdenes. Proporciona una interfaz de línea de órdenes para controlar directamente su equipo.</p>
+    <p xml:lang="az">kmux, əmr təbəqəsini işlətmək üçün bir terminaldır. Kompüterinizi birbaşa idarə etmək üçün bir sətir interfeysi təmin edir.</p>
+    <p xml:lang="be">kmux - гэта тэрмінал для запуску каманднай абалонкі. Праграма дае доступ да інтэрфейсу каманднага радка для непасрэднага кіравання камп'ютарам.</p>
+    <p xml:lang="bg">kmux е терминален емулатор за изпълнение на команди на обвивката. Той предоставя интерфейс за команден ред и директен контрол върху вашия компютър.</p>
+    <p xml:lang="ca">El kmux és un terminal per a executar un intèrpret d'ordres. Proporciona una interfície de línia d'ordres per a controlar directament l'ordinador.</p>
+    <p xml:lang="ca-valencia">kmux és un terminal per a executar un intèrpret d'ordres. Proporciona una interfície de línia d'ordres per a controlar directament l'ordinador.</p>
+    <p xml:lang="cs">kmux je terminál pro spouštění příkazů v shellu. Poskytuje příkazovou řádku pro přímé ovládání vašeho počítače.</p>
+    <p xml:lang="da">kmux er en terminal til at køre en kommandoskal. Den giver en kommandolinjegrænseflade til at styre din computer direkte.</p>
+    <p xml:lang="de">kmux ist ein Terminal zum Ausführen einer Befehls-Shell. Es stellt eine Befehlszeile-Schnittstelle zur direkten Steuerung Ihres Rechner zur Verfügung.</p>
+    <p xml:lang="el">Το kmux είναι ένα τερματικό για την εκτέλεση ενός σεναρίου φλοιού. Παρέχει ένα περιβάλλον χρήστη για να ελέγχετε απευθείας τον υπολογιστή σας.</p>
+    <p xml:lang="en-GB">kmux is a terminal to run a command shell. It provides a command line interface for directly controlling your computer.</p>
+    <p xml:lang="eo">kmux estas terminalo por ruli komandan ŝelon. Ĝi provizas komandlinian interfacon por rekte stiri vian komputilon.</p>
+    <p xml:lang="es">kmux es un emulador de terminal que ejecuta un intérprete de órdenes. Proporciona una interfaz de línea de órdenes para controlar directamente su equipo.</p>
     <p xml:lang="et">Konsool on terminal käsurea kasutamise võimaldamiseks, mis lubab vahetult arvuti tegevust juhtida.</p>
-    <p xml:lang="eu">«Konsole», komandoetarako oskol bat exekutatzeko terminal bat da. Zure ordenagailua zuzenean kontrolatzeko komando-lerroko interfaze bat ematen du.</p>
-    <p xml:lang="fi">Konsole on pääte komentotulkkia varten. Se tarjoaa komentorivikäyttöliittymän tietokoneen hallitsemiseksi.</p>
-    <p xml:lang="fr">Konsole est un terminal pour lancer une invite de commande. Il fournit une interface de ligne de commande pour contrôler directement votre ordinateur.</p>
-    <p xml:lang="gl">Konsole é un terminal para executar un intérprete de ordes. Fornece unha interface de liña de ordes para controlar directamente o computador.</p>
-    <p xml:lang="he">Konsole הוא מסוף להרצת מעטפת פקודות. הוא מספק ממשק שורת פקודה לשליטה ישירה במחשב שלך.</p>
-    <p xml:lang="hu">A Konsole egy terminál parancsértelmezők futtatásához. Parancssosor felületet biztosít a számítógépe közvetlen irányításához.</p>
-    <p xml:lang="ia">Konsole es un terminal pro executar un shell de commando.  Illo provide un interfacie de linea de commando pro controlar directemente tu computator.</p>
-    <p xml:lang="id">Konsole adalah sebuah terminal untuk menjalankan shell perintah. Ini menyediakan antarmuka baris perintah untuk secara langsung mengendalikan komputer Anda.</p>
-    <p xml:lang="ie">Konsole es un terminal quel lansa un shell de comandes. It provide un interfacie del linea de comandes por controlar vor computator directmen.</p>
-    <p xml:lang="is">Konsole er skjáhermir til að keyra skeljaskipanir. Það gefur skipanalínuviðmót til að stýra tölvum beint.</p>
-    <p xml:lang="it">Konsole è un terminale per eseguire una shell di comandi. Fornisce un'interfaccia a riga di comando per controllare direttamente il tuo computer.</p>
-    <p xml:lang="ka">Konsole წარმადგენს ტერმინალს ბრძანების სტრიქონის გარსის გასაშვებად. ის მოგაწოდებთ ბრძანების სტრიქონის ინტერფეისს, რომლითაც შეგიძლიათ თქვენი კომპიუტერი პირდაპირ აკონტროლოთ.</p>
-    <p xml:lang="ko">Konsole은 흔히 터미널, 혹은 셸이라고 불리는 X 터미널 에뮬레이터입니다. 텍스트 창에서 컴퓨터를 직접 재현하는 명령행 인터페이스를 재현합니다.</p>
-    <p xml:lang="lv">„Konsole“ ir termināļa programma komandu čaulas palaišanai. Tā nodrošina komandrindas saskarni tiešai datora kontrolei.</p>
+    <p xml:lang="eu">«kmux», komandoetarako oskol bat exekutatzeko terminal bat da. Zure ordenagailua zuzenean kontrolatzeko komando-lerroko interfaze bat ematen du.</p>
+    <p xml:lang="fi">kmux on pääte komentotulkkia varten. Se tarjoaa komentorivikäyttöliittymän tietokoneen hallitsemiseksi.</p>
+    <p xml:lang="fr">kmux est un terminal pour lancer une invite de commande. Il fournit une interface de ligne de commande pour contrôler directement votre ordinateur.</p>
+    <p xml:lang="gl">kmux é un terminal para executar un intérprete de ordes. Fornece unha interface de liña de ordes para controlar directamente o computador.</p>
+    <p xml:lang="he">kmux הוא מסוף להרצת מעטפת פקודות. הוא מספק ממשק שורת פקודה לשליטה ישירה במחשב שלך.</p>
+    <p xml:lang="hu">A kmux egy terminál parancsértelmezők futtatásához. Parancssosor felületet biztosít a számítógépe közvetlen irányításához.</p>
+    <p xml:lang="ia">kmux es un terminal pro executar un shell de commando.  Illo provide un interfacie de linea de commando pro controlar directemente tu computator.</p>
+    <p xml:lang="id">kmux adalah sebuah terminal untuk menjalankan shell perintah. Ini menyediakan antarmuka baris perintah untuk secara langsung mengendalikan komputer Anda.</p>
+    <p xml:lang="ie">kmux es un terminal quel lansa un shell de comandes. It provide un interfacie del linea de comandes por controlar vor computator directmen.</p>
+    <p xml:lang="is">kmux er skjáhermir til að keyra skeljaskipanir. Það gefur skipanalínuviðmót til að stýra tölvum beint.</p>
+    <p xml:lang="it">kmux è un terminale per eseguire una shell di comandi. Fornisce un'interfaccia a riga di comando per controllare direttamente il tuo computer.</p>
+    <p xml:lang="ka">kmux წარმადგენს ტერმინალს ბრძანების სტრიქონის გარსის გასაშვებად. ის მოგაწოდებთ ბრძანების სტრიქონის ინტერფეისს, რომლითაც შეგიძლიათ თქვენი კომპიუტერი პირდაპირ აკონტროლოთ.</p>
+    <p xml:lang="ko">kmux은 흔히 터미널, 혹은 셸이라고 불리는 X 터미널 에뮬레이터입니다. 텍스트 창에서 컴퓨터를 직접 재현하는 명령행 인터페이스를 재현합니다.</p>
+    <p xml:lang="lv">„kmux“ ir termināļa programma komandu čaulas palaišanai. Tā nodrošina komandrindas saskarni tiešai datora kontrolei.</p>
     <p xml:lang="ml">കൺസോൾ എന്നത് ആജ്ഞ ഷെൽ റൺ ചെയ്യുന്നതിനുള്ള ഒരു ടെർമിനലാണ്. ഇത് കമ്പ്യൂട്ടറിനെ നേരിട്ട് നിയന്ത്രിക്കുന്നതിനുള്ള ഒരു ആജ്ഞാസ്ഥാനം നല്‍കുന്നു.</p>
-    <p xml:lang="nl">Konsole is een terminal om een opdrachtshell uit te voeren. Het biedt een interface voor een opdrachtregel voor directe besturing van uw computer.</p>
-    <p xml:lang="nn">Konsole er ein terminal for å køyra kommandolinjeprogram. Han gjev altså eit tekstbasert grensesnitt til datamaskina.</p>
+    <p xml:lang="nl">kmux is een terminal om een opdrachtshell uit te voeren. Het biedt een interface voor een opdrachtregel voor directe besturing van uw computer.</p>
+    <p xml:lang="nn">kmux er ein terminal for å køyra kommandolinjeprogram. Han gjev altså eit tekstbasert grensesnitt til datamaskina.</p>
     <p xml:lang="pl">Konsola jest terminalem do wykonywania poleceń powłoki. Zapewnia interfejs wiersza poleceń do bezpośredniego sterowania komputerem.</p>
-    <p xml:lang="pt">O Konsole é um emulador de terminal para executar uma linha de comandos. Ele oferece uma interface de linha de comandos para controlar directamente o seu computador.</p>
-    <p xml:lang="pt-BR">O Konsole é um emulador de terminal para executar uma linha de comandos. Ele oferece uma interface de linha de comandos para controlar diretamente o seu computador.</p>
+    <p xml:lang="pt">O kmux é um emulador de terminal para executar uma linha de comandos. Ele oferece uma interface de linha de comandos para controlar directamente o seu computador.</p>
+    <p xml:lang="pt-BR">O kmux é um emulador de terminal para executar uma linha de comandos. Ele oferece uma interface de linha de comandos para controlar diretamente o seu computador.</p>
     <p xml:lang="ro">Konsolă e un terminal pentru rularea unui interpretor de comenzi. Aceasta oferă o interfață în linie de comandă pentru controlul direct al calculatorului.</p>
-    <p xml:lang="ru">Konsole — терминал для работы в командной оболочке. Konsole предоставляет интерфейс командной строки для непосредственного взаимодействия с компьютером.</p>
-    <p xml:lang="sa">Konsole इति आदेश-शेल् चालयितुं टर्मिनल् अस्ति । एतत् भवतः सङ्गणकस्य प्रत्यक्षनियन्त्रणार्थं आदेशपङ्क्ति-अन्तरफलकं प्रदाति ।</p>
-    <p xml:lang="sk">Konsole je emulátor terminálu, často sa označuje ako terminál alebo shell. Emuluje rozhranie príkazového riadku v textovom okne.</p>
-    <p xml:lang="sl">Konsole je posnemovalnik terminala, kjer teče ukazni jezik shell. Nudi vam ukazno vrstico, kjer lahko neposredno upravljate vaš računalnik.</p>
+    <p xml:lang="ru">kmux — терминал для работы в командной оболочке. kmux предоставляет интерфейс командной строки для непосредственного взаимодействия с компьютером.</p>
+    <p xml:lang="sa">kmux इति आदेश-शेल् चालयितुं टर्मिनल् अस्ति । एतत् भवतः सङ्गणकस्य प्रत्यक्षनियन्त्रणार्थं आदेशपङ्क्ति-अन्तरफलकं प्रदाति ।</p>
+    <p xml:lang="sk">kmux je emulátor terminálu, často sa označuje ako terminál alebo shell. Emuluje rozhranie príkazového riadku v textovom okne.</p>
+    <p xml:lang="sl">kmux je posnemovalnik terminala, kjer teče ukazni jezik shell. Nudi vam ukazno vrstico, kjer lahko neposredno upravljate vaš računalnik.</p>
     <p xml:lang="sv">Terminal är en terminal för att köra ett kommandoskal. Det tillhandahåller ett kommandoradsgränssnitt för att direkt styra datorn.</p>
     <p xml:lang="ta">கான்சோல், முனைய இடைமுகப்பை இயக்கும் செயலி ஆகும். உங்கள் கணினி நீங்கள் நேரடியாக கட்டுப்படுத்த இது உதவும்.</p>
-    <p xml:lang="tr">Konsole, komut kabukları çalıştırmak için kullanılan bir uçbirimdir. Bilgisayarınızı doğrudan denetlemek için bir komut satırı arabirimi sağlar.</p>
-    <p xml:lang="uk">Konsole — це термінал для роботи з командною оболонкою. За її допомогою можна отримати доступ до інтерфейсу командного рядка для керування вашим комп'ютером.</p>
-    <p xml:lang="zh-CN">Konsole 是一款用于运行命令 Shell 的终端程序。它提供了直接控制计算机的命令行接口。</p>
-    <p xml:lang="zh-TW">Konsole 是個用於執行指令 shell 的終端機。其提供能直接操作電腦的指令行介面。</p>
+    <p xml:lang="tr">kmux, komut kabukları çalıştırmak için kullanılan bir uçbirimdir. Bilgisayarınızı doğrudan denetlemek için bir komut satırı arabirimi sağlar.</p>
+    <p xml:lang="uk">kmux — це термінал для роботи з командною оболонкою. За її допомогою можна отримати доступ до інтерфейсу командного рядка для керування вашим комп'ютером.</p>
+    <p xml:lang="zh-CN">kmux 是一款用于运行命令 Shell 的终端程序。它提供了直接控制计算机的命令行接口。</p>
+    <p xml:lang="zh-TW">kmux 是個用於執行指令 shell 的終端機。其提供能直接操作電腦的指令行介面。</p>
     <p>Features:</p>
     <p xml:lang="ar">الميزات:</p>
     <p xml:lang="az">İmkanlar:</p>
@@ -522,7 +522,7 @@
       <li xml:lang="zh-TW">儲存輸出</li>
     </ul>
   </description>
-  <launchable type="desktop-id">org.kde.konsole.desktop</launchable>
+  <launchable type="desktop-id">org.kde.kmux.desktop</launchable>
   <url type="homepage">https://konsole.kde.org/</url>
   <url type="bugtracker">https://bugs.kde.org/enter_bug.cgi?format=guided&amp;product=konsole</url>
   <url type="help">https://docs.kde.org/?application=konsole</url>
@@ -531,58 +531,58 @@
   <screenshots>
     <screenshot type="default">
       <image>https://cdn.kde.org/screenshots/konsole/konsole.png</image>
-      <caption>Konsole being used as a terminal emulator</caption>
+      <caption>kmux being used as a terminal emulator</caption>
       <caption xml:lang="ar">يستخدم كونسول كمحاكي طرفيّة.</caption>
-      <caption xml:lang="az">Konsole terminal emulyatoru olaraq istifadə olunur</caption>
-      <caption xml:lang="be">Konsole выкарыстоўваецца як эмулятар тэрмінала</caption>
-      <caption xml:lang="bg">Konsole - терминален емулатор</caption>
-      <caption xml:lang="ca">El Konsole s'usa com a emulador de terminal</caption>
-      <caption xml:lang="ca-valencia">Konsole s'utilitza com a emulador de terminal</caption>
-      <caption xml:lang="cs">Konsole je použita jako emulátor terminálu</caption>
-      <caption xml:lang="da">Konsole der bruges som en terminalemulator</caption>
-      <caption xml:lang="de">Konsole wird als Terminal-Emulator verwendet</caption>
-      <caption xml:lang="el">Το Konsole χρησιμεύει ως εξομοιωτής τερματικού</caption>
-      <caption xml:lang="en-GB">Konsole being used as a terminal emulator</caption>
-      <caption xml:lang="eo">Konsole en uzo kiel terminal-emulilo</caption>
-      <caption xml:lang="es">Konsole usado como un emulador de terminal</caption>
+      <caption xml:lang="az">kmux terminal emulyatoru olaraq istifadə olunur</caption>
+      <caption xml:lang="be">kmux выкарыстоўваецца як эмулятар тэрмінала</caption>
+      <caption xml:lang="bg">kmux - терминален емулатор</caption>
+      <caption xml:lang="ca">El kmux s'usa com a emulador de terminal</caption>
+      <caption xml:lang="ca-valencia">kmux s'utilitza com a emulador de terminal</caption>
+      <caption xml:lang="cs">kmux je použita jako emulátor terminálu</caption>
+      <caption xml:lang="da">kmux der bruges som en terminalemulator</caption>
+      <caption xml:lang="de">kmux wird als Terminal-Emulator verwendet</caption>
+      <caption xml:lang="el">Το kmux χρησιμεύει ως εξομοιωτής τερματικού</caption>
+      <caption xml:lang="en-GB">kmux being used as a terminal emulator</caption>
+      <caption xml:lang="eo">kmux en uzo kiel terminal-emulilo</caption>
+      <caption xml:lang="es">kmux usado como un emulador de terminal</caption>
       <caption xml:lang="et">Konsooli kasutamine terminaliemulaatorina</caption>
-      <caption xml:lang="eu">Konsole terminal emulatzaile gisa erabilia</caption>
-      <caption xml:lang="fi">Pääte-emulaattorina käytetään Konsolea.</caption>
-      <caption xml:lang="fr">Konsole est un émulateur de terminal</caption>
-      <caption xml:lang="gl">Konsole usado como emulador de terminal.</caption>
-      <caption xml:lang="he">Konsole משמש כמדמה המסוף</caption>
-      <caption xml:lang="hu">A Konsole használata terminálemulárként</caption>
-      <caption xml:lang="ia">Konsole es usate como un emulator de terminal</caption>
-      <caption xml:lang="id">Konsole yang digunakan sebagai emulator terminal</caption>
-      <caption xml:lang="ie">Konsole es usat quam un emulator de terminal</caption>
-      <caption xml:lang="is">Konsole notað sem skjáhermir</caption>
-      <caption xml:lang="it">Konsole utilizzata come un emulatore di terminale</caption>
-      <caption xml:lang="ka">Konsole გამოიყენება, როგორც ტერმინალის ემულატორი</caption>
-      <caption xml:lang="ko">터미널 에뮬레이터로 사용 중인 Konsole</caption>
-      <caption xml:lang="lv">„Konsole“ kā termināļa emulators</caption>
+      <caption xml:lang="eu">kmux terminal emulatzaile gisa erabilia</caption>
+      <caption xml:lang="fi">Pääte-emulaattorina käytetään kmuxa.</caption>
+      <caption xml:lang="fr">kmux est un émulateur de terminal</caption>
+      <caption xml:lang="gl">kmux usado como emulador de terminal.</caption>
+      <caption xml:lang="he">kmux משמש כמדמה המסוף</caption>
+      <caption xml:lang="hu">A kmux használata terminálemulárként</caption>
+      <caption xml:lang="ia">kmux es usate como un emulator de terminal</caption>
+      <caption xml:lang="id">kmux yang digunakan sebagai emulator terminal</caption>
+      <caption xml:lang="ie">kmux es usat quam un emulator de terminal</caption>
+      <caption xml:lang="is">kmux notað sem skjáhermir</caption>
+      <caption xml:lang="it">kmux utilizzata come un emulatore di terminale</caption>
+      <caption xml:lang="ka">kmux გამოიყენება, როგორც ტერმინალის ემულატორი</caption>
+      <caption xml:lang="ko">터미널 에뮬레이터로 사용 중인 kmux</caption>
+      <caption xml:lang="lv">„kmux“ kā termināļa emulators</caption>
       <caption xml:lang="ml">കൺസോൾ നിലവിൽ ടെർമിനൽ അനുകരിക്കുന്നതിനായി ഉപയോഗിക്കുന്നു</caption>
-      <caption xml:lang="nl">Konsole wordt gebruikt als een terminalemulator</caption>
-      <caption xml:lang="nn">Konsole brukt som ein terminalemulator</caption>
+      <caption xml:lang="nl">kmux wordt gebruikt als een terminalemulator</caption>
+      <caption xml:lang="nn">kmux brukt som ein terminalemulator</caption>
       <caption xml:lang="pa">ਕੇ-ਨਸੋਲ ਵਰਤਣ ਲਈ ਟਰਮੀਨਲ ਈਮੂਲੇਟਰ ਹੈ</caption>
-      <caption xml:lang="pl">Konsole używana jako emulator terminala</caption>
-      <caption xml:lang="pt">O Konsole a ser usado como um emulador de terminal</caption>
-      <caption xml:lang="pt-BR">Konsole sendo usado como emulador de terminal</caption>
+      <caption xml:lang="pl">kmux używana jako emulator terminala</caption>
+      <caption xml:lang="pt">O kmux a ser usado como um emulador de terminal</caption>
+      <caption xml:lang="pt-BR">kmux sendo usado como emulador de terminal</caption>
       <caption xml:lang="ro">Konsola fiind folosită ca emulator de terminal</caption>
-      <caption xml:lang="ru">Konsole является эмулятором терминала.</caption>
-      <caption xml:lang="sa">Konsole इत्यस्य उपयोगः टर्मिनल् एमुलेटर् इत्यस्य रूपेण क्रियते</caption>
-      <caption xml:lang="sk">Konsole používaný ako emulátor terminálu.</caption>
-      <caption xml:lang="sl">Program Konsole, ko je uporabljen kot posnemovalnik terminala</caption>
+      <caption xml:lang="ru">kmux является эмулятором терминала.</caption>
+      <caption xml:lang="sa">kmux इत्यस्य उपयोगः टर्मिनल् एमुलेटर् इत्यस्य रूपेण क्रियते</caption>
+      <caption xml:lang="sk">kmux používaný ako emulátor terminálu.</caption>
+      <caption xml:lang="sl">Program kmux, ko je uporabljen kot posnemovalnik terminala</caption>
       <caption xml:lang="sv">Terminal används som en terminalemulator.</caption>
       <caption xml:lang="ta">முனையக் கருவியாக கான்சோல் பயன்படுத்தப்படுவது</caption>
-      <caption xml:lang="tr">Konsole uçbirim öykünücüsü olarak kullanılırken</caption>
-      <caption xml:lang="uk">Konsole використовується як емулятор термінала</caption>
-      <caption xml:lang="zh-CN">Konsole 作为终端仿真器使用</caption>
-      <caption xml:lang="zh-TW">Konsole 是一款使用中的終端模擬器</caption>
+      <caption xml:lang="tr">kmux uçbirim öykünücüsü olarak kullanılırken</caption>
+      <caption xml:lang="uk">kmux використовується як емулятор термінала</caption>
+      <caption xml:lang="zh-CN">kmux 作为终端仿真器使用</caption>
+      <caption xml:lang="zh-TW">kmux 是一款使用中的終端模擬器</caption>
     </screenshot>
   </screenshots>
   <project_group>KDE</project_group>
   <provides>
-    <binary>konsole</binary>
+    <binary>kmux</binary>
   </provides>
   <update_contact>konsole-devel_AT_kde.org</update_contact>
   <releases>
