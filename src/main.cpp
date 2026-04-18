@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
     KLocalizedString::setApplicationDomain("kmux");
 
     KAboutData about(QStringLiteral("kmux"),
-                     i18nc("@title", "Konsole"),
+                     i18nc("@title", "kmux"),
                      QStringLiteral(KONSOLE_VERSION_FULL),
                      i18nc("@title", "Terminal emulator"),
                      KAboutLicense::GPL_V2,
