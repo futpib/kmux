@@ -254,6 +254,11 @@ private:
     // indicates that we got a command line argument that overwrites showing/hidding
     std::optional<bool> _windowArgsShowMenuBar;
     std::optional<bool> _windowArgsShowToolBars;
+
+    // Set while applyMainWindowSettings / createContainer drive toolbar
+    // visibility programmatically, so eventFilter doesn't overwrite the
+    // persisted "Toolbar <name>]/Hidden=" key with the transient state.
+    bool _suppressToolbarHiddenWrites = false;
 };
 }
 

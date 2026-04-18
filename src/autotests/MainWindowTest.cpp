@@ -14,8 +14,10 @@
 #include <KToolBar>
 #include <QAction>
 #include <QCoreApplication>
+#include <QLoggingCategory>
 #include <QMenu>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QTest>
 
 using namespace Konsole;
@@ -103,6 +105,11 @@ void openCloseWindow(std::function<void(MainWindow *)> body)
 }
 }
 
+void MainWindowTest::testOpenAndClose()
+{
+    openCloseWindow([](MainWindow *) { });
+}
+
 void MainWindowTest::testSessionToolbarVisibilityPersists()
 {
     // First run: open window, toggle sessionToolbar off via the same
@@ -163,6 +170,47 @@ void MainWindowTest::testApplyReadsSameFileAsSaveWrote()
     QVERIFY2(stateLen > 0,
              "applyMainWindowSettings read an empty State= on second run — "
              "save and restore are talking to different config files");
+}
+
+void MainWindowTest::testSessionToolbarHidePersistsAfterPriorStateSave()
+{
+    // Mirrors the real-app sequence shown in build/kmux1.log + build/kmux2.log:
+    //   Run A: open + close, writes a State= blob with sessionToolbar visible.
+    //   Run B: open (restore from that State), user toggles sessionToolbar off, close.
+    //   Run C: reopen — sessionToolbar should stay hidden.
+    // testSessionToolbarVisibilityPersists combines Runs A+B in one step; the real
+    // bug only manifests when State= is already populated by a prior close.
+    openCloseWindow([](MainWindow *) { });
+
+    openCloseWindow([](MainWindow *mw) {
+        KToolBar *bar = findToolBar(mw, QStringLiteral("sessionToolbar"));
+        QVERIFY(bar);
+        QVERIFY(bar->isVisible());
+        QVERIFY(triggerShowToolbarToggle(mw, QStringLiteral("sessionToolbar")));
+        QCoreApplication::processEvents();
+        QVERIFY(!bar->isVisible());
+    });
+
+    openCloseWindow([](MainWindow *mw) {
+        KToolBar *bar = findToolBar(mw, QStringLiteral("sessionToolbar"));
+        QVERIFY(bar);
+        QVERIFY2(!bar->isVisible(), "sessionToolbar should still be hidden on third run — hide toggle after a prior State save did not persist");
+    });
+}
+
+void MainWindowTest::testCloseEventWithDebugLogging()
+{
+    // Reproduces a segfault reading autoSaveConfigGroup() in the LEAVE debug log of
+    // MainWindow::closeEvent: KXmlGuiWindow::closeEvent sets autoSaveSettings=false
+    // when queryClose() returns true, so autoSaveConfigGroup() afterwards returns a
+    // default-constructed KConfigGroup with no backing KConfig, and readEntry/config
+    // dereferences null.
+    QLoggingCategory::setFilterRules(QStringLiteral("org.kde.konsole.debug=true"));
+    auto resetLogging = qScopeGuard([]() {
+        QLoggingCategory::setFilterRules(QString());
+    });
+
+    openCloseWindow([](MainWindow *) { });
 }
 
 QTEST_MAIN(MainWindowTest)

@@ -19,8 +19,11 @@ class MainWindowTest : public QObject
 private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
+    void testOpenAndClose();
     void testSessionToolbarVisibilityPersists();
     void testApplyReadsSameFileAsSaveWrote();
+    void testCloseEventWithDebugLogging();
+    void testSessionToolbarHidePersistsAfterPriorStateSave();
 
 private:
     QTemporaryDir m_homeDir;

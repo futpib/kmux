@@ -93,9 +93,36 @@ QString dumpToolbars(const QMainWindow *w)
     QStringList out;
     const auto bars = w->findChildren<KToolBar *>();
     for (const KToolBar *b : bars) {
-        out << QStringLiteral("%1=%2").arg(b->objectName(), b->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden"));
+        out << QStringLiteral("%1=%2(visTo=%3,hidden=%4)")
+                   .arg(b->objectName(),
+                        b->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden"),
+                        b->isVisibleTo(w) ? QStringLiteral("Y") : QStringLiteral("N"),
+                        b->isHidden() ? QStringLiteral("Y") : QStringLiteral("N"));
     }
     return out.join(QLatin1Char(' '));
+}
+
+QString dumpToolbarHiddenInGroup(const KConfigGroup &mainGroup, const QString &barName)
+{
+    // KToolBar persists per-bar state both as a subgroup of the MainWindow
+    // group AND as a top-level "Toolbar <name>" group in the same file —
+    // depending on KMainWindow version, one or the other (or both) appears.
+    // Report whatever we find so we can spot inconsistencies.
+    QStringList out;
+    const QString sub = QStringLiteral("Toolbar ") + barName;
+    if (mainGroup.hasGroup(sub)) {
+        KConfigGroup g = mainGroup.group(sub);
+        out << QStringLiteral("sub:Hidden=%1").arg(g.readEntry("Hidden", QString::fromLatin1("<unset>")));
+    } else {
+        out << QStringLiteral("sub:<no-group>");
+    }
+    if (mainGroup.config()->hasGroup(sub)) {
+        KConfigGroup g = mainGroup.config()->group(sub);
+        out << QStringLiteral("top:Hidden=%1").arg(g.readEntry("Hidden", QString::fromLatin1("<unset>")));
+    } else {
+        out << QStringLiteral("top:<no-group>");
+    }
+    return out.join(QLatin1Char(','));
 }
 
 int readStateLenFromDisk(const QString &path)
@@ -132,6 +159,29 @@ QString dumpToolbarGroups(const KConfig *config)
         }
     }
     return out.isEmpty() ? QStringLiteral("<none>") : out.join(QLatin1Char(' '));
+}
+
+// Walk both candidate config files and report what each says about the
+// toolbar persistence story. Use this anywhere we want a single log line
+// that explains "where the truth could be hiding" for sessionToolbar.
+QString dumpAllConfigs()
+{
+    QStringList out;
+    auto reportGroup = [&](const QString &label, const KConfigGroup &g) {
+        const int stateLen = g.readEntry("State", QByteArray()).size();
+        const QString hidden = dumpToolbarHiddenInGroup(g, QStringLiteral("sessionToolbar"));
+        out << QStringLiteral("%1[file=%2 group=%3 exists=%4 hasState=%5 stateLen=%6 sessionToolbar:%7 allBars=%8]")
+                   .arg(label,
+                        g.config()->name(),
+                        g.name(),
+                        g.exists() ? QStringLiteral("Y") : QStringLiteral("N"),
+                        g.hasKey("State") ? QStringLiteral("Y") : QStringLiteral("N"))
+                   .arg(stateLen)
+                   .arg(hidden, dumpToolbarGroups(g.config()));
+    };
+    reportGroup(QStringLiteral("DEFAULT"), KSharedConfig::openConfig()->group(QStringLiteral("MainWindow")));
+    reportGroup(QStringLiteral("STATE"), KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow")));
+    return out.join(QLatin1Char(' '));
 }
 }
 
@@ -177,11 +227,13 @@ MainWindow::MainWindow()
 
     constexpr KXmlGuiWindow::StandardWindowOptions guiOpts = ToolBar | Keys | Save | Create;
     const QString xmlFile = componentName() + QLatin1String("ui.rc"); // Typically "konsoleui.rc"
-    qCDebug(KonsoleDebug) << "ctor: before setupGUI toolbars=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "ctor: BEFORE setupGUI xmlFile=" << xmlFile << "componentName=" << componentName() << "toolbars=[" << dumpToolbars(this)
+                          << "] autoSaveSettings=" << autoSaveSettings() << "configs=[" << dumpAllConfigs() << "]";
     // The "Create" flag will make it call createGUI()
     setupGUI(guiOpts, xmlFile);
-    qCDebug(KonsoleDebug) << "ctor: after  setupGUI toolbars=[" << dumpToolbars(this) << "]"
-                          << "autoSaveSettings=" << autoSaveSettings();
+    qCDebug(KonsoleDebug) << "ctor: AFTER  setupGUI toolbars=[" << dumpToolbars(this) << "]"
+                          << "autoSaveSettings=" << autoSaveSettings() << "autoSaveGroup=" << autoSaveConfigGroup().name()
+                          << "autoSaveFile=" << autoSaveConfigGroup().config()->name() << " configs=[" << dumpAllConfigs() << "]";
 
     // Hamburger menu for when the menubar is hidden
     _hamburgerMenu = KStandardAction::hamburgerMenu(nullptr, nullptr, actionCollection());
@@ -639,29 +691,51 @@ void MainWindow::applyMainWindowSettings(const KConfigGroup &config)
 {
     qCDebug(KonsoleDebug) << "applyMainWindowSettings: ENTER file=" << config.config()->name() << "group=" << config.name() << "exists=" << config.exists()
                           << "hasState=" << config.hasKey("State") << "stateLen=" << config.readEntry("State", QByteArray()).size() << "toolbarsBefore=["
-                          << dumpToolbars(this) << "]"
-                          << "toolbarGroupsBefore=" << dumpToolbarGroups(config.config());
+                          << dumpToolbars(this) << "]" << "sessionToolbarFromThisConfig=" << dumpToolbarHiddenInGroup(config, QStringLiteral("sessionToolbar"))
+                          << "toolbarGroupsBefore=" << dumpToolbarGroups(config.config()) << "configs=[" << dumpAllConfigs() << "]";
 
+    _suppressToolbarHiddenWrites = true;
     KMainWindow::applyMainWindowSettings(config);
 
-    qCDebug(KonsoleDebug) << "applyMainWindowSettings: after KMainWindow toolbars=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "applyMainWindowSettings: AFTER KMainWindow::applyMainWindowSettings toolbars=[" << dumpToolbars(this)
+                          << "] sessionToolbarFromThisConfig=" << dumpToolbarHiddenInGroup(config, QStringLiteral("sessionToolbar"));
 
     // Override the menubar state from the config file
     if (_windowArgsShowMenuBar.has_value()) {
+        qCDebug(KonsoleDebug) << "applyMainWindowSettings: CLI override forces menuBar visible=" << _windowArgsShowMenuBar.value();
         menuBar()->setVisible(_windowArgsShowMenuBar.value());
     }
 
     // Override the toolbar state from the config file
     if (_windowArgsShowToolBars.has_value()) {
-        qCDebug(KonsoleDebug) << "applyMainWindowSettings: CLI override forces toolbars visible=" << _windowArgsShowToolBars.value();
+        qCDebug(KonsoleDebug) << "applyMainWindowSettings: CLI override forces toolbars visible=" << _windowArgsShowToolBars.value()
+                              << "barNames=" << toolBarNames();
         for (const auto &name : toolBarNames()) {
             setToolBarVisible(name, _windowArgsShowToolBars.value());
         }
+    } else {
+        qCDebug(KonsoleDebug) << "applyMainWindowSettings: NO CLI override — toolbar visibility comes from config alone";
+
+        // KMainWindow's State= blob only carries visibility for toolbars that
+        // existed at save time. For toolbars created later (sessionToolbar via
+        // the SessionController plugin) and for toolbars re-added after a
+        // session-manager save overwrote the blob, re-apply our persisted
+        // per-toolbar Hidden= key so visibility actually sticks across restart.
+        for (KToolBar *bar : findChildren<KToolBar *>()) {
+            const KConfigGroup tbGroup = config.group(QStringLiteral("Toolbar ") + bar->objectName());
+            if (tbGroup.hasKey("Hidden")) {
+                const bool wantHidden = tbGroup.readEntry("Hidden", false);
+                if (bar->isHidden() != wantHidden) {
+                    bar->setVisible(!wantHidden);
+                }
+            }
+        }
     }
+    _suppressToolbarHiddenWrites = false;
 
     _toggleMenuBarAction->setChecked(menuBar()->isVisibleTo(this));
 
-    qCDebug(KonsoleDebug) << "applyMainWindowSettings: LEAVE toolbarsAfter=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "applyMainWindowSettings: LEAVE toolbarsAfter=[" << dumpToolbars(this) << "] configs=[" << dumpAllConfigs() << "]";
 }
 
 BookmarkHandler *MainWindow::bookmarkHandler() const
@@ -867,22 +941,28 @@ bool MainWindow::queryClose()
 {
     qCDebug(KonsoleDebug) << "queryClose: ENTER toolbars=[" << dumpToolbars(this) << "]" << "autoSaveGroup=" << autoSaveConfigGroup().name()
                           << "autoSaveFile=" << autoSaveConfigGroup().config()->name()
-                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size();
+                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size() << "configs=[" << dumpAllConfigs() << "]";
 
     // Do not ask for confirmation during log out and power off
     // TODO: rework the dealing of this case to make it has its own confirmation
     // dialog.
     if (qApp->isSavingSession()) {
+        qCDebug(KonsoleDebug) << "queryClose: isSavingSession → true";
         return true;
     }
+    qCDebug(KonsoleDebug) << "queryClose: isSavingSession=false, checking sessions...";
 
     // Check what processes are running, excluding the shell
     QStringList processesRunning;
     // Need to make a local copy so the begin() and end() point to the same QList
+    qCDebug(KonsoleDebug) << "queryClose: _viewManager=" << (void *)_viewManager;
     const QList<Session *> sessionList = _viewManager->sessions();
+    qCDebug(KonsoleDebug) << "queryClose: sessionList.size=" << sessionList.size();
     const QSet<Session *> uniqueSessions(sessionList.begin(), sessionList.end());
+    qCDebug(KonsoleDebug) << "queryClose: uniqueSessions.size=" << uniqueSessions.size();
 
     for (Session *session : uniqueSessions) {
+        qCDebug(KonsoleDebug) << "queryClose: checking session=" << (void *)session;
         if ((session == nullptr) || !session->isForegroundProcessActive()) {
             continue;
         }
@@ -901,9 +981,11 @@ bool MainWindow::queryClose()
 
     // Get number of open tabs
     const int openTabs = _viewManager->viewProperties().count();
+    qCDebug(KonsoleDebug) << "queryClose: openTabs=" << openTabs << "processesRunning=" << processesRunning;
 
     // If no processes running (except the shell) and no extra tabs, just close
     if (processesRunning.count() == 0 && openTabs < 2) {
+        qCDebug(KonsoleDebug) << "queryClose: no extra processes/tabs → returning true";
         return true;
     }
 
@@ -989,21 +1071,25 @@ bool MainWindow::queryClose()
 
 void MainWindow::saveProperties(KConfigGroup &group)
 {
+    qCDebug(KonsoleDebug) << "saveProperties: file=" << group.config()->name() << "group=" << group.name() << "toolbars=[" << dumpToolbars(this) << "]";
     _viewManager->saveSessions(group);
 }
 
 void MainWindow::readProperties(const KConfigGroup &group)
 {
+    qCDebug(KonsoleDebug) << "readProperties: file=" << group.config()->name() << "group=" << group.name() << "toolbars=[" << dumpToolbars(this) << "]";
     _viewManager->restoreSessions(group);
 }
 
 void MainWindow::saveGlobalProperties(KConfig *config)
 {
+    qCDebug(KonsoleDebug) << "saveGlobalProperties: file=" << config->name() << "toolbars=[" << dumpToolbars(this) << "]";
     SessionManager::instance()->saveSessions(config);
 }
 
 void MainWindow::readGlobalProperties(KConfig *config)
 {
+    qCDebug(KonsoleDebug) << "readGlobalProperties: file=" << config->name() << "toolbars=[" << dumpToolbars(this) << "]";
     SessionManager::instance()->restoreSessions(config);
 }
 
@@ -1170,12 +1256,15 @@ void MainWindow::applyKonsoleSettings()
     // config file, so window/toolbar state lives next to other transient
     // window state instead of kmuxrc.
     KConfigGroup autoSaveGroup = KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow"));
-    qCDebug(KonsoleDebug) << "applyKonsoleSettings: calling setAutoSaveSettings file=" << autoSaveGroup.config()->name() << "group=" << autoSaveGroup.name()
-                          << "groupExists=" << autoSaveGroup.exists() << "hasState=" << autoSaveGroup.hasKey("State")
-                          << "stateLen=" << autoSaveGroup.readEntry("State", QByteArray()).size() << "toolbars=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "applyKonsoleSettings: BEFORE setAutoSaveSettings target file=" << autoSaveGroup.config()->name()
+                          << "group=" << autoSaveGroup.name() << "groupExists=" << autoSaveGroup.exists() << "hasState=" << autoSaveGroup.hasKey("State")
+                          << "stateLen=" << autoSaveGroup.readEntry("State", QByteArray()).size()
+                          << "currentAutoSaveFile=" << autoSaveConfigGroup().config()->name() << "currentAutoSaveGroup=" << autoSaveConfigGroup().name()
+                          << "toolbars=[" << dumpToolbars(this) << "] configs=[" << dumpAllConfigs() << "]";
     setAutoSaveSettings(autoSaveGroup);
-    qCDebug(KonsoleDebug) << "applyKonsoleSettings: after setAutoSaveSettings toolbars=[" << dumpToolbars(this) << "]"
-                          << "autoSaveGroup=" << autoSaveConfigGroup().name() << "file=" << autoSaveConfigGroup().config()->name();
+    qCDebug(KonsoleDebug) << "applyKonsoleSettings: AFTER  setAutoSaveSettings toolbars=[" << dumpToolbars(this) << "]"
+                          << "autoSaveGroup=" << autoSaveConfigGroup().name() << "file=" << autoSaveConfigGroup().config()->name() << "configs=["
+                          << dumpAllConfigs() << "]";
 
     if (!_stateFileWatcher) {
         const QString path = autoSaveGroup.config()->name();
@@ -1314,6 +1403,10 @@ void MainWindow::setRemoveWindowTitleBarAndFrame(bool frameless)
 
 void MainWindow::showEvent(QShowEvent *event)
 {
+    qCDebug(KonsoleDebug) << "showEvent: ENTER firstShow=" << _firstShowEvent << "toolbars=[" << dumpToolbars(this)
+                          << "] autoSaveFile=" << autoSaveConfigGroup().config()->name() << "autoSaveGroup=" << autoSaveConfigGroup().name() << "configs=["
+                          << dumpAllConfigs() << "]";
+
     // Apply this code on first show only
     if (_firstShowEvent) {
         _firstShowEvent = false;
@@ -1336,21 +1429,47 @@ void MainWindow::showEvent(QShowEvent *event)
 
     // Call parent method
     KXmlGuiWindow::showEvent(event);
+
+    qCDebug(KonsoleDebug) << "showEvent: LEAVE toolbars=[" << dumpToolbars(this) << "]";
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     qCDebug(KonsoleDebug) << "closeEvent: ENTER toolbars=[" << dumpToolbars(this) << "]" << "autoSaveGroup=" << autoSaveConfigGroup().name()
                           << "autoSaveFile=" << autoSaveConfigGroup().config()->name()
-                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size() << "accepted=" << event->isAccepted();
+                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size() << "accepted=" << event->isAccepted()
+                          << "configs=[" << dumpAllConfigs() << "]";
+    std::fflush(stdout);
+    std::fflush(stderr);
+
+    // Force a fresh save of the current window state before KXmlGuiWindow::closeEvent
+    // runs. KMainWindow::closeEvent only saves if settingsTimer is active; after a
+    // mid-run autosave fires (e.g., the user toggles a toolbar and the 500–1500 ms
+    // timer elapses before close), the timer is stopped and closeEvent skips the
+    // save. The last captured state can precede later user actions — this forces
+    // saveState() over the current layout so toolbar visibility sticks across restarts.
+    if (autoSaveSettings()) {
+        saveAutoSaveSettings();
+    }
+
+    qCDebug(KonsoleDebug) << "closeEvent: calling KXmlGuiWindow::closeEvent...";
+    std::fflush(stdout);
     std::fflush(stderr);
 
     KXmlGuiWindow::closeEvent(event);
 
-    qCDebug(KonsoleDebug) << "closeEvent: LEAVE accepted=" << event->isAccepted()
-                          << "savedStateLen=" << autoSaveConfigGroup().readEntry("State", QByteArray()).size()
-                          << "autoSaveFile=" << autoSaveConfigGroup().config()->name()
-                          << "toolbarGroupsAfter=" << dumpToolbarGroups(autoSaveConfigGroup().config());
+    // KMainWindow::closeEvent clears autoSaveSettings when queryClose() returned
+    // true, so autoSaveConfigGroup() now returns a default-constructed KConfigGroup
+    // with a null KConfig. Only touch it while autoSave is still live.
+    if (autoSaveSettings()) {
+        const KConfigGroup g = autoSaveConfigGroup();
+        qCDebug(KonsoleDebug) << "closeEvent: LEAVE accepted=" << event->isAccepted() << "savedStateLen=" << g.readEntry("State", QByteArray()).size()
+                              << "autoSaveFile=" << g.config()->name() << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name())
+                              << "toolbarGroupsAfter=" << dumpToolbarGroups(g.config()) << "configs=[" << dumpAllConfigs() << "]";
+    } else {
+        qCDebug(KonsoleDebug) << "closeEvent: LEAVE accepted=" << event->isAccepted() << "autoSaveSettings=false (cleared by KMainWindow::closeEvent)"
+                              << "configs=[" << dumpAllConfigs() << "]";
+    }
     std::fflush(stderr);
 }
 
@@ -1366,16 +1485,34 @@ void MainWindow::triggerAction(const QString &name) const
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
     if (auto *bar = qobject_cast<KToolBar *>(obj)) {
-        if (event->type() == QEvent::Show) {
-            const KConfigGroup g = autoSaveConfigGroup();
-            qCDebug(KonsoleDebug) << "toolbar SHOW" << bar->objectName() << "allToolbars=[" << dumpToolbars(this)
-                                  << "] inMemoryStateLen=" << g.readEntry("State", QByteArray()).size()
-                                  << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name());
-        } else if (event->type() == QEvent::Hide) {
-            const KConfigGroup g = autoSaveConfigGroup();
-            qCDebug(KonsoleDebug) << "toolbar HIDE" << bar->objectName() << "allToolbars=[" << dumpToolbars(this)
-                                  << "] inMemoryStateLen=" << g.readEntry("State", QByteArray()).size()
-                                  << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name());
+        if (event->type() == QEvent::Show || event->type() == QEvent::Hide) {
+            const char *what = event->type() == QEvent::Show ? "SHOW" : "HIDE";
+            if (autoSaveSettings()) {
+                KConfigGroup g = autoSaveConfigGroup();
+                qCDebug(KonsoleDebug) << "toolbar" << what << bar->objectName() << "allToolbars=[" << dumpToolbars(this)
+                                      << "] autoSaveFile=" << g.config()->name() << "autoSaveGroup=" << g.name()
+                                      << "inMemoryStateLen=" << g.readEntry("State", QByteArray()).size()
+                                      << "onDiskStateLen=" << readStateLenFromDisk(g.config()->name())
+                                      << "sessionToolbarFromAutoSave=" << dumpToolbarHiddenInGroup(g, QStringLiteral("sessionToolbar")) << "configs=["
+                                      << dumpAllConfigs() << "]";
+                // Persist the Hidden flag per toolbar, independent of
+                // QMainWindow::saveState()'s State= blob (which is fragile
+                // for toolbars added after setupGUI — see createContainer).
+                // Skip while we're driving visibility programmatically so
+                // restoreState/Show-during-restore doesn't clobber the
+                // user's saved preference.
+                if (!_suppressToolbarHiddenWrites) {
+                    KConfigGroup tbGroup = g.group(QStringLiteral("Toolbar ") + bar->objectName());
+                    tbGroup.writeEntry("Hidden", event->type() == QEvent::Hide);
+                    tbGroup.sync();
+                }
+            } else {
+                qCDebug(KonsoleDebug) << "toolbar" << what << bar->objectName() << "allToolbars=[" << dumpToolbars(this) << "] autoSave=<not-set-yet> configs=["
+                                      << dumpAllConfigs() << "]";
+            }
+        } else if (event->type() == QEvent::ShowToParent || event->type() == QEvent::HideToParent || event->type() == QEvent::Polish) {
+            qCDebug(KonsoleDebug) << "toolbar event" << bar->objectName() << "type=" << int(event->type()) << "isVisible=" << bar->isVisible()
+                                  << "isHidden=" << bar->isHidden();
         }
     }
 
@@ -1414,13 +1551,44 @@ QWidget *MainWindow::createContainer(QWidget *parent, int index, const QDomEleme
     QWidget *createdContainer = KXmlGuiWindow::createContainer(parent, index, element, containerAction);
     if (element.tagName() == QLatin1String("ToolBar")) {
         KAcceleratorManager::setNoAccel(createdContainer);
-        qCDebug(KonsoleDebug) << "createContainer: created ToolBar name=" << createdContainer->objectName() << "visible=" << createdContainer->isVisible()
-                              << "allToolbars=[" << dumpToolbars(this) << "]";
+        const QString xmlHidden = element.attribute(QStringLiteral("hidden"), QStringLiteral("<unset>"));
+        const QString xmlNewline = element.attribute(QStringLiteral("newline"), QStringLiteral("<unset>"));
+        const bool hasAutoSave = autoSaveSettings();
+        qCDebug(KonsoleDebug)
+            << "createContainer: created ToolBar name=" << createdContainer->objectName() << "visible=" << createdContainer->isVisible()
+            << "xmlHidden=" << xmlHidden << "xmlNewline=" << xmlNewline << "hasAutoSave=" << hasAutoSave
+            << (hasAutoSave ? QStringLiteral("autoSaveFile=%1 autoSaveGroup=%2").arg(autoSaveConfigGroup().config()->name(), autoSaveConfigGroup().name())
+                            : QStringLiteral("autoSave=<not-set>"))
+            << "allToolbars=[" << dumpToolbars(this) << "] configs=[" << dumpAllConfigs() << "]";
         // Watch show/hide so we see when the user toggles visibility via
         // Settings → Toolbars Shown (that path goes straight through
         // KToolBar::setVisible, bypassing saveNewToolbarConfig and
         // applyMainWindowSettings).
         createdContainer->installEventFilter(this);
+
+        // Restore persisted visibility. QMainWindow::saveState()'s binary blob
+        // doesn't reliably survive for toolbars added after setupGUI (session
+        // manager saves overwrite the State= key before sessionToolbar exists).
+        // Keep a dedicated "Toolbar <name>" subgroup with a Hidden= key so
+        // visibility round-trips regardless of when the toolbar joins the layout.
+        if (auto *bar = qobject_cast<KToolBar *>(createdContainer)) {
+            if (hasAutoSave) {
+                KConfigGroup tbGroup = autoSaveConfigGroup().group(QStringLiteral("Toolbar ") + bar->objectName());
+                if (tbGroup.hasKey("Hidden")) {
+                    _suppressToolbarHiddenWrites = true;
+                    bar->setVisible(!tbGroup.readEntry("Hidden", false));
+                    _suppressToolbarHiddenWrites = false;
+                } else {
+                    // No stored preference yet — seed the subgroup with the
+                    // toolbar's explicitly-set-hidden flag so future eventFilter
+                    // writes have a baseline. Use isHidden() (not !isVisible()),
+                    // since the toolbar hasn't been shown yet here: its parent
+                    // isn't visible, so isVisible() is false by default.
+                    tbGroup.writeEntry("Hidden", bar->isHidden());
+                    tbGroup.sync();
+                }
+            }
+        }
     } else {
         qCDebug(KonsoleDebug) << "createContainer: tag=" << element.tagName() << "name=" << createdContainer->objectName();
     }
@@ -1429,9 +1597,10 @@ QWidget *MainWindow::createContainer(QWidget *parent, int index, const QDomEleme
 
 void MainWindow::saveNewToolbarConfig()
 {
-    qCDebug(KonsoleDebug) << "saveNewToolbarConfig: ENTER toolbars=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "saveNewToolbarConfig: ENTER toolbars=[" << dumpToolbars(this) << "] autoSaveFile=" << autoSaveConfigGroup().config()->name()
+                          << "configs=[" << dumpAllConfigs() << "]";
     KXmlGuiWindow::saveNewToolbarConfig();
-    qCDebug(KonsoleDebug) << "saveNewToolbarConfig: LEAVE toolbars=[" << dumpToolbars(this) << "]";
+    qCDebug(KonsoleDebug) << "saveNewToolbarConfig: LEAVE toolbars=[" << dumpToolbars(this) << "] configs=[" << dumpAllConfigs() << "]";
 
     unplugActionList(QStringLiteral("plugin-submenu"));
     plugActionList(QStringLiteral("plugin-submenu"), _pluginsActions);
