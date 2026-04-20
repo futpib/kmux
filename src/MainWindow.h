@@ -142,6 +142,13 @@ Q_SIGNALS:
     void newWindowRequest(const QExplicitlySharedDataPointer<Profile> &profile, const QString &directory, const ContainerInfo &container);
 
     /**
+     * Emitted when the user invokes New Window on a tmux-attached window.
+     * Application responds by creating a new tmux window in the same session
+     * and opening a new tmux-attached MainWindow displaying it.
+     */
+    void newTmuxWindowRequest(const QString &directory);
+
+    /**
      * Emitted when a view for one session is detached from this window
      */
     void terminalsDetached(ViewSplitter *splitter, QHash<TerminalDisplay *, Session *> sessionsMap);

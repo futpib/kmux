@@ -59,8 +59,14 @@ public:
      */
     MainWindow *newMainWindow();
 
+    PluginManager *pluginManager()
+    {
+        return &m_pluginManager;
+    }
+
 private Q_SLOTS:
     void createWindow(const QExplicitlySharedDataPointer<Profile> &profile, const QString &directory, const ContainerInfo &container);
+    void createTmuxWindow(MainWindow *source, const QString &directory);
     void detachTerminals(MainWindow *currentWindow, ViewSplitter *splitter, const QHash<TerminalDisplay *, Session *> &sessionsMap);
 
     void toggleBackgroundInstance();

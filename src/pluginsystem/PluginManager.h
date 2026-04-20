@@ -29,6 +29,10 @@ public:
     void loadAllPlugins();
     void registerMainWindow(Konsole::MainWindow *window);
 
+    // Injects an already-constructed plugin. Ownership IS taken — the plugin
+    // is deleted by PluginManager's destructor (qDeleteAll). Intended for tests.
+    void addPlugin(IKonsolePlugin *plugin);
+
     std::vector<IKonsolePlugin *> plugins() const;
 
 private:

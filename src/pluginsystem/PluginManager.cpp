@@ -75,6 +75,11 @@ void PluginManager::registerMainWindow(Konsole::MainWindow *window)
     window->setPluginsActions(internalPluginSubmenus);
 }
 
+void PluginManager::addPlugin(IKonsolePlugin *plugin)
+{
+    d->plugins.push_back(plugin);
+}
+
 std::vector<IKonsolePlugin *> PluginManager::plugins() const
 {
     return d->plugins;

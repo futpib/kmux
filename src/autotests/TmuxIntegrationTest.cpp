@@ -10,6 +10,7 @@
 #include <KActionCollection>
 #include <KMessageBox>
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
@@ -20,11 +21,14 @@
 #include <QTest>
 #include <QTreeView>
 
+#include "../Application.h"
 #include "../Emulation.h"
 #include "../MainWindow.h"
 #include "../Screen.h"
 #include "../ScreenWindow.h"
 #include "../ViewManager.h"
+#include "../pluginsystem/IKonsolePlugin.h"
+#include "../pluginsystem/PluginManager.h"
 #include "../profile/ProfileManager.h"
 #include "../session/Session.h"
 #include "../session/SessionController.h"
@@ -4478,6 +4482,50 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
     delete attach.mw.data();
 }
 
+namespace
+{
+QSharedPointer<QCommandLineParser> makeTestAppParser()
+{
+    auto parser = QSharedPointer<QCommandLineParser>::create();
+    Application::populateCommandLineParser(parser.data());
+    parser->process(QStringList{QStringLiteral("kmux")});
+    return parser;
+}
+
+// Attach a tmux bridge to a fresh Application-owned MainWindow, so the new
+// MainWindow is wired up with plugin registration and newTmuxWindowRequest
+// routing. Mirrors TmuxTestDSL::attachKonsole but goes through Application.
+void attachKonsoleViaApp(Application &app, const QString &tmuxPath, const TmuxTestDSL::SessionContext &ctx, TmuxTestDSL::AttachResult &result)
+{
+    MainWindow *mw = app.newMainWindow();
+    result.mw = mw;
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    result.bridge = bridge;
+    bool started = bridge->start(tmuxPath,
+                                 {QStringLiteral("-S"), ctx.socketPath},
+                                 {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName});
+    QVERIFY(started);
+    result.container = mw->viewManager()->activeContainer();
+    QVERIFY(result.container);
+    QTRY_VERIFY_WITH_TIMEOUT(result.container && result.container->count() >= 1, 10000);
+}
+
+QPointer<MainWindow> findOtherMainWindow(MainWindow *excluded)
+{
+    QPointer<MainWindow> found;
+    const auto widgets = QApplication::topLevelWidgets();
+    for (QWidget *w : widgets) {
+        if (auto *mw = qobject_cast<MainWindow *>(w)) {
+            if (mw != excluded) {
+                found = mw;
+                break;
+            }
+        }
+    }
+    return found;
+}
+} // namespace
+
 void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
 {
     // When the user invokes New Window (Ctrl+Shift+N) while focused on a tmux
@@ -4507,8 +4555,13 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
         TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
     });
 
+    // Intentionally leaked — ~Application() calls SessionManager::closeAllSessions(),
+    // which flips a persistent flag that poisons other tests. Process teardown
+    // handles cleanup at the end.
+    auto *app = new Application(makeTestAppParser(), {});
+
     TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -4517,19 +4570,6 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     QVERIFY(container);
     QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
 
-    auto findMainWindows = []() {
-        QList<MainWindow *> result;
-        const auto widgets = QApplication::topLevelWidgets();
-        for (QWidget *w : widgets) {
-            if (auto *mw = qobject_cast<MainWindow *>(w)) {
-                result.append(mw);
-            }
-        }
-        return result;
-    };
-
-    // One kmux MainWindow attached to a single-window tmux session
-    QCOMPARE(findMainWindows().size(), 1);
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
     QCOMPARE(controller->windowCount(), 1);
@@ -4550,18 +4590,7 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
 
     // A second kmux MainWindow should appear
     QPointer<MainWindow> newMw;
-    QTRY_VERIFY_WITH_TIMEOUT(
-        [&]() {
-            const auto windows = findMainWindows();
-            for (MainWindow *mw : windows) {
-                if (mw != attach.mw.data()) {
-                    newMw = mw;
-                    return true;
-                }
-            }
-            return false;
-        }(),
-        10000);
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
     QVERIFY(newMw);
 
     // The new MainWindow should be attached to the newly created tmux window —
@@ -4582,6 +4611,93 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     const QString windowOutput = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
     int windowCount = windowOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
     QCOMPARE(windowCount, 2);
+
+    delete newMw.data();
+    delete attach.mw.data();
+}
+
+namespace
+{
+// Fake plugin that records which MainWindows it's been registered on.
+struct TestPlugin : public IKonsolePlugin {
+    TestPlugin()
+        : IKonsolePlugin(nullptr, {})
+    {
+    }
+    void createWidgetsForMainWindow(MainWindow *mw) override
+    {
+        windowsCreated.append(mw);
+    }
+    void activeViewChanged(SessionController *, MainWindow *) override
+    {
+    }
+    QList<MainWindow *> windowsCreated;
+};
+} // namespace
+
+void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
+{
+    // When Ctrl+Shift+N spawns a new tmux-attached MainWindow, the new window
+    // should be created via Application::newMainWindow() so PluginManager
+    // registers plugins on it (menus, widgets, activeViewChanged hooks). We
+    // inject a test plugin into PluginManager, trigger the shortcut, and check
+    // that the plugin's createWidgetsForMainWindow is called for the new window.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
+    auto *app = new Application(makeTestAppParser(), {});
+
+    // Inject test plugin BEFORE creating any MainWindow so it's picked up on
+    // every newMainWindow() call. Ownership transfers to PluginManager.
+    auto *plugin = new TestPlugin;
+    app->pluginManager()->addPlugin(plugin);
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    // Application::newMainWindow → PluginManager::registerMainWindow already
+    // called the plugin on the initial window.
+    QCOMPARE(plugin->windowsCreated.size(), 1);
+    QCOMPARE(plugin->windowsCreated.first(), attach.mw.data());
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+    QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->activeContainer()->count(), 1, 10000);
+
+    // Trigger Ctrl+Shift+N
+    QAction *newWindowAction = attach.mw->actionCollection()->action(QStringLiteral("new-window"));
+    QVERIFY2(newWindowAction, "new-window action not found");
+    newWindowAction->trigger();
+
+    QPointer<MainWindow> newMw;
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(newMw);
+
+    // The plugin should have been registered on the new MainWindow too.
+    QTRY_COMPARE_WITH_TIMEOUT(plugin->windowsCreated.size(), 2, 10000);
+    QVERIFY2(plugin->windowsCreated.contains(newMw.data()), "Plugin was not registered on the new MainWindow");
 
     delete newMw.data();
     delete attach.mw.data();

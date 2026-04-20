@@ -36,6 +36,7 @@
 #include "widgets/ViewContainer.h"
 
 #include "pluginsystem/IKonsolePlugin.h"
+#include "tmux/TmuxController.h"
 #include "tmux/TmuxProcessBridge.h"
 
 using namespace Konsole;
@@ -133,6 +134,10 @@ MainWindow *Application::newMainWindow()
 
     connect(window, &Konsole::MainWindow::newWindowRequest, this, &Konsole::Application::createWindow);
 
+    connect(window, &Konsole::MainWindow::newTmuxWindowRequest, this, [this, window](const QString &directory) {
+        createTmuxWindow(window, directory);
+    });
+
     connect(window,
             &Konsole::MainWindow::terminalsDetached,
             this,
@@ -158,6 +163,26 @@ void Application::createWindow(const Profile::Ptr &profile, const QString &direc
         session->setContainerContext(container);
     }
 
+    window->show();
+}
+
+void Application::createTmuxWindow(MainWindow *source, const QString &directory)
+{
+    auto *bridge = source->findChild<TmuxProcessBridge *>();
+    if (!bridge || !bridge->controller()) {
+        return;
+    }
+
+    bridge->controller()->requestNewWindow(directory);
+
+    // newMainWindow() wires signals and registers plugins — the new tmux-
+    // attached window gets everything a normally-spawned window would.
+    MainWindow *window = newMainWindow();
+    auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
+    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
+        delete window;
+        return;
+    }
     window->show();
 }
 
