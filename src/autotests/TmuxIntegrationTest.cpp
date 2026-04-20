@@ -5007,6 +5007,342 @@ void TmuxIntegrationTest::testDetachTabFromTmuxViaContainerSignal()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testMergeTabBackFromTmux()
+{
+    // The inverse of detach-tab: invoking merge-tab on a detached MainWindow
+    // should move that tmux window's tab back to the canonical MainWindow
+    // (picked by "most visible tabs", tie-break to first-registered) and
+    // close the detached one.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+
+    auto *app = new Application(makeTestAppParser(), {});
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    auto windowIdForTab = [&](int tabIdx) {
+        const auto windowToTab = controller->windowToTabIndex();
+        for (auto it = windowToTab.constBegin(); it != windowToTab.constEnd(); ++it) {
+            if (it.value() == tabIdx) {
+                return it.key();
+            }
+        }
+        return -1;
+    };
+    int detachedWindowId = windowIdForTab(1);
+    QVERIFY(detachedWindowId >= 0);
+
+    // Detach tab 1 — produces a restricted MainWindow for detachedWindowId.
+    container->setCurrentIndex(1);
+    QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
+    QVERIFY(detachAction);
+    detachAction->trigger();
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+    QPointer<MainWindow> detachedMw;
+    QTRY_VERIFY_WITH_TIMEOUT((detachedMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(detachedMw);
+
+    // Trigger merge-tab on the detached MainWindow.
+    QAction *mergeAction = detachedMw->actionCollection()->action(QStringLiteral("merge-tab"));
+    QVERIFY2(mergeAction, "merge-tab action not found on detached MainWindow");
+    mergeAction->trigger();
+
+    // The detached MainWindow should go away.
+    QTRY_VERIFY_WITH_TIMEOUT(detachedMw.isNull(), 10000);
+
+    // The canonical MainWindow should have the tab back.
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+    QVERIFY2(controller->windowToTabIndex().contains(detachedWindowId), "Merged window ID is not in the canonical controller's window->tab map");
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testMergeTabBackPicksWindowWithMostTabs()
+{
+    // When multiple candidate MainWindows are attached to the same tmux
+    // session, merge-tab picks the one with the most visible tabs.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    // 4 tmux windows total.
+    for (int i = 0; i < 3; ++i) {
+        QProcess p;
+        p.start(tmuxPath,
+                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+        QVERIFY(p.waitForFinished(5000));
+    }
+
+    auto *app = new Application(makeTestAppParser(), {});
+
+    // Attach two independent MainWindows to the same tmux session.
+    TmuxTestDSL::AttachResult attachA;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attachA);
+    attachA.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attachA.mw));
+    QTRY_COMPARE_WITH_TIMEOUT(attachA.container->count(), 4, 10000);
+
+    TmuxTestDSL::AttachResult attachB;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attachB);
+    attachB.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attachB.mw));
+    QTRY_COMPARE_WITH_TIMEOUT(attachB.container->count(), 4, 10000);
+
+    auto *controllerA = TmuxControllerRegistry::instance()->controllerForSession(attachA.mw->viewManager()->sessions().first());
+    auto *controllerB = TmuxControllerRegistry::instance()->controllerForSession(attachB.mw->viewManager()->sessions().first());
+    QVERIFY(controllerA);
+    QVERIFY(controllerB);
+    QVERIFY(controllerA != controllerB);
+
+    // Pick the window currently at tab 0 in A; we'll both hide it on B and
+    // detach it from A, so the merge-back target decision is unambiguous.
+    int targetWindowId = -1;
+    for (auto it = controllerA->windowToTabIndex().constBegin(); it != controllerA->windowToTabIndex().constEnd(); ++it) {
+        if (it.value() == 0) {
+            targetWindowId = it.key();
+            break;
+        }
+    }
+    QVERIFY(targetWindowId >= 0);
+
+    // Hide targetWindowId + one other on B, so B has 2 visible tabs and
+    // does NOT contain targetWindowId after the merge step.
+    const QList<int> bWindows = controllerB->windowToTabIndex().keys();
+    QCOMPARE(bWindows.size(), 4);
+    controllerB->hideWindow(targetWindowId);
+    for (int wId : bWindows) {
+        if (wId != targetWindowId) {
+            controllerB->hideWindow(wId);
+            break;
+        }
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(attachB.container->count(), 2, 10000);
+
+    // Detach A's tab 0 (= targetWindowId), creating a restricted MainWindow C.
+    attachA.container->setCurrentIndex(0);
+    QAction *detachAction = attachA.mw->actionCollection()->action(QStringLiteral("detach-tab"));
+    QVERIFY(detachAction);
+    detachAction->trigger();
+
+    QTRY_COMPARE_WITH_TIMEOUT(attachA.container->count(), 3, 10000);
+
+    // Find the new detached MainWindow (excludes both attachA and attachB).
+    QPointer<MainWindow> mainC;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            const auto widgets = QApplication::topLevelWidgets();
+            for (QWidget *w : widgets) {
+                auto *mw = qobject_cast<MainWindow *>(w);
+                if (!mw || mw == attachA.mw.data() || mw == attachB.mw.data()) {
+                    continue;
+                }
+                mainC = mw;
+                return true;
+            }
+            return false;
+        }(),
+        10000);
+    QVERIFY(mainC);
+
+    auto *controllerC = TmuxControllerRegistry::instance()->controllerForSession(mainC->viewManager()->sessions().first());
+    QTRY_VERIFY_WITH_TIMEOUT(controllerC && controllerC->activePaneId() >= 0, 10000);
+    int detachedWindowId = controllerC->windowIdForPane(controllerC->activePaneId());
+    QCOMPARE(detachedWindowId, targetWindowId);
+
+    // Before merge: A has 3 visible tabs, B has 2, C has 1. A should win.
+    QCOMPARE(controllerA->windowToTabIndex().size(), 3);
+    QCOMPARE(controllerB->windowToTabIndex().size(), 2);
+
+    QAction *mergeAction = mainC->actionCollection()->action(QStringLiteral("merge-tab"));
+    QVERIFY(mergeAction);
+    mergeAction->trigger();
+
+    QTRY_VERIFY_WITH_TIMEOUT(mainC.isNull(), 10000);
+
+    // The merged window should appear on A (most tabs), not B.
+    QTRY_VERIFY_WITH_TIMEOUT(controllerA->windowToTabIndex().contains(detachedWindowId), 10000);
+    QCOMPARE(attachA.container->count(), 4);
+    QVERIFY2(!controllerB->windowToTabIndex().contains(detachedWindowId), "Merged into MainWindow B (2 tabs) instead of A (3 tabs)");
+    QCOMPARE(attachB.container->count(), 2);
+
+    delete attachA.mw.data();
+    delete attachB.mw.data();
+}
+
+void TmuxIntegrationTest::testMergeTabBackPreservesPaneContent()
+{
+    // The content visible in a tmux pane before detach must still be present
+    // after merge-back. tmux retains the pane history while we're away; the
+    // merge flow has to re-capture it into the freshly created kmux Session.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    // Second window runs bash so we can send commands producing distinctive output.
+    QProcess newWindow;
+    newWindow.start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("bash --norc --noprofile")});
+    QVERIFY(newWindow.waitForFinished(5000));
+
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName + QStringLiteral(":1"),
+                    QStringLiteral("echo 'MERGE_TEST_MARKER'"),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QTest::qWait(500);
+
+    auto *app = new Application(makeTestAppParser(), {});
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    // Find the tmux window ID shown at tab 1 — that's the one we'll detach.
+    int detachedWindowId = -1;
+    for (auto it = controller->windowToTabIndex().constBegin(); it != controller->windowToTabIndex().constEnd(); ++it) {
+        if (it.value() == 1) {
+            detachedWindowId = it.key();
+            break;
+        }
+    }
+    QVERIFY(detachedWindowId >= 0);
+
+    const QList<int> panesBefore = controller->panesForWindow(detachedWindowId);
+    QCOMPARE(panesBefore.size(), 1);
+    Session *sessionBefore = controller->sessionForPane(panesBefore.first());
+    QVERIFY(sessionBefore);
+
+    // Wait for capture-pane from the initial attach to inject the marker.
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(sessionBefore).contains(QStringLiteral("MERGE_TEST_MARKER")), 10000);
+
+    // Detach the tab carrying the content.
+    container->setCurrentIndex(1);
+    QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
+    QVERIFY(detachAction);
+    detachAction->trigger();
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+    QPointer<MainWindow> detachedMw;
+    QTRY_VERIFY_WITH_TIMEOUT((detachedMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(detachedMw);
+
+    // Merge back.
+    QAction *mergeAction = detachedMw->actionCollection()->action(QStringLiteral("merge-tab"));
+    QVERIFY(mergeAction);
+    mergeAction->trigger();
+
+    QTRY_VERIFY_WITH_TIMEOUT(detachedMw.isNull(), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowToTabIndex().contains(detachedWindowId), 10000);
+
+    // The newly-created Session for the reattached pane should show the
+    // same marker once capture-pane finishes replaying the history.
+    const QList<int> panesAfter = controller->panesForWindow(detachedWindowId);
+    QCOMPARE(panesAfter.size(), 1);
+    Session *sessionAfter = controller->sessionForPane(panesAfter.first());
+    QVERIFY(sessionAfter);
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(sessionAfter).contains(QStringLiteral("MERGE_TEST_MARKER")), 10000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testDetachFromTmuxAction()
 {
     // The detach-from-tmux action should exist in the action collection

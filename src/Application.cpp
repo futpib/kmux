@@ -37,6 +37,7 @@
 
 #include "pluginsystem/IKonsolePlugin.h"
 #include "tmux/TmuxController.h"
+#include "tmux/TmuxControllerRegistry.h"
 #include "tmux/TmuxProcessBridge.h"
 
 using namespace Konsole;
@@ -142,6 +143,10 @@ MainWindow *Application::newMainWindow()
         detachTmuxWindow(window, windowId);
     });
 
+    connect(window, &Konsole::MainWindow::mergeTmuxWindowRequest, this, [this, window](int windowId) {
+        mergeTmuxWindow(window, windowId);
+    });
+
     connect(window,
             &Konsole::MainWindow::terminalsDetached,
             this,
@@ -214,6 +219,42 @@ void Application::detachTmuxWindow(MainWindow *source, int windowId)
         newController->showOnlyWindow(windowId);
     }
     window->show();
+}
+
+void Application::mergeTmuxWindow(MainWindow *source, int windowId)
+{
+    auto *sourceBridge = source->findChild<TmuxProcessBridge *>();
+    if (!sourceBridge || !sourceBridge->controller()) {
+        return;
+    }
+    auto *sourceCtrl = sourceBridge->controller();
+
+    // Pick the target MainWindow: among same-session controllers excluding
+    // ourselves, the one with the most visible tabs wins; ties go to the
+    // first-registered (QList::append order).
+    TmuxController *target = nullptr;
+    int bestTabs = -1;
+    const auto controllers = TmuxControllerRegistry::instance()->controllers();
+    for (TmuxController *c : controllers) {
+        if (c == sourceCtrl) {
+            continue;
+        }
+        if (c->sessionId() != sourceCtrl->sessionId()) {
+            continue;
+        }
+        const int tabs = c->windowToTabIndex().size();
+        if (tabs > bestTabs) {
+            target = c;
+            bestTabs = tabs;
+        }
+    }
+
+    if (!target) {
+        return;
+    }
+
+    target->unhideWindow(windowId);
+    source->deleteLater();
 }
 
 void Application::detachTerminals(MainWindow *currentWindow, ViewSplitter *splitter, const QHash<TerminalDisplay *, Session *> &sessionsMap)

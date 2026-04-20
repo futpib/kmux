@@ -213,6 +213,15 @@ Q_SIGNALS:
     void detachTmuxWindowRequest(int windowId);
 
     /**
+     * Emitted when the user invokes Merge Tab Back on a tmux-attached tab.
+     * Application handles this by picking a canonical target MainWindow
+     * (most visible tabs, tie-break to first-registered) that's attached
+     * to the same tmux session, unhiding this window there, and closing
+     * the source MainWindow.
+     */
+    void mergeTmuxWindowRequest(int windowId);
+
+    /**
      * Emitted when the active view changes.
      * @param controller The controller associated with the active view
      */
@@ -405,6 +414,7 @@ private Q_SLOTS:
     // called when the "Detach View" menu item is selected
     void detachActiveView();
     void detachActiveTab();
+    void mergeActiveTab();
     void detachFromTmux();
     void showTmuxTreeSwitcher();
     void showTmuxPrefixPalette();

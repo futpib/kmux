@@ -99,6 +99,11 @@ public:
     // is not touched. Used by detach-tab on the source MainWindow.
     void hideWindow(int windowId);
 
+    // Undo a previous hideWindow: remove the window from the hidden set and
+    // re-query tmux for its layout so the tab reappears. Used by merge-tab
+    // on the target (canonical) MainWindow.
+    void unhideWindow(int windowId);
+
     // Restrict this controller to display only the given tmux window.
     // All other windows are treated as hidden. Used by detach-tab on the
     // newly spawned MainWindow. Must be called before the controller

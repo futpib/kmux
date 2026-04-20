@@ -397,6 +397,59 @@ void TmuxController::hideWindow(int windowId)
     onWindowClosed(windowId);
 }
 
+void TmuxController::unhideWindow(int windowId)
+{
+    if (!_hiddenWindows.contains(windowId)) {
+        return;
+    }
+    _hiddenWindows.remove(windowId);
+
+    // List-windows for the target, apply layout to recreate the tab and
+    // pane sessions, then trigger state recovery so the tmux-side pane
+    // history gets replayed into the new kmux Sessions — otherwise the
+    // reappeared tab starts empty despite tmux still holding the content.
+    _gateway->sendCommand(
+        TmuxCommand(QStringLiteral("list-windows")).windowTarget(windowId).format(QStringLiteral("#{window_id} #{window_name} #{window_layout}")),
+        [this, windowId](bool success, const QString &response) {
+            if (!success || response.isEmpty()) {
+                return;
+            }
+            const QString windowIdPrefix = QStringLiteral("@") + QString::number(windowId) + QLatin1Char(' ');
+            const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            QString line;
+            for (const QString &l : lines) {
+                if (l.startsWith(windowIdPrefix)) {
+                    line = l;
+                    break;
+                }
+            }
+            if (line.isEmpty()) {
+                return;
+            }
+            int wId;
+            QString windowName;
+            QString layout;
+            if (!parseListWindowsLine(line, wId, windowName, layout)) {
+                return;
+            }
+            auto parsed = TmuxLayoutParser::parse(layout);
+            if (!parsed.has_value()) {
+                return;
+            }
+            setState(State::ApplyingLayout);
+            applyWindowLayout(wId, parsed.value());
+            setWindowTabTitle(wId, windowName);
+            setState(State::Idle);
+
+            _stateRecovery->queryPaneStates(wId);
+            const QList<int> panesInWindow = _windowPanes.value(wId);
+            for (int paneId : panesInWindow) {
+                _paneManager->suppressOutput(paneId);
+                _stateRecovery->capturePaneHistory(paneId);
+            }
+        });
+}
+
 void TmuxController::showOnlyWindow(int windowId)
 {
     _restrictedWindowId = windowId;

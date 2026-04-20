@@ -244,6 +244,12 @@ void ViewManager::setupActions()
     connect(action, &QAction::triggered, this, &ViewManager::detachActiveTab);
     _multiTabOnlyActions << action;
 
+    action = collection->addAction(QStringLiteral("merge-tab"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("tab-duplicate")));
+    action->setText(i18nc("@action:inmenu", "&Merge Tab Back"));
+    connect(action, &QAction::triggered, this, &ViewManager::mergeActiveTab);
+
     action = collection->addAction(QStringLiteral("detach-from-tmux"));
     action->setEnabled(true);
     action->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
@@ -655,6 +661,42 @@ void ViewManager::detachActiveTab()
         return;
     }
     detachTab(_viewContainer->currentIndex());
+}
+
+void ViewManager::mergeActiveTab()
+{
+    const int currentIdx = _viewContainer->currentIndex();
+    if (currentIdx < 0) {
+        return;
+    }
+    ViewSplitter *splitter = _viewContainer->viewSplitterAt(currentIdx);
+    if (!splitter) {
+        return;
+    }
+
+    // Only meaningful for tmux-attached tabs; for local sessions we'd have no
+    // counterpart MainWindow to merge into.
+    const auto displays = splitter->findChildren<TerminalDisplay *>();
+    for (TerminalDisplay *display : displays) {
+        Session *session = _sessionMap.value(display);
+        if (!session) {
+            continue;
+        }
+        auto *controller = TmuxControllerRegistry::instance()->controllerForSession(session);
+        if (!controller) {
+            continue;
+        }
+        const int paneId = controller->paneIdForSession(session);
+        if (paneId < 0) {
+            continue;
+        }
+        const int windowId = controller->windowIdForPane(paneId);
+        if (windowId < 0) {
+            continue;
+        }
+        Q_EMIT mergeTmuxWindowRequest(windowId);
+        return;
+    }
 }
 
 void ViewManager::detachTab(int tabIdx)

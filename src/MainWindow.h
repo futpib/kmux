@@ -157,6 +157,14 @@ Q_SIGNALS:
     void detachTmuxWindowRequest(int windowId);
 
     /**
+     * Emitted when the user invokes Merge Tab Back on a tmux-attached tab.
+     * Forwarded from ViewManager; Application responds by picking a target
+     * MainWindow on the same tmux session (most visible tabs wins), un-
+     * hiding this window there, and closing this MainWindow.
+     */
+    void mergeTmuxWindowRequest(int windowId);
+
+    /**
      * Emitted when a view for one session is detached from this window
      */
     void terminalsDetached(ViewSplitter *splitter, QHash<TerminalDisplay *, Session *> sessionsMap);
