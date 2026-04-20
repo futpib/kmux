@@ -5542,6 +5542,152 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
+{
+    // Ctrl+B w opens tmux's choose-tree in windows mode; Down then Enter
+    // should select the next window and switch to it. The tree UI is
+    // rendered inside the active pane by tmux — kmux just forwards the
+    // navigation keys via send-keys.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Second window to switch to.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+
+    // Ensure attach starts on window 0 so the tree's initial selection is
+    // on window 0; Down then moves to window 1.
+    QProcess selectFirst;
+    selectFirst.start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(ctx.sessionName)});
+    QVERIFY(selectFirst.waitForFinished(5000));
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() >= 2 && controller->activePaneId() >= 0, 10000);
+
+    int initialWindowId = controller->windowIdForPane(controller->activePaneId());
+    QVERIFY(initialWindowId >= 0);
+
+    // Ctrl+B → palette → `w` → kmux intercepts tree-mode entry and opens
+    // its native switcher.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QTest::keyClick(palette, Qt::Key_W);
+
+    TmuxTreeSwitcher *switcher = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((switcher = attach.mw->findChild<TmuxTreeSwitcher *>()) != nullptr, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    // The switcher's input line has focus; it forwards navigation keys to
+    // the tree view. Down moves from the current pane (in window 0) to the
+    // row for window 1, Enter activates it.
+    QWidget *focus = QApplication::focusWidget();
+    QVERIFY(focus);
+    QTest::keyClick(focus, Qt::Key_Down);
+    QTest::keyClick(focus, Qt::Key_Return);
+
+    // The active window should have advanced.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0 && controller->windowIdForPane(controller->activePaneId()) != initialWindowId, 10000);
+
+    // And the kmux container should have followed.
+    int newWindowId = controller->windowIdForPane(controller->activePaneId());
+    int expectedTabIndex = controller->windowToTabIndex().value(newWindowId, -1);
+    QVERIFY(expectedTabIndex >= 0);
+    QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->activeContainer()->currentIndex(), expectedTabIndex, 10000);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeOpensNativeSwitcher()
+{
+    // tmux's control mode emits %pane-mode-changed on mode entry but doesn't
+    // send the chooser's UI through the control channel, so the user would
+    // otherwise see nothing. kmux responds to tree-mode by dismissing tmux's
+    // mode and opening its own TmuxTreeSwitcher. Verify the switcher appears
+    // when the user triggers choose-tree via Ctrl+B w.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() >= 2 && controller->activePaneId() >= 0, 10000);
+
+    // Ctrl+B → palette → w → choose-tree -Zw.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QTest::keyClick(palette, Qt::Key_W);
+
+    // The native switcher should appear, populated with entries for the session.
+    TmuxTreeSwitcher *switcher = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((switcher = attach.mw->findChild<TmuxTreeSwitcher *>()) != nullptr, 10000);
+    QVERIFY(switcher->isVisible());
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->model()->rowCount() >= 1, 5000);
+
+    delete attach.mw.data();
+}
+
 namespace
 {
 // Helper: set up a tmux session with 2 windows: window 0 has 2 panes (split),

@@ -52,6 +52,7 @@ Q_SIGNALS:
     void sessionWindowChanged(int sessionId, int windowId);
     void panePaused(int paneId);
     void paneContinued(int paneId);
+    void paneModeChanged(int paneId);
     void clientSessionChanged(const QString &clientName, int sessionId, const QString &sessionName);
     void clientDetached(const QString &clientName);
     void exitReceived(const QString &reason);

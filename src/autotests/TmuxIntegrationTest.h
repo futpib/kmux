@@ -46,6 +46,8 @@ private Q_SLOTS:
     void testTmuxZoomReflectedAsKonsoleMaximize();
     void testTmuxPrefixPaletteDetach();
     void testTmuxPrefixPaletteNextWindow();
+    void testTmuxPrefixPaletteChooseTreeWindow();
+    void testTmuxPrefixPaletteChooseTreeOpensNativeSwitcher();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
     void testNewWindowInheritsWorkingDirectory();

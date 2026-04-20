@@ -193,6 +193,10 @@ std::optional<TmuxNotification> TmuxGateway::parseNotification(const QByteArray 
         int paneId = parsePaneId(line.mid(10));
         return TmuxPaneContinuedNotification{paneId};
 
+    } else if (line.startsWith("%pane-mode-changed ")) {
+        int paneId = parsePaneId(line.mid(19));
+        return TmuxPaneModeChangedNotification{paneId};
+
     } else if (line.startsWith("%client-session-changed ")) {
         // %client-session-changed clientname $sessionId sessionname
         QList<QByteArray> parts = line.mid(24).split(' ');
@@ -257,6 +261,8 @@ void TmuxGateway::handleNotification(const QByteArray &line)
                 Q_EMIT panePaused(n.paneId);
             } else if constexpr (std::is_same_v<T, TmuxPaneContinuedNotification>) {
                 Q_EMIT paneContinued(n.paneId);
+            } else if constexpr (std::is_same_v<T, TmuxPaneModeChangedNotification>) {
+                Q_EMIT paneModeChanged(n.paneId);
             } else if constexpr (std::is_same_v<T, TmuxClientSessionChangedNotification>) {
                 Q_EMIT clientSessionChanged(n.clientName, n.sessionId, n.sessionName);
             } else if constexpr (std::is_same_v<T, TmuxClientDetachedNotification>) {
@@ -334,8 +340,68 @@ void TmuxGateway::sendKeys(int paneId, const QByteArray &data)
         return 0;
     };
 
+    // Well-known terminal escape sequences → tmux key names. Sending these
+    // as named keys instead of raw bytes is important when the target pane
+    // is in a tmux mode (copy-mode, tree-mode, …): tmux dispatches named
+    // keys through the mode's key table, while raw bytes bypass mode
+    // handling entirely. In non-mode contexts, tmux converts the key name
+    // back to its byte sequence before delivering to the pane program, so
+    // this translation is safe to apply unconditionally.
+    auto matchNamedKey = [&](int start) -> QPair<int, const char *> {
+        const int remaining = data.size() - start;
+        auto at = [&](int off) {
+            return static_cast<unsigned char>(data[start + off]);
+        };
+        if (remaining >= 4 && at(0) == 0x1b && at(1) == '[') {
+            if (at(2) == '3' && at(3) == '~') {
+                return {4, "DC"};
+            }
+            if (at(2) == '5' && at(3) == '~') {
+                return {4, "PPage"};
+            }
+            if (at(2) == '6' && at(3) == '~') {
+                return {4, "NPage"};
+            }
+        }
+        if (remaining >= 3 && at(0) == 0x1b && (at(1) == '[' || at(1) == 'O')) {
+            switch (at(2)) {
+            case 'A':
+                return {3, "Up"};
+            case 'B':
+                return {3, "Down"};
+            case 'C':
+                return {3, "Right"};
+            case 'D':
+                return {3, "Left"};
+            case 'H':
+                return {3, "Home"};
+            case 'F':
+                return {3, "End"};
+            }
+        }
+        if (remaining >= 1) {
+            switch (at(0)) {
+            case '\r':
+            case '\n':
+                return {1, "Enter"};
+            case '\t':
+                return {1, "Tab"};
+            case 0x7f:
+            case 0x08:
+                return {1, "BSpace"};
+            }
+        }
+        return {0, nullptr};
+    };
+
     int i = 0;
     while (i < data.size()) {
+        auto [consumed, name] = matchNamedKey(i);
+        if (name) {
+            sendCommand(TmuxCommand(QStringLiteral("send-keys")).paneTarget(paneId).arg(QString::fromLatin1(name)));
+            i += consumed;
+            continue;
+        }
         unsigned char byte = static_cast<unsigned char>(data[i]);
         if (isAsciiLiteral(data[i]) || isUtf8LeadByte(byte)) {
             // Collect run of literal ASCII characters and UTF-8 sequences (max 1000 bytes)

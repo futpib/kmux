@@ -134,6 +134,7 @@ private Q_SLOTS:
     void onWindowPaneChanged(int windowId, int paneId);
     void onSessionChanged(int sessionId, const QString &name);
     void onSessionWindowChanged(int sessionId, int windowId);
+    void onPaneModeChanged(int paneId);
     void onExit(const QString &reason);
 
 private:
