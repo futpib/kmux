@@ -81,6 +81,7 @@
 
 #include "tmux/TmuxController.h"
 #include "tmux/TmuxControllerRegistry.h"
+#include "tmux/TmuxProcessBridge.h"
 
 #include <konsoledebug.h>
 
@@ -915,6 +916,29 @@ void MainWindow::setFocus()
 
 void MainWindow::newWindow()
 {
+    // When tmux-attached, Ctrl+Shift+N creates a new tmux window AND a new
+    // kmux MainWindow attached to the same tmux server. The new MainWindow's
+    // initial active tab follows tmux's notion of the currently active window
+    // (which, after new-window, is the just-created one).
+    if (_pluggedController && _pluggedController->session()) {
+        auto *controller = TmuxControllerRegistry::instance()->controllerForSession(_pluggedController->session());
+        if (controller) {
+            auto *bridge = findChild<TmuxProcessBridge *>();
+            if (bridge) {
+                controller->requestNewWindow(_pluggedController->session()->currentWorkingDirectory());
+
+                auto *newMw = new MainWindow();
+                auto *newBridge = new TmuxProcessBridge(newMw->viewManager(), newMw);
+                if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
+                    delete newMw;
+                    return;
+                }
+                newMw->show();
+                return;
+            }
+        }
+    }
+
     // Use the active session's profile for container inheritance check,
     // since the user might have a different profile with inheritance enabled
     Profile::Ptr profile = ProfileManager::instance()->defaultProfile();

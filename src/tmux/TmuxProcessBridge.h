@@ -47,6 +47,10 @@ public:
 
     TmuxController *controller() const;
 
+    QString tmuxPath() const;
+    QStringList tmuxArgs() const;
+    QStringList command() const;
+
 Q_SIGNALS:
     void disconnected();
 
@@ -62,6 +66,9 @@ private:
     QSocketNotifier *_readNotifier = nullptr;
     int _socketFd = -1;
     QByteArray _readBuffer;
+    QString _tmuxPath;
+    QStringList _tmuxArgs;
+    QStringList _command;
 };
 
 } // namespace Konsole

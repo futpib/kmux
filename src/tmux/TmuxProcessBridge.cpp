@@ -57,6 +57,10 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
         return false;
     }
 
+    _tmuxPath = path;
+    _tmuxArgs = tmuxArgs;
+    _command = command;
+
     // Create a socketpair for tmux's stdout. Sockets have flow control
     // (backpressure) unlike pipes, so tmux's non-blocking writes won't
     // get EAGAIN/EPIPE when the buffer is momentarily full.
@@ -120,6 +124,21 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
 TmuxController *TmuxProcessBridge::controller() const
 {
     return _controller;
+}
+
+QString TmuxProcessBridge::tmuxPath() const
+{
+    return _tmuxPath;
+}
+
+QStringList TmuxProcessBridge::tmuxArgs() const
+{
+    return _tmuxArgs;
+}
+
+QStringList TmuxProcessBridge::command() const
+{
+    return _command;
 }
 
 void TmuxProcessBridge::onReadyRead()

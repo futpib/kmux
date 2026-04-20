@@ -67,6 +67,7 @@ private Q_SLOTS:
     void testFourEqualPanesTopRightFocused();
     void testSplitShortcutFocusInitialSplitAgain();
     void testNewTabFromTmuxPane();
+    void testNewMainWindowFromTmuxPane();
     void testDetachViewBreaksPane();
     void testDetachFromTmuxAction();
     void testTreeSwitcherActivePreselected();
