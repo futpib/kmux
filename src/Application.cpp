@@ -138,6 +138,10 @@ MainWindow *Application::newMainWindow()
         createTmuxWindow(window, directory);
     });
 
+    connect(window, &Konsole::MainWindow::detachTmuxWindowRequest, this, [this, window](int windowId) {
+        detachTmuxWindow(window, windowId);
+    });
+
     connect(window,
             &Konsole::MainWindow::terminalsDetached,
             this,
@@ -182,6 +186,32 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
     if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
         delete window;
         return;
+    }
+    window->show();
+}
+
+void Application::detachTmuxWindow(MainWindow *source, int windowId)
+{
+    auto *bridge = source->findChild<TmuxProcessBridge *>();
+    if (!bridge || !bridge->controller()) {
+        return;
+    }
+
+    // Hide the window on the source side — removes its tab and stops tracking
+    // it. The tmux window itself keeps running; it's just no longer shown here.
+    bridge->controller()->hideWindow(windowId);
+
+    // Spawn a new MainWindow via newMainWindow() so it gets plugins and
+    // signal wiring. Attach its own bridge to the same tmux session, but
+    // restricted to the detached window so it shows only that one tab.
+    MainWindow *window = newMainWindow();
+    auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
+    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
+        delete window;
+        return;
+    }
+    if (auto *newController = newBridge->controller()) {
+        newController->showOnlyWindow(windowId);
     }
     window->show();
 }

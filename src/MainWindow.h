@@ -149,6 +149,14 @@ Q_SIGNALS:
     void newTmuxWindowRequest(const QString &directory);
 
     /**
+     * Emitted when the user invokes Detach Tab on a tmux-attached tab.
+     * Forwarded from ViewManager; Application responds by hiding the tab
+     * here and opening a new MainWindow attached to the same tmux session
+     * but restricted to showing only this window.
+     */
+    void detachTmuxWindowRequest(int windowId);
+
+    /**
      * Emitted when a view for one session is detached from this window
      */
     void terminalsDetached(ViewSplitter *splitter, QHash<TerminalDisplay *, Session *> sessionsMap);

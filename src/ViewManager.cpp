@@ -654,13 +654,41 @@ void ViewManager::detachActiveTab()
     if (_viewContainer->count() < 2) {
         return;
     }
-    const int currentIdx = _viewContainer->currentIndex();
-    detachTab(currentIdx);
+    detachTab(_viewContainer->currentIndex());
 }
 
 void ViewManager::detachTab(int tabIdx)
 {
+    // If this tab is backed by a tmux window, route to Application via
+    // detachTmuxWindowRequest — the default detach flow calls forgetAll()
+    // which doesn't coordinate with tmux and leaves the tab and session in
+    // a broken half-detached state. All entry points (hotkey, context menu,
+    // tab-bar drag) land here, so the check belongs here.
     ViewSplitter *splitter = _viewContainer->viewSplitterAt(tabIdx);
+    if (splitter) {
+        const auto displays = splitter->findChildren<TerminalDisplay *>();
+        for (TerminalDisplay *display : displays) {
+            Session *session = _sessionMap.value(display);
+            if (!session) {
+                continue;
+            }
+            auto *controller = TmuxControllerRegistry::instance()->controllerForSession(session);
+            if (!controller) {
+                continue;
+            }
+            const int paneId = controller->paneIdForSession(session);
+            if (paneId < 0) {
+                continue;
+            }
+            const int windowId = controller->windowIdForPane(paneId);
+            if (windowId < 0) {
+                continue;
+            }
+            Q_EMIT detachTmuxWindowRequest(windowId);
+            return;
+        }
+    }
+
     QHash<TerminalDisplay *, Session *> detachedSessions = forgetAll(_viewContainer->viewSplitterAt(tabIdx));
     Q_EMIT terminalsDetached(splitter, detachedSessions);
 }

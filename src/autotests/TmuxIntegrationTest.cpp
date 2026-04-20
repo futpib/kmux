@@ -4775,6 +4775,238 @@ void TmuxIntegrationTest::testDetachViewBreaksPane()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testDetachTabFromTmuxCreatesNewKmuxWindow()
+{
+    // Detaching a tab in a tmux-attached kmux window should move that tmux
+    // window into a new kmux MainWindow, leaving the original window with
+    // no tab for it.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        // kill-server covers any additional sessions the implementation may
+        // have created on this socket.
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    // Add a second tmux window so we have 2 kmux tabs to work with.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    // Split the second window (the one we'll detach) into two panes, so the
+    // teardown has to clean up multiple pane sessions in one window — this
+    // matches the real-world case where detach-tab can leave a stale empty
+    // tab behind if intermediate splitter states aren't handled correctly.
+    QProcess splitPane;
+    splitPane.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("split-window"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName + QStringLiteral(":1"),
+                     QStringLiteral("sleep 60")});
+    QVERIFY(splitPane.waitForFinished(5000));
+    QCOMPARE(splitPane.exitCode(), 0);
+
+    // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
+    auto *app = new Application(makeTestAppParser(), {});
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowCount(), 2, 10000);
+
+    // Wait for the split to be visible as 2 panes in kmux.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            for (int i = 0; i < container->count(); ++i) {
+                auto *s = container->viewSplitterAt(i);
+                if (s && s->findChildren<TerminalDisplay *>().size() == 2) {
+                    return true;
+                }
+            }
+            return false;
+        }(),
+        10000);
+
+    // Focus tab 1, the multi-pane one we'll detach.
+    container->setCurrentIndex(1);
+    QCOMPARE(container->currentIndex(), 1);
+
+    // Map each tab to its tmux window ID so we can assert on "which window
+    // went where" after detach.
+    auto windowIdForTab = [&](int tabIdx) {
+        const auto windowToTab = controller->windowToTabIndex();
+        for (auto it = windowToTab.constBegin(); it != windowToTab.constEnd(); ++it) {
+            if (it.value() == tabIdx) {
+                return it.key();
+            }
+        }
+        return -1;
+    };
+    int detachedWindowId = windowIdForTab(1);
+    int remainingWindowId = windowIdForTab(0);
+    QVERIFY(detachedWindowId >= 0);
+    QVERIFY(remainingWindowId >= 0);
+    QVERIFY(detachedWindowId != remainingWindowId);
+
+    // Trigger the Detach Tab action on the currently active tab.
+    QAction *detachTabAction = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
+    QVERIFY2(detachTabAction, "detach-tab action not found");
+    detachTabAction->trigger();
+
+    // Original MainWindow should now have only the remaining tmux window.
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+    // The tab bar itself should reflect that — no stale tab for the detached
+    // window left behind.
+    QCOMPARE(container->tabBar()->count(), 1);
+    QVERIFY2(!controller->windowToTabIndex().contains(detachedWindowId), "Detached window still has a tab index in the source controller");
+    // The single remaining tab's splitter must have live panes (not a blank page).
+    {
+        auto *remainingSplitter = container->viewSplitterAt(0);
+        QVERIFY(remainingSplitter);
+        QVERIFY2(remainingSplitter->findChildren<TerminalDisplay *>().size() >= 1, "Remaining tab is blank (has no TerminalDisplay children)");
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowIdForPane(controller->activePaneId()), remainingWindowId, 10000);
+
+    // A new kmux MainWindow should appear, displaying only the detached tmux window.
+    QPointer<MainWindow> newMw;
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(newMw);
+
+    auto *newContainer = newMw->viewManager()->activeContainer();
+    QVERIFY(newContainer);
+    QTRY_COMPARE_WITH_TIMEOUT(newContainer->count(), 1, 10000);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!newMw->viewManager()->sessions().isEmpty(), 10000);
+    auto *newController = TmuxControllerRegistry::instance()->controllerForSession(newMw->viewManager()->sessions().first());
+    QVERIFY2(newController, "New MainWindow's session is not attached to any tmux controller");
+    QTRY_VERIFY_WITH_TIMEOUT(newController->activePaneId() >= 0, 10000);
+    QCOMPARE(newController->windowIdForPane(newController->activePaneId()), detachedWindowId);
+
+    delete newMw.data();
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testDetachTabFromTmuxViaContainerSignal()
+{
+    // Detach-tab is reachable from three places: the "detach-tab" action
+    // (hotkey), the right-click tab context menu, and tab-bar drag. The
+    // hotkey goes through ViewManager::detachActiveTab, but the other two
+    // emit TabbedViewContainer::detachTab directly, landing in
+    // ViewManager::detachTab. Both must take the tmux-aware path.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    // Two-window session so we have more than one tab.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    auto *app = new Application(makeTestAppParser(), {});
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowCount(), 2, 10000);
+
+    auto windowIdForTab = [&](int tabIdx) {
+        const auto windowToTab = controller->windowToTabIndex();
+        for (auto it = windowToTab.constBegin(); it != windowToTab.constEnd(); ++it) {
+            if (it.value() == tabIdx) {
+                return it.key();
+            }
+        }
+        return -1;
+    };
+    int detachedWindowId = windowIdForTab(1);
+    int remainingWindowId = windowIdForTab(0);
+    QVERIFY(detachedWindowId >= 0);
+    QVERIFY(remainingWindowId >= 0);
+
+    // Emit the detachTab signal on the container — same path the right-click
+    // context menu uses. Deliberately NOT going through the action.
+    Q_EMIT container->detachTab(1);
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+    QCOMPARE(container->tabBar()->count(), 1);
+    QVERIFY2(!controller->windowToTabIndex().contains(detachedWindowId),
+             "Detached window still has a tab index in the source controller after context-menu detach");
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowIdForPane(controller->activePaneId()), remainingWindowId, 10000);
+
+    QPointer<MainWindow> newMw;
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(newMw);
+    auto *newContainer = newMw->viewManager()->activeContainer();
+    QTRY_COMPARE_WITH_TIMEOUT(newContainer->count(), 1, 10000);
+
+    delete newMw.data();
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testDetachFromTmuxAction()
 {
     // The detach-from-tmux action should exist in the action collection

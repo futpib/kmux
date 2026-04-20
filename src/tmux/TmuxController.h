@@ -94,6 +94,17 @@ public:
 
     const QMap<int, int> &windowToTabIndex() const;
 
+    // Hide a window on this controller's side: remove its tab and pane
+    // sessions, and ignore future tmux events for it. The tmux window itself
+    // is not touched. Used by detach-tab on the source MainWindow.
+    void hideWindow(int windowId);
+
+    // Restrict this controller to display only the given tmux window.
+    // All other windows are treated as hidden. Used by detach-tab on the
+    // newly spawned MainWindow. Must be called before the controller
+    // processes any events for the session attachment.
+    void showOnlyWindow(int windowId);
+
     TmuxGateway *gateway() const;
 
     // Prefix key + bindings, populated asynchronously after attach. Emits
@@ -146,6 +157,10 @@ private:
     QMap<int, int> _windowToTabIndex;
     QMap<int, QList<int>> _windowPanes;
     QSet<int> _zoomedWindows;
+    QSet<int> _hiddenWindows;
+    int _restrictedWindowId = -1;
+
+    bool shouldShowWindow(int windowId) const;
 
     QKeySequence _prefixShortcut;
     QList<PrefixBinding> _prefixBindings;

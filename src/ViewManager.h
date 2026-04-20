@@ -205,6 +205,14 @@ Q_SIGNALS:
     void terminalsDetached(ViewSplitter *splitter, QHash<TerminalDisplay *, Session *> sessionsMap);
 
     /**
+     * Emitted when the user invokes Detach Tab on a tmux-attached tab.
+     * Application handles this by hiding the tab on this controller and
+     * opening a new MainWindow attached to the same tmux session but
+     * restricted to showing only this window.
+     */
+    void detachTmuxWindowRequest(int windowId);
+
+    /**
      * Emitted when the active view changes.
      * @param controller The controller associated with the active view
      */

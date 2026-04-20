@@ -92,19 +92,31 @@ void TmuxController::initialize()
     // Determine the currently active pane — tmux doesn't send an initial
     // %window-pane-changed on attach, so we have to ask.
     _gateway->sendCommand(
-        TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(QStringLiteral("#{pane_id} #{pane_active} #{window_active}")),
+        TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(QStringLiteral("#{pane_id} #{pane_active} #{window_active} #{window_id}")),
         [this](bool success, const QString &response) {
             if (!success)
                 return;
-            // Find the pane that is active within the active window
+            // Find the active pane. If we're restricted to a specific window
+            // (detach-tab flow), pick the active pane within that window
+            // instead — tmux's session-wide active window may be one we've
+            // filtered out, and falling back to such a pane would land
+            // _activePaneId on a hidden window we don't track panes for.
             const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
             for (const QString &line : lines) {
                 const QStringList parts = line.split(QLatin1Char(' '));
-                if (parts.size() < 3)
+                if (parts.size() < 4)
                     continue;
                 bool paneActive = parts[1].toInt() != 0;
                 bool windowActive = parts[2].toInt() != 0;
-                if (paneActive && windowActive) {
+                int winId = parts[3].startsWith(QLatin1Char('@')) ? parts[3].mid(1).toInt() : -1;
+
+                bool matches = false;
+                if (_restrictedWindowId >= 0) {
+                    matches = paneActive && winId == _restrictedWindowId;
+                } else {
+                    matches = paneActive && windowActive;
+                }
+                if (matches) {
                     QString paneStr = parts[0];
                     if (paneStr.startsWith(QLatin1Char('%'))) {
                         _activePaneId = paneStr.mid(1).toInt();
@@ -345,8 +357,57 @@ const QMap<int, int> &TmuxController::windowToTabIndex() const
     return _windowToTabIndex;
 }
 
+bool TmuxController::shouldShowWindow(int windowId) const
+{
+    if (_hiddenWindows.contains(windowId)) {
+        return false;
+    }
+    if (_restrictedWindowId >= 0 && windowId != _restrictedWindowId) {
+        return false;
+    }
+    return true;
+}
+
+void TmuxController::hideWindow(int windowId)
+{
+    _hiddenWindows.insert(windowId);
+
+    // If the active pane belonged to the window we're hiding, advance it to
+    // a pane in one of the remaining tracked windows. Leaving _activePaneId
+    // pointing into a no-longer-tracked window would make
+    // windowIdForPane(activePaneId) return -1, and tmux's own active pane
+    // doesn't update without a user-initiated focus change it can echo.
+    const QList<int> hiddenPanes = _windowPanes.value(windowId);
+    if (hiddenPanes.contains(_activePaneId)) {
+        _activePaneId = -1;
+        for (auto it = _windowPanes.constBegin(); it != _windowPanes.constEnd(); ++it) {
+            if (it.key() == windowId) {
+                continue;
+            }
+            if (!it.value().isEmpty()) {
+                _activePaneId = it.value().first();
+                break;
+            }
+        }
+    }
+
+    // Tear down the tab and pane sessions on this side. Skipping kill-pane
+    // since the tmux window itself is still alive; destroyPaneSession
+    // removes the kmux Session wrapper without touching tmux.
+    onWindowClosed(windowId);
+}
+
+void TmuxController::showOnlyWindow(int windowId)
+{
+    _restrictedWindowId = windowId;
+}
+
 void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layout)
 {
+    if (!shouldShowWindow(windowId)) {
+        return;
+    }
+
     // Collect pane IDs from the layout tree
     QList<int> paneIds;
     std::function<void(const TmuxLayoutNode &)> collectPanes = [&](const TmuxLayoutNode &node) {

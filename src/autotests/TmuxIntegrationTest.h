@@ -70,6 +70,8 @@ private Q_SLOTS:
     void testNewMainWindowFromTmuxPane();
     void testNewMainWindowFromTmuxPaneRegistersPlugins();
     void testDetachViewBreaksPane();
+    void testDetachTabFromTmuxCreatesNewKmuxWindow();
+    void testDetachTabFromTmuxViaContainerSignal();
     void testDetachFromTmuxAction();
     void testTreeSwitcherActivePreselected();
     void testTreeSwitcherSwitchesPaneSameWindow();

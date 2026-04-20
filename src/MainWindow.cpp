@@ -216,6 +216,7 @@ MainWindow::MainWindow()
     connect(_viewManager, &Konsole::ViewManager::newViewInContainerRequest, this, &Konsole::MainWindow::newInContainer);
     connect(_viewManager, &Konsole::ViewManager::newViewRequest, this, &Konsole::MainWindow::newTab);
     connect(_viewManager, &Konsole::ViewManager::terminalsDetached, this, &Konsole::MainWindow::terminalsDetached);
+    connect(_viewManager, &Konsole::ViewManager::detachTmuxWindowRequest, this, &Konsole::MainWindow::detachTmuxWindowRequest);
     connect(_viewManager, &Konsole::ViewManager::activationRequest, this, &Konsole::MainWindow::activationRequest);
 
     setCentralWidget(_viewManager->widget());
