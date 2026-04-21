@@ -4660,8 +4660,19 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     QVERIFY2(newWindowAction, "new-window action not found");
     newWindowAction->trigger();
 
-    // tmux should gain a second window
-    QTRY_COMPARE_WITH_TIMEOUT(controller->windowCount(), 2, 10000);
+    // tmux should gain a second window. Query tmux directly — the source
+    // controller hides the new window on its side (it goes to the new kmux
+    // window instead), so controller->windowCount() stays at 1 here.
+    auto countTmuxWindows = [&]() {
+        QProcess listWindows;
+        listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
+        if (!listWindows.waitForFinished(5000)) {
+            return -1;
+        }
+        const QString out = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
+        return out.isEmpty() ? 0 : int(out.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size());
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(countTmuxWindows(), 2, 10000);
 
     // A second kmux MainWindow should appear
     QPointer<MainWindow> newMw;
@@ -4677,15 +4688,6 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     int newMwActiveWindowId = newMwController->windowIdForPane(newMwController->activePaneId());
     QVERIFY(newMwActiveWindowId >= 0);
     QVERIFY2(newMwActiveWindowId != origWindowId, "New kmux MainWindow's active tab is the original tmux window, not the new one");
-
-    // Verify tmux agrees there are 2 windows in the session
-    QProcess listWindows;
-    listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
-    QVERIFY(listWindows.waitForFinished(5000));
-    QCOMPARE(listWindows.exitCode(), 0);
-    const QString windowOutput = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
-    int windowCount = windowOutput.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size();
-    QCOMPARE(windowCount, 2);
 
     delete newMw.data();
     delete attach.mw.data();
@@ -4773,6 +4775,112 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
     // The plugin should have been registered on the new MainWindow too.
     QTRY_COMPARE_WITH_TIMEOUT(plugin->windowsCreated.size(), 2, 10000);
     QVERIFY2(plugin->windowsCreated.contains(newMw.data()), "Plugin was not registered on the new MainWindow");
+
+    delete newMw.data();
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneSplitsTabs()
+{
+    // Ctrl+Shift+N on a tmux-attached pane should behave like New Tab + Detach
+    // Tab: one kmux MainWindow for each tmux window, each with exactly one tab.
+    // Previously both the original and the new MainWindow ended up showing all
+    // tmux windows (so 2 tabs in each).
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────────────────────────────────────────────────────────┐
+        │ cmd: sleep 60                                                                  │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        │                                                                                │
+        └────────────────────────────────────────────────────────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
+    auto *app = new Application(makeTestAppParser(), {});
+
+    TmuxTestDSL::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QCOMPARE(controller->windowCount(), 1);
+
+    Session *origSession = attach.mw->viewManager()->sessions().first();
+    int origPaneId = controller->paneIdForSession(origSession);
+    QVERIFY(origPaneId >= 0);
+    int origWindowId = controller->windowIdForPane(origPaneId);
+    QVERIFY(origWindowId >= 0);
+
+    QAction *newWindowAction = attach.mw->actionCollection()->action(QStringLiteral("new-window"));
+    QVERIFY2(newWindowAction, "new-window action not found");
+    newWindowAction->trigger();
+
+    // tmux itself should gain a second window — confirm via list-windows
+    // subprocess so we see ground truth regardless of how the source
+    // controller chooses to surface it as tabs.
+    auto countTmuxWindows = [&]() {
+        QProcess listWindows;
+        listWindows.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName});
+        if (!listWindows.waitForFinished(5000)) {
+            return -1;
+        }
+        const QString out = QString::fromUtf8(listWindows.readAllStandardOutput()).trimmed();
+        return out.isEmpty() ? 0 : int(out.split(QLatin1Char('\n'), Qt::SkipEmptyParts).size());
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(countTmuxWindows(), 2, 10000);
+
+    // The original kmux window must keep exactly its original tab — not grow
+    // a second one for the newly created tmux window.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowToTabIndex().contains(origWindowId), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowToTabIndex().size(), 1, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+    QCOMPARE(container->tabBar()->count(), 1);
+
+    // A second kmux MainWindow should appear, showing only the newly created
+    // tmux window — not a duplicate of both tabs.
+    QPointer<MainWindow> newMw;
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QVERIFY(newMw);
+
+    auto *newContainer = newMw->viewManager()->activeContainer();
+    QVERIFY(newContainer);
+    QTRY_COMPARE_WITH_TIMEOUT(newContainer->count(), 1, 10000);
+    QCOMPARE(newContainer->tabBar()->count(), 1);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!newMw->viewManager()->sessions().isEmpty(), 10000);
+    auto *newController = TmuxControllerRegistry::instance()->controllerForSession(newMw->viewManager()->sessions().first());
+    QVERIFY2(newController, "New MainWindow's session is not attached to any tmux controller");
+    QTRY_COMPARE_WITH_TIMEOUT(newController->windowToTabIndex().size(), 1, 10000);
+
+    QTRY_VERIFY_WITH_TIMEOUT(newController->activePaneId() >= 0, 10000);
+    const int newMwActiveWindowId = newController->windowIdForPane(newController->activePaneId());
+    QVERIFY(newMwActiveWindowId >= 0);
+    QVERIFY2(newMwActiveWindowId != origWindowId, "New MainWindow is showing the original tmux window, not the newly created one");
+    QVERIFY2(!newController->windowToTabIndex().contains(origWindowId), "New MainWindow has a tab for the original tmux window");
 
     delete newMw.data();
     delete attach.mw.data();

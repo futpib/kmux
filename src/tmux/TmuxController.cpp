@@ -136,13 +136,31 @@ TmuxGateway *TmuxController::gateway() const
     return _gateway;
 }
 
-void TmuxController::requestNewWindow(const QString &directory)
+void TmuxController::requestNewWindow(const QString &directory, NewWindowCallback callback)
 {
     TmuxCommand cmd(QStringLiteral("new-window"));
     if (!directory.isEmpty()) {
         cmd.flag(QStringLiteral("-c")).singleQuotedArg(directory);
     }
-    _gateway->sendCommand(cmd);
+    if (!callback) {
+        _gateway->sendCommand(cmd);
+        return;
+    }
+    cmd.flag(QStringLiteral("-P")).format(QStringLiteral("#{window_id}"));
+    _gateway->sendCommand(cmd, [cb = std::move(callback)](bool success, const QString &response) {
+        if (!success) {
+            cb(-1);
+            return;
+        }
+        const QString trimmed = response.trimmed();
+        if (!trimmed.startsWith(QLatin1Char('@'))) {
+            cb(-1);
+            return;
+        }
+        bool ok = false;
+        int windowId = trimmed.mid(1).toInt(&ok);
+        cb(ok ? windowId : -1);
+    });
 }
 
 void TmuxController::requestSplitPane(int paneId, Qt::Orientation orientation, const QString &directory)

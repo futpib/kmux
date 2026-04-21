@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QPointer>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -182,17 +183,39 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
         return;
     }
 
-    bridge->controller()->requestNewWindow(directory);
+    QPointer<MainWindow> sourceGuard(source);
+    const QString tmuxPath = bridge->tmuxPath();
+    const QStringList tmuxArgs = bridge->tmuxArgs();
+    const QStringList command = bridge->command();
 
-    // newMainWindow() wires signals and registers plugins — the new tmux-
-    // attached window gets everything a normally-spawned window would.
-    MainWindow *window = newMainWindow();
-    auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
-    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
-        delete window;
-        return;
-    }
-    window->show();
+    // Route the new tmux window to its own kmux MainWindow: hide it on the
+    // source side (so the source keeps only its existing tabs) and restrict
+    // the new bridge to that one window. Without this, both the source and
+    // the new MainWindow would each show all tmux windows as tabs.
+    bridge->controller()->requestNewWindow(directory, [this, sourceGuard, tmuxPath, tmuxArgs, command](int newWindowId) {
+        if (newWindowId < 0 || !sourceGuard) {
+            return;
+        }
+
+        if (auto *srcBridge = sourceGuard->findChild<TmuxProcessBridge *>()) {
+            if (auto *srcCtrl = srcBridge->controller()) {
+                srcCtrl->hideWindow(newWindowId);
+            }
+        }
+
+        // newMainWindow() wires signals and registers plugins — the new tmux-
+        // attached window gets everything a normally-spawned window would.
+        MainWindow *window = newMainWindow();
+        auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
+        if (!newBridge->start(tmuxPath, tmuxArgs, command)) {
+            delete window;
+            return;
+        }
+        if (auto *newController = newBridge->controller()) {
+            newController->showOnlyWindow(newWindowId);
+        }
+        window->show();
+    });
 }
 
 void Application::detachTmuxWindow(MainWindow *source, int windowId)

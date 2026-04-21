@@ -43,7 +43,9 @@ public:
     void cleanup();
     void sendClientSize();
 
-    void requestNewWindow(const QString &directory = QString());
+    // Callback receives the new window id, or -1 on failure.
+    using NewWindowCallback = std::function<void(int newWindowId)>;
+    void requestNewWindow(const QString &directory = QString(), NewWindowCallback callback = nullptr);
     void requestSplitPane(int paneId, Qt::Orientation orientation, const QString &directory = QString());
     void requestClosePane(int paneId);
     void requestCloseWindow(int windowId);
