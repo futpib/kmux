@@ -13,12 +13,17 @@
 #include "ViewManager.h"
 #include "widgets/ViewContainer.h"
 
+#include <KActionCollection>
 #include <KLocalizedString>
 
+#include <QAction>
 #include <QHeaderView>
 #include <QKeyEvent>
+#include <QPointer>
+#include <QRegularExpression>
 #include <QStandardItem>
 #include <QStandardItemModel>
+#include <QTimer>
 #include <QTreeView>
 #include <QVBoxLayout>
 
@@ -66,13 +71,43 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
     setFocus();
 }
 
+QString TmuxPrefixPalette::interceptedActionName(const QString &command)
+{
+    // Accept both `choose-tree` and `choose-tree -Z…` forms. The flag detection
+    // ignores -Z (zoom, purely a tmux rendering concern) and looks for -s / -w
+    // to decide between the sessions/windows variants.
+    const QString trimmed = command.trimmed();
+    if (!trimmed.startsWith(QLatin1String("choose-tree"))) {
+        return {};
+    }
+    const QString rest = trimmed.mid(QLatin1String("choose-tree").size());
+    const bool wantsSessions = rest.contains(QRegularExpression(QStringLiteral("(^|\\s)-\\w*s\\b")));
+    const bool wantsWindows = rest.contains(QRegularExpression(QStringLiteral("(^|\\s)-\\w*w\\b")));
+    if (wantsSessions) {
+        return QStringLiteral("tmux-tree-switcher-sessions");
+    }
+    if (wantsWindows) {
+        return QStringLiteral("tmux-tree-switcher-windows");
+    }
+    return QStringLiteral("tmux-tree-switcher");
+}
+
 void TmuxPrefixPalette::populateModel()
 {
     _model->removeRows(0, _model->rowCount());
+    auto *actionCollection = _viewManager ? _viewManager->actionCollection() : nullptr;
     for (const TmuxPrefixBinding &b : std::as_const(_bindings)) {
         auto *keyItem = new QStandardItem(b.keyToken);
         keyItem->setEditable(false);
-        auto *cmdItem = new QStandardItem(b.command);
+        QString displayText = b.command;
+        const QString interceptName = interceptedActionName(b.command);
+        if (!interceptName.isEmpty() && actionCollection) {
+            if (QAction *action = actionCollection->action(interceptName)) {
+                // Strip KDE menu accelerator markers ("&"), keep the plain label.
+                displayText = action->text().remove(QLatin1Char('&'));
+            }
+        }
+        auto *cmdItem = new QStandardItem(displayText);
         cmdItem->setEditable(false);
         _model->appendRow({keyItem, cmdItem});
     }
@@ -80,6 +115,27 @@ void TmuxPrefixPalette::populateModel()
 
 void TmuxPrefixPalette::triggerBinding(const TmuxPrefixBinding &binding)
 {
+    const QString interceptName = interceptedActionName(binding.command);
+    auto *actionCollection = _viewManager ? _viewManager->actionCollection() : nullptr;
+    if (!interceptName.isEmpty() && actionCollection) {
+        if (QAction *action = actionCollection->action(interceptName)) {
+            // Defer the trigger so the palette's own keyPressEvent / focus
+            // chain finishes unwinding first. Triggering synchronously from a
+            // nested key-event stack races the palette's FocusOut-driven
+            // self-deletion with the popup (e.g. TmuxTreeSwitcher) the action
+            // opens, and has been observed to tear the new popup down before
+            // the user — or a test — can interact with it.
+            QPointer<QAction> guarded(action);
+            QTimer::singleShot(0, action, [guarded]() {
+                if (guarded) {
+                    guarded->trigger();
+                }
+            });
+            hide();
+            deleteLater();
+            return;
+        }
+    }
     if (_controller && _controller->gateway()) {
         _controller->gateway()->sendCommand(TmuxCommand(binding.command));
     }

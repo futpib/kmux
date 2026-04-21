@@ -19,6 +19,12 @@ class TmuxIntegrationTest : public QObject
 private Q_SLOTS:
     void initTestCase();
     void cleanupTestCase();
+    // Per-test teardown: sweep any leftover top-level MainWindows so later
+    // tests relying on findOtherMainWindow() (to discover a freshly-detached
+    // or newly-opened kmux window) don't pick up a stale one from a prior
+    // test that intentionally leaked its Application. Qt Test runs init()/
+    // cleanup() automatically around each test slot.
+    void cleanup();
     void testTmuxControlModeExitCleanup();
     void testClosePaneTabThenGatewayTab();
     void testTmuxControlModeAttach();
@@ -47,7 +53,7 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteDetach();
     void testTmuxPrefixPaletteNextWindow();
     void testTmuxPrefixPaletteChooseTreeWindow();
-    void testTmuxPrefixPaletteChooseTreeOpensNativeSwitcher();
+    void testTmuxPrefixPaletteShowsActionLabelForChooseTree();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
     void testNewWindowInheritsWorkingDirectory();

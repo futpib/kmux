@@ -262,6 +262,18 @@ void ViewManager::setupActions()
     action->setText(i18nc("@action:inmenu", "Show tmux Tree Switcher"));
     connect(action, &QAction::triggered, this, &ViewManager::showTmuxTreeSwitcher);
 
+    action = collection->addAction(QStringLiteral("tmux-tree-switcher-sessions"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
+    action->setText(i18nc("@action:inmenu", "Choose tmux Session"));
+    connect(action, &QAction::triggered, this, &ViewManager::showTmuxTreeSwitcherSessions);
+
+    action = collection->addAction(QStringLiteral("tmux-tree-switcher-windows"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
+    action->setText(i18nc("@action:inmenu", "Choose tmux Window"));
+    connect(action, &QAction::triggered, this, &ViewManager::showTmuxTreeSwitcherWindows);
+
     _tmuxPrefixAction = collection->addAction(QStringLiteral("tmux-prefix-palette"));
     _tmuxPrefixAction->setText(i18nc("@action:inmenu", "Show tmux Prefix Palette"));
     _tmuxPrefixAction->setIcon(QIcon::fromTheme(QStringLiteral("input-keyboard")));
@@ -622,16 +634,34 @@ void ViewManager::detachFromTmux()
     }
 }
 
-void ViewManager::showTmuxTreeSwitcher()
+namespace
 {
-    Session *activeSession = _pluggedController ? _pluggedController->session().data() : nullptr;
+void openTreeSwitcher(ViewManager *vm, const QPointer<SessionController> &plugged, TmuxTreeSwitcher::InitialMode mode)
+{
+    Session *activeSession = plugged ? plugged->session().data() : nullptr;
     if (!activeSession)
         return;
     auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
     if (!ctrl)
         return;
-    auto *switcher = new TmuxTreeSwitcher(this, ctrl);
+    auto *switcher = new TmuxTreeSwitcher(vm, ctrl, mode);
     switcher->setFocus();
+}
+} // namespace
+
+void ViewManager::showTmuxTreeSwitcher()
+{
+    openTreeSwitcher(this, _pluggedController, TmuxTreeSwitcher::InitialMode::Panes);
+}
+
+void ViewManager::showTmuxTreeSwitcherSessions()
+{
+    openTreeSwitcher(this, _pluggedController, TmuxTreeSwitcher::InitialMode::Sessions);
+}
+
+void ViewManager::showTmuxTreeSwitcherWindows()
+{
+    openTreeSwitcher(this, _pluggedController, TmuxTreeSwitcher::InitialMode::Windows);
 }
 
 void ViewManager::showTmuxPrefixPalette()

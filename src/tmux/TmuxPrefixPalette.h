@@ -62,6 +62,13 @@ private:
     void triggerBinding(const TmuxPrefixBinding &binding);
     bool tryTriggerByKey(const QKeyEvent *event);
 
+    // Some tmux commands (e.g. choose-tree, where we want our native UI) are
+    // handled client-side by dispatching to a kmux QAction instead of forwarding
+    // to tmux. Returns the action name (in ViewManager::actionCollection()) to
+    // trigger for the given tmux command string, or an empty string if the
+    // command should be forwarded to tmux unchanged.
+    static QString interceptedActionName(const QString &command);
+
     ViewManager *_viewManager;
     TmuxController *_controller;
     QList<TmuxPrefixBinding> _bindings;

@@ -30,7 +30,15 @@ class KONSOLEPRIVATE_EXPORT TmuxTreeSwitcher : public QFrame
 {
     Q_OBJECT
 public:
-    explicit TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *controller);
+    // Matches tmux's choose-tree -s/-w/-p flags. Controls how much of the
+    // session → window → pane tree is expanded when the picker opens.
+    enum class InitialMode {
+        Panes, // fully expanded (tmux -p / default)
+        Windows, // sessions expanded, windows visible, panes collapsed (tmux -w)
+        Sessions, // only sessions visible at the top level (tmux -s)
+    };
+
+    explicit TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *controller, InitialMode mode = InitialMode::Panes);
 
     void updateState();
     void updateViewGeometry();
@@ -41,6 +49,11 @@ public:
         return _treeView;
     }
 
+    InitialMode initialMode() const
+    {
+        return _initialMode;
+    }
+
 public Q_SLOTS:
     void activateCurrent();
 
@@ -49,6 +62,7 @@ protected:
 
 private:
     void reselectFirst();
+    void applyInitialExpansion();
 
     ViewManager *_viewManager;
     TmuxController *_controller;
@@ -56,6 +70,7 @@ private:
     QTreeView *_treeView;
     TmuxTreeModel *_model = nullptr;
     QSortFilterProxyModel *_proxyModel = nullptr;
+    InitialMode _initialMode = InitialMode::Panes;
 };
 
 } // namespace Konsole

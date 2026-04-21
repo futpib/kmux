@@ -197,6 +197,11 @@ public:
 
     void setContextMenuAdditionalActions(const QList<QAction *> &extension);
 
+    KActionCollection *actionCollection() const
+    {
+        return _actionCollection;
+    }
+
 Q_SIGNALS:
     /** Emitted when the last view is removed from the view manager */
     void empty();
@@ -417,6 +422,8 @@ private Q_SLOTS:
     void mergeActiveTab();
     void detachFromTmux();
     void showTmuxTreeSwitcher();
+    void showTmuxTreeSwitcherSessions();
+    void showTmuxTreeSwitcherWindows();
     void showTmuxPrefixPalette();
 
     // called when a session terminates - the view manager will delete any

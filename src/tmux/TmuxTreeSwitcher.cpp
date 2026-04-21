@@ -67,10 +67,11 @@ private:
 
 } // anonymous namespace
 
-TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *controller)
+TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *controller, InitialMode mode)
     : QFrame(viewManager->activeContainer()->window())
     , _viewManager(viewManager)
     , _controller(controller)
+    , _initialMode(mode)
 {
     setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
     setProperty("_breeze_force_frame", true);
@@ -104,7 +105,7 @@ TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *con
     _proxyModel = new FuzzyFilterProxy(this);
     _proxyModel->setSourceModel(_model);
     _treeView->setModel(_proxyModel);
-    _treeView->expandAll();
+    applyInitialExpansion();
 
     connect(_inputLine, &QLineEdit::returnPressed, this, &TmuxTreeSwitcher::activateCurrent);
     connect(_treeView, &QTreeView::activated, this, &TmuxTreeSwitcher::activateCurrent);
@@ -117,7 +118,13 @@ TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *con
 
     connect(_inputLine, &QLineEdit::textChanged, this, [this](const QString &text) {
         static_cast<FuzzyFilterProxy *>(_proxyModel)->setPattern(text);
-        _treeView->expandAll();
+        // A non-empty search expands everything so matches deeper in the tree
+        // are visible; clearing the filter restores the initial depth.
+        if (text.isEmpty()) {
+            applyInitialExpansion();
+        } else {
+            _treeView->expandAll();
+        }
         reselectFirst();
     });
 
@@ -133,7 +140,7 @@ void TmuxTreeSwitcher::updateState()
         if (!self)
             return;
         self->_model->setData(sessions);
-        self->_treeView->expandAll();
+        self->applyInitialExpansion();
         self->reselectFirst();
     });
 
@@ -141,6 +148,30 @@ void TmuxTreeSwitcher::updateState()
     show();
     raise();
     setFocus();
+}
+
+void TmuxTreeSwitcher::applyInitialExpansion()
+{
+    switch (_initialMode) {
+    case InitialMode::Panes:
+        _treeView->expandAll();
+        break;
+    case InitialMode::Windows: {
+        // Expand just the top-level session rows so windows are visible; panes
+        // stay collapsed until the user drills into a specific window.
+        _treeView->collapseAll();
+        QAbstractItemModel *m = _treeView->model();
+        if (m) {
+            for (int i = 0; i < m->rowCount(); ++i) {
+                _treeView->setExpanded(m->index(i, 0), true);
+            }
+        }
+        break;
+    }
+    case InitialMode::Sessions:
+        _treeView->collapseAll();
+        break;
+    }
 }
 
 void TmuxTreeSwitcher::reselectFirst()
@@ -256,10 +287,28 @@ bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
         }
     }
 
-    if (event->type() == QEvent::FocusOut && !(_inputLine->hasFocus() || _treeView->hasFocus())) {
-        hide();
-        deleteLater();
-        return true;
+    if (event->type() == QEvent::FocusOut) {
+        // Defer the close decision to the next event-loop spin so we query the
+        // *settled* focus target, not the transient state mid-transition.
+        // Checking hasFocus() synchronously on our children races Qt's focus
+        // chain: during a transition between e.g. _inputLine and _treeView,
+        // neither reports focus for a brief window, which would otherwise tear
+        // the switcher down while focus is still landing inside it.
+        QPointer<TmuxTreeSwitcher> self(this);
+        QMetaObject::invokeMethod(
+            this,
+            [self]() {
+                if (!self) {
+                    return;
+                }
+                QWidget *focused = QApplication::focusWidget();
+                if (focused && (focused == self.data() || self->isAncestorOf(focused))) {
+                    return;
+                }
+                self->hide();
+                self->deleteLater();
+            },
+            Qt::QueuedConnection);
     }
 
     if (window() == obj && event->type() == QEvent::Resize) {
