@@ -5677,9 +5677,10 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
 
 void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
 {
-    // The palette swaps the raw tmux command text ("choose-tree -Zw") for the
-    // human-readable QAction label ("Choose tmux Window") in the UI, matching
-    // how actions surface in the KCommandBar.
+    // The palette keeps the raw tmux command ("choose-tree -Zw") in column 1
+    // and surfaces the human-readable kmux QAction label ("Choose tmux Window")
+    // in column 2, so the user sees both the source binding and where it will
+    // actually dispatch.
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
 
     TmuxTestDSL::SessionContext ctx;
@@ -5713,18 +5714,29 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
     QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
 
     auto *model = palette->treeView()->model();
+    QCOMPARE(model->columnCount(), 3);
+    QString sessionsCmd, windowsCmd;
     QString sessionsLabel, windowsLabel;
     for (int i = 0; i < model->rowCount(); ++i) {
         QString key = model->index(i, 0).data().toString();
         QString cmd = model->index(i, 1).data().toString();
+        QString label = model->index(i, 2).data().toString();
         if (key == QLatin1String("s")) {
-            sessionsLabel = cmd;
+            sessionsCmd = cmd;
+            sessionsLabel = label;
         } else if (key == QLatin1String("w")) {
-            windowsLabel = cmd;
+            windowsCmd = cmd;
+            windowsLabel = label;
         }
     }
-    QVERIFY2(!sessionsLabel.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("s label still shows raw tmux command: %1").arg(sessionsLabel)));
-    QVERIFY2(!windowsLabel.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("w label still shows raw tmux command: %1").arg(windowsLabel)));
+    // Column 1 preserves the raw tmux command so users can still see what the
+    // binding would have sent to tmux.
+    QVERIFY2(sessionsCmd.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("s tmux command column missing raw command: %1").arg(sessionsCmd)));
+    QVERIFY2(windowsCmd.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("w tmux command column missing raw command: %1").arg(windowsCmd)));
+    // Column 2 shows the human-readable QAction label for intercepted commands.
+    QVERIFY2(!sessionsLabel.contains(QLatin1String("choose-tree")),
+             qPrintable(QStringLiteral("s action label leaked raw tmux command: %1").arg(sessionsLabel)));
+    QVERIFY2(!windowsLabel.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("w action label leaked raw tmux command: %1").arg(windowsLabel)));
     QVERIFY(!sessionsLabel.isEmpty());
     QVERIFY(!windowsLabel.isEmpty());
 

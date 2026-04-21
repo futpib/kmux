@@ -60,8 +60,14 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
 
     populateModel();
 
+    // Column 1 (raw tmux command) stretches and elides: commands can run long
+    // (e.g. `switch-client -n`, `send-keys -R C-l`) and the horizontal scrollbar
+    // is disabled, so giving it ResizeToContents would push column 2 off-screen.
+    // Column 2 (kmux action label) takes its natural width so the label stays
+    // fully visible when present.
     _treeView->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     _treeView->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+    _treeView->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
 
     setFocusPolicy(Qt::StrongFocus);
 
@@ -99,17 +105,19 @@ void TmuxPrefixPalette::populateModel()
     for (const TmuxPrefixBinding &b : std::as_const(_bindings)) {
         auto *keyItem = new QStandardItem(b.keyToken);
         keyItem->setEditable(false);
-        QString displayText = b.command;
+        auto *cmdItem = new QStandardItem(b.command);
+        cmdItem->setEditable(false);
+        QString actionLabel;
         const QString interceptName = interceptedActionName(b.command);
         if (!interceptName.isEmpty() && actionCollection) {
             if (QAction *action = actionCollection->action(interceptName)) {
                 // Strip KDE menu accelerator markers ("&"), keep the plain label.
-                displayText = action->text().remove(QLatin1Char('&'));
+                actionLabel = action->text().remove(QLatin1Char('&'));
             }
         }
-        auto *cmdItem = new QStandardItem(displayText);
-        cmdItem->setEditable(false);
-        _model->appendRow({keyItem, cmdItem});
+        auto *actionItem = new QStandardItem(actionLabel);
+        actionItem->setEditable(false);
+        _model->appendRow({keyItem, cmdItem, actionItem});
     }
 }
 
