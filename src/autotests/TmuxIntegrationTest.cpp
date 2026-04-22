@@ -154,18 +154,11 @@ void TmuxIntegrationTest::testTmuxControlModeAttach()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 30                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 30 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -201,18 +194,11 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 30                          │ cmd: sleep 30                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 30 │cmd: sleep 30 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -225,18 +211,11 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
 
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
@@ -273,13 +252,11 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌───────────────────────────────────┐
-        │ cmd: bash --norc --noprofile      │
-        │                                   │
-        │                                   │
-        │                                   │
-        │                                   │
-        └───────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -342,18 +319,11 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: bash --norc --noprofile                                                                                                                                                                                                                   │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        │                                                                                                                                                                                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -442,18 +412,11 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -481,18 +444,11 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 
     // Apply the initial layout to set Konsole widget sizes to match the diagram
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
@@ -630,13 +586,11 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌───────────────────────────────────┐
-        │ cmd: bash --norc --noprofile      │
-        │                                   │
-        │                                   │
-        │                                   │
-        │                                   │
-        └───────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -705,18 +659,11 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -767,18 +714,11 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -867,18 +807,11 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     // Create 3 horizontal panes, select pane 0, then split it vertically from Konsole
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        │                                        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │              │
+        │              │              │              │
+        └──────────────┴──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -991,18 +924,15 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     // Create nested layout: [ pane0 | [ pane1 / pane2 ] ]
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        ├────────────────────────────────────────┤
-        │                                        │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        │              ├──────────────┤
+        │              │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -1127,17 +1057,11 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     // 1. Setup tmux session with a two-pane horizontal split running bash
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: bash                              │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -1145,17 +1069,11 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
 
     // 2. Attach Konsole
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: bash                              │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::AttachResult attach;
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
@@ -1308,17 +1226,15 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     //    All panes run bash so we can check stty size.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: bash                              │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        ├────────────────────────────────────────┤
-        │                                        │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │
+        │              │              │
+        │              │              │
+        │              ├──────────────┤
+        │              │cmd: bash     │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -1326,17 +1242,15 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
 
     // 2. Attach Konsole and apply the same layout
     auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: bash                              │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        ├────────────────────────────────────────┤
-        │                                        │ cmd: bash                              │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │
+        │              │              │
+        │              │              │
+        │              ├──────────────┤
+        │              │cmd: bash     │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::AttachResult attach;
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
@@ -1487,17 +1401,15 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
     // correct absolute offsets and cross-axis dimensions to tmux.
     TmuxTestDSL::SessionContext ctx;
     auto diagram = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐
-        │ cmd: bash                │ cmd: bash                │ cmd: bash                │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          ├──────────────────────────┤
-        │                          │                          │ cmd: bash                │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        └──────────────────────────┴──────────────────────────┴──────────────────────────┘
+        ┌──────────────┬──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │cmd: bash     │
+        │              │              │              │
+        │              │              │              │
+        │              │              ├──────────────┤
+        │              │              │cmd: bash     │
+        │              │              │              │
+        │              │              │              │
+        └──────────────┴──────────────┴──────────────┘
     )"));
     TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
@@ -1630,17 +1542,15 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // verify the resized layout is preserved after recovery.
     TmuxTestDSL::SessionContext ctx;
     auto diagram = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐
-        │ cmd: bash                │ cmd: bash                │ cmd: bash                │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          ├──────────────────────────┤
-        │                          │                          │ cmd: bash                │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        │                          │                          │                          │
-        └──────────────────────────┴──────────────────────────┴──────────────────────────┘
+        ┌──────────────┬──────────────┬──────────────┐
+        │cmd: bash     │cmd: bash     │cmd: bash     │
+        │              │              │              │
+        │              │              │              │
+        │              │              ├──────────────┤
+        │              │              │cmd: bash     │
+        │              │              │              │
+        │              │              │              │
+        └──────────────┴──────────────┴──────────────┘
     )"));
     TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
@@ -1943,34 +1853,25 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
         QSKIP("script command not found.");
     }
 
-    // 1. Setup tmux session with a single pane at 80x24
+    // 1. Setup tmux session with a single pane large enough for the test's
+    //    initialColumns >= 40 and initialLines >= 12 assertions, plus strict
+    //    shrinkage past the stty 40x12 smaller client.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────────────────────────────────┐
+        │cmd: sleep 60                             │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        └──────────────────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -1985,31 +1886,20 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
 
     // 3. Apply large layout so widgets are sized generously
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────────────────────────────────┐
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        │                                          │
+        └──────────────────────────────────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2112,34 +2002,15 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
         QSKIP("script command not found.");
     }
 
-    // 1. Setup tmux session with two horizontal panes (40+1+39 = 80 wide, 24 tall)
+    // 1. Setup tmux session with two horizontal panes large enough for the
+    //    test's initial{Left,Right}Cols >= 20 assertions.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬───────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                         │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        └────────────────────────────────────────┴───────────────────────────────────────┘
+        ┌────────────────────┬────────────────────┐
+        │cmd: sleep 60       │cmd: sleep 60       │
+        │                    │                    │
+        │                    │                    │
+        └────────────────────┴────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2154,31 +2025,11 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
 
     // 3. Apply large layout so widgets are sized generously
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬───────────────────────────────────────┐
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        │                                        │                                       │
-        └────────────────────────────────────────┴───────────────────────────────────────┘
+        ┌────────────────────┬────────────────────┐
+        │                    │                    │
+        │                    │                    │
+        │                    │                    │
+        └────────────────────┴────────────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2285,13 +2136,11 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
     // 1. Setup tmux session with a single pane running bash
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌───────────────────────────────────┐
-        │ cmd: bash --norc --noprofile      │
-        │                                   │
-        │                                   │
-        │                                   │
-        │                                   │
-        └───────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2384,13 +2233,11 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
     // 1. Setup tmux session with a single pane running bash
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌───────────────────────────────────┐
-        │ cmd: bash --norc --noprofile      │
-        │                                   │
-        │                                   │
-        │                                   │
-        │                                   │
-        └───────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2487,18 +2334,11 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     // Setup 2-pane tmux session
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2511,18 +2351,11 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2608,18 +2441,11 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
     // Setup 2-pane tmux session
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2632,18 +2458,11 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2720,11 +2539,11 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     // display should clearly expand beyond that when maximized.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────┬────────────────────┐
-        │ cmd: sleep 60      │ cmd: sleep 60      │
-        │                    │                    │
-        │                    │                    │
-        └────────────────────┴────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2737,11 +2556,11 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────┬────────────────────┐
-        │                    │                    │
-        │                    │                    │
-        │                    │                    │
-        └────────────────────┴────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2847,13 +2666,11 @@ void TmuxIntegrationTest::testCtrlShiftEBoundToTmuxZoom()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2868,11 +2685,11 @@ void TmuxIntegrationTest::testCtrlShiftEBoundToTmuxZoom()
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2911,13 +2728,11 @@ void TmuxIntegrationTest::testTmuxZoomReflectedAsKonsoleMaximize()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2932,11 +2747,11 @@ void TmuxIntegrationTest::testTmuxZoomReflectedAsKonsoleMaximize()
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -2974,18 +2789,11 @@ void TmuxIntegrationTest::testBreakPane()
     // Setup 2-pane tmux session
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -2998,18 +2806,11 @@ void TmuxIntegrationTest::testBreakPane()
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
     auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │              │              │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )"));
     TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
@@ -3083,18 +2884,11 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: bash --norc --noprofile                                                   │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3190,18 +2984,11 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: bash --norc --noprofile                                                   │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3276,18 +3063,11 @@ void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: bash --norc --noprofile                                                   │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3358,18 +3138,11 @@ void TmuxIntegrationTest::testCyrillicInputPreservesUtf8()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: bash --norc --noprofile                                                   │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3471,18 +3244,11 @@ void TmuxIntegrationTest::testAttachMultipleWindows()
     // Create a tmux session with 1 window, then add a second window via tmux command
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3538,18 +3304,11 @@ void TmuxIntegrationTest::testNewWindowCreatesTab()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3604,18 +3363,11 @@ void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
     // Create a session, then add a second window
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3681,18 +3433,11 @@ void TmuxIntegrationTest::testCloseWindowTabFromKonsole()
     // Create a session with 1 window, then add a second
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3780,18 +3525,11 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3847,18 +3585,11 @@ void TmuxIntegrationTest::testSwapPaneFromTmux()
     // Create a 2-pane horizontal split
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -3952,18 +3683,11 @@ void TmuxIntegrationTest::testSwapPaneFromKonsole()
     // Create a 2-pane horizontal split
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4062,18 +3786,11 @@ void TmuxIntegrationTest::testMovePaneFromTmux()
     // Create a session with 2 windows, each with 1 pane
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4174,18 +3891,11 @@ void TmuxIntegrationTest::testMovePaneFromKonsole()
     // Create a session with 2 windows, each with 1 pane
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4279,18 +3989,11 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
     // Create a 2-pane window + a 1-pane window
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4393,18 +4096,11 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
     // Create a 2-pane window + a 1-pane window
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4509,18 +4205,11 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4610,18 +4299,11 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4723,18 +4405,11 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4790,18 +4465,11 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneSplitsTabs()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4895,18 +4563,11 @@ void TmuxIntegrationTest::testDetachViewBreaksPane()
     // Start with a 2-pane window so there's something to break out
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -4967,18 +4628,11 @@ void TmuxIntegrationTest::testDetachTabFromTmuxCreatesNewKmuxWindow()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5112,18 +4766,11 @@ void TmuxIntegrationTest::testDetachTabFromTmuxViaContainerSignal()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5200,18 +4847,11 @@ void TmuxIntegrationTest::testMergeTabBackFromTmux()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5287,18 +4927,11 @@ void TmuxIntegrationTest::testMergeTabBackPicksWindowWithMostTabs()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5422,18 +5055,11 @@ void TmuxIntegrationTest::testMergeTabBackPreservesPaneContent()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5535,18 +5161,11 @@ void TmuxIntegrationTest::testDetachFromTmuxAction()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5591,13 +5210,11 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteDetach()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5649,13 +5266,11 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5735,13 +5350,11 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5793,13 +5406,11 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -5871,18 +5482,11 @@ void setupTreeSwitcherFixture(TreeSwitcherFixture &f, const QString &tmuxTmpDirP
 {
     f.tmuxPath = TmuxTestDSL::findTmuxOrSkip();
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   f.tmuxPath,
                                   tmuxTmpDirPath,
@@ -6222,18 +5826,11 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSession()
 
     TmuxTestDSL::SessionContext ctxA;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6313,18 +5910,11 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSessionWithTwoPanes()
 
     TmuxTestDSL::SessionContext ctxA;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6426,18 +6016,11 @@ void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
 
     TmuxTestDSL::SessionContext ctxA;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6619,18 +6202,11 @@ void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6692,18 +6268,11 @@ void TmuxIntegrationTest::testClosePaneFromSessionControllerCancelled()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────┬────────────────────────────────────────┐
-        │ cmd: sleep 60                          │ cmd: sleep 60                          │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        │                                        │                                        │
-        └────────────────────────────────────────┴────────────────────────────────────────┘
+        ┌──────────────┬──────────────┐
+        │cmd: sleep 60 │cmd: sleep 60 │
+        │              │              │
+        │              │              │
+        └──────────────┴──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6757,18 +6326,11 @@ void TmuxIntegrationTest::testCloseTabFromContainerConfirmed()
 
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6815,18 +6377,11 @@ void TmuxIntegrationTest::testFractalSplitDownRight8()
     // Use a large window so deep splits don't hit tmux minimum pane size
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │ columns: 256                                                                   │
-        │ lines: 64                                                                      │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │columns: 256  │
+        │lines: 64     │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -6959,18 +6514,11 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │ columns: 256                                                                   │
-        │ lines: 64                                                                      │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │columns: 256  │
+        │lines: 64     │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),
@@ -7097,18 +6645,11 @@ void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
     // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: sleep 60                                                                  │
-        │ columns: 256                                                                   │
-        │ lines: 64                                                                      │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │columns: 256  │
+        │lines: 64     │
+        └──────────────┘
     )")),
                                   tmuxPath,
                                   m_tmuxTmpDir.path(),

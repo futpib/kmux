@@ -148,13 +148,11 @@ void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
     // Create a detached tmux session with known dimensions using the DSL
     TmuxTestDSL::SessionContext ctx;
     TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────────────────────────────────────────────────────────┐
-        │ cmd: cat                                                                       │
-        │ columns: 80                                                                    │
-        │ lines: 24                                                                      │
-        │                                                                                │
-        │                                                                                │
-        └────────────────────────────────────────────────────────────────────────────────┘
+        ┌───────────┐
+        │cmd: cat   │
+        │columns: 80│
+        │lines: 24  │
+        └───────────┘
     )")),
                                   tmuxPath,
                                   socketDir.path(),
