@@ -17,80 +17,16 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-KMUX="$REPO_ROOT/build/bin/kmux"
+# shellcheck source=scripts/autotests/lib.sh
+source "$SCRIPT_DIR/lib.sh"
 
-if [[ ! -x "$KMUX" ]]; then
-    echo "error: $KMUX missing — build with: cmake --build build --target kmux" >&2
-    exit 2
-fi
-REQUIRED_TOOLS=(xdotool)
-if [[ "${USE_XVFB:-0}" == "1" ]]; then
-    REQUIRED_TOOLS+=(Xvfb dbus-launch xdpyinfo)
-fi
-for tool in "${REQUIRED_TOOLS[@]}"; do
-    command -v "$tool" >/dev/null || { echo "error: $tool not installed" >&2; exit 2; }
-done
-if [[ "${USE_XVFB:-0}" != "1" && -z "${DISPLAY:-}" ]]; then
-    echo "error: no \$DISPLAY and USE_XVFB=0 — run on a live X session or export USE_XVFB=1" >&2
-    exit 2
-fi
-
-HOMEDIR=$(mktemp -d)
-LOGDIR="$HOMEDIR/logs"
-mkdir -p "$LOGDIR"
-
-XVFB_PID=""
-cleanup() {
-    pkill -P $$ 2>/dev/null || true
-    if [[ -n "${DBUS_SESSION_BUS_PID:-}" ]]; then
-        kill "$DBUS_SESSION_BUS_PID" 2>/dev/null || true
-    fi
-    if [[ -n "$XVFB_PID" ]]; then
-        kill "$XVFB_PID" 2>/dev/null || true
-        wait "$XVFB_PID" 2>/dev/null || true
-    fi
-    if [[ "${KEEP_LOGS:-0}" == "1" ]]; then
-        echo "logs kept in $LOGDIR"
-    else
-        rm -rf "$HOMEDIR"
-    fi
-}
-trap cleanup EXIT
-
-export HOME="$HOMEDIR"
-export XDG_CONFIG_HOME="$HOMEDIR/.config"
-export XDG_STATE_HOME="$HOMEDIR/.local/state"
-export XDG_RUNTIME_DIR="$HOMEDIR/run"
 export QT_LOGGING_RULES="org.kde.konsole.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
-mkdir -p "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR"
-chmod 700 "$XDG_RUNTIME_DIR"
+# Menu navigation via xdotool needs a focused window, which bare Xvfb
+# doesn't provide on its own — have lib.sh spawn twm when USE_XVFB=1.
+export KMUX_TEST_NEED_WM=1
 
-# Pick a free display number, then start Xvfb on it.
-find_display() {
-    for n in $(seq 90 120); do
-        if [[ ! -e "/tmp/.X${n}-lock" && ! -e "/tmp/.X11-unix/X${n}" ]]; then
-            echo ":$n"
-            return 0
-        fi
-    done
-    echo "error: no free X display" >&2
-    return 1
-}
-if [[ "${USE_XVFB:-0}" == "1" ]]; then
-    DISPLAY_NUM=$(find_display)
-    Xvfb "$DISPLAY_NUM" -screen 0 1280x720x24 -nolisten tcp >"$LOGDIR/xvfb.log" 2>&1 &
-    XVFB_PID=$!
-    export DISPLAY="$DISPLAY_NUM"
-    for _ in $(seq 1 50); do
-        xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
-        sleep 0.1
-    done
-    eval "$(dbus-launch --sh-syntax)"
-    export DBUS_SESSION_BUS_ADDRESS
-    export DBUS_SESSION_BUS_PID
-fi
+kmux_test_setup
 
 LAUNCH_PID=""
 LAUNCH_WIN=""

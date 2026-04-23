@@ -34,9 +34,11 @@ jobs:
                 kxmlgui kbookmarks kiconthemes kconfigwidgets kwindowsystem \
                 kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
                 ktextwidgets kwidgetsaddons kservice ki18n \
-                icu tmux util-linux
+                icu tmux util-linux \
+                xorg-server-xvfb xorg-xdpyinfo xorg-twm xdotool dbus
 
               cmake -B build -G Ninja -DBUILD_TESTING=ON
               cmake --build build
               QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+              USE_XVFB=1 ./scripts/autotests/run-all.sh
             '
