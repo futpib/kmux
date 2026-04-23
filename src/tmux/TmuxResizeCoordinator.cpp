@@ -306,8 +306,25 @@ void TmuxResizeCoordinator::sendClientSize()
         }
 
         QSize pageSize = page->size();
-        int totalCols = qBound(1, pageSize.width() / fontWidth, 1023);
-        int totalLines = qMax(1, pageSize.height() / fontHeight);
+        int totalCols, totalLines;
+        if (pageSize.width() > 0 && pageSize.height() > 0) {
+            totalCols = qBound(1, pageSize.width() / fontWidth, 1023);
+            totalLines = qMax(1, pageSize.height() / fontHeight);
+        } else {
+            // Page widget has no real size (hidden window, e.g. headless tests).
+            // Derive the client size from the terminal layout so that tmux is not
+            // accidentally shrunk to 1×1 when page->size() returns zero.
+            // This path is safe for the single-client case. In multi-client
+            // scenarios the page is always visible so the feedback-loop risk
+            // described above does not apply here.
+            TmuxLayoutNode layoutNode = TmuxLayoutManager::buildLayoutNode(windowSplitter, _paneManager);
+            if (layoutNode.width <= 0 || layoutNode.height <= 0) {
+                qCDebug(KonsoleTmuxResize) << "sendClientSize: no valid layout for windowId=" << windowId << "→ skipping";
+                continue;
+            }
+            totalCols = qBound(1, layoutNode.width, 1023);
+            totalLines = qMax(1, layoutNode.height);
+        }
 
         qCDebug(KonsoleTmuxResize) << "  computeSize page: windowId=" << windowId << "pageSize=" << pageSize << "fontW=" << fontWidth << "fontH=" << fontHeight
                                    << "→ cols=" << totalCols << "lines=" << totalLines;
