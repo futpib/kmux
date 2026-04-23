@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QPointer>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -78,13 +79,19 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
         {{QStringLiteral("list-profiles")}, i18nc("@info:shell", "List the available profiles")},
         {{QStringLiteral("list-profile-properties")}, i18nc("@info:shell", "List all the profile properties names and their type (for use with -p)")},
         {{QStringLiteral("p")}, i18nc("@info:shell", "Change the value of a profile property."), QStringLiteral("property=value")},
-        {{QStringLiteral("e")},
+        {{QStringLiteral("c")},
          i18nc("@info:shell", "Command to execute. This option will catch all following arguments, so use it as the last option."),
          QStringLiteral("cmd")},
         {{QStringLiteral("force-reuse")},
          i18nc("@info:shell", "Force re-using the existing instance even if it breaks functionality, e. g. --new-tab. Mostly for debugging.")},
         {{QStringLiteral("s"), QStringLiteral("session")}, i18nc("@info:shell", "Name of the tmux session to attach to or create"), QStringLiteral("name")},
         {{QStringLiteral("S"), QStringLiteral("socket")}, i18nc("@info:shell", "Path to the tmux server socket"), QStringLiteral("path")},
+        {{QStringLiteral("e"), QStringLiteral("rsh")},
+         i18nc("@info:shell", "Remote shell command used to run tmux (e.g. \"ssh user@host\"). Defaults to the KMUX_RSH environment variable."),
+         QStringLiteral("cmd")},
+        {{QStringLiteral("tmux-path")},
+         i18nc("@info:shell", "Path or name of the tmux program to run (locally, or on the remote host when --rsh is given). Defaults to \"tmux\" in PATH."),
+         QStringLiteral("prog")},
     };
 
     for (const auto &option : options) {
@@ -109,7 +116,7 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
 
 QStringList Application::getCustomCommand(QStringList &args)
 {
-    int i = args.indexOf(QStringLiteral("-e"));
+    int i = args.indexOf(QStringLiteral("-c"));
     QStringList customCommand;
     if ((0 < i) && (i < (args.size() - 1))) {
         // -e was specified with at least one extra argument
@@ -187,12 +194,13 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
     const QString tmuxPath = bridge->tmuxPath();
     const QStringList tmuxArgs = bridge->tmuxArgs();
     const QStringList command = bridge->command();
+    const QStringList rshCommand = bridge->rshCommand();
 
     // Route the new tmux window to its own kmux MainWindow: hide it on the
     // source side (so the source keeps only its existing tabs) and restrict
     // the new bridge to that one window. Without this, both the source and
     // the new MainWindow would each show all tmux windows as tabs.
-    bridge->controller()->requestNewWindow(directory, [this, sourceGuard, tmuxPath, tmuxArgs, command](int newWindowId) {
+    bridge->controller()->requestNewWindow(directory, [this, sourceGuard, tmuxPath, tmuxArgs, command, rshCommand](int newWindowId) {
         if (newWindowId < 0 || !sourceGuard) {
             return;
         }
@@ -207,7 +215,7 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
         // attached window gets everything a normally-spawned window would.
         MainWindow *window = newMainWindow();
         auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
-        if (!newBridge->start(tmuxPath, tmuxArgs, command)) {
+        if (!newBridge->start(tmuxPath, tmuxArgs, command, rshCommand)) {
             delete window;
             return;
         }
@@ -234,7 +242,7 @@ void Application::detachTmuxWindow(MainWindow *source, int windowId)
     // restricted to the detached window so it shows only that one tab.
     MainWindow *window = newMainWindow();
     auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
-    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command())) {
+    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command(), bridge->rshCommand())) {
         delete window;
         return;
     }
@@ -331,7 +339,19 @@ int Application::newInstance()
             tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
         }
 
-        if (!bridge->start(QString(), tmuxArgs, tmuxCommand)) {
+        // Optional remote-shell wrapper (rsync-style): --rsh / -e overrides
+        // KMUX_RSH. Split with shell-like quoting so "ssh -p 2222 host" works.
+        QString rshString;
+        if (m_parser->isSet(QStringLiteral("rsh"))) {
+            rshString = m_parser->value(QStringLiteral("rsh"));
+        } else {
+            rshString = qEnvironmentVariable("KMUX_RSH");
+        }
+        const QStringList rshCommand = rshString.isEmpty() ? QStringList() : QProcess::splitCommand(rshString);
+
+        const QString tmuxPath = m_parser->isSet(QStringLiteral("tmux-path")) ? m_parser->value(QStringLiteral("tmux-path")) : QString();
+
+        if (!bridge->start(tmuxPath, tmuxArgs, tmuxCommand, rshCommand)) {
             qWarning() << "Failed to start tmux";
             delete bridge;
             return 0;

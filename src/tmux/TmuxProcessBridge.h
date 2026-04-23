@@ -36,20 +36,26 @@ public:
     ~TmuxProcessBridge() override;
 
     /**
-     * @param tmuxPath   Path to tmux binary. Empty = find in PATH.
+     * @param tmuxPath   Path to tmux binary. Empty = find in PATH (local mode),
+     *                   or "tmux" (when @p rshCommand is non-empty).
      * @param tmuxArgs   Extra tmux flags before -C (e.g. {"-S", "/path/to/socket"}).
      * @param command    Tmux command + args after -C (e.g. {"new-session", "-A"}).
      *                   Defaults to {"new-session", "-A"}.
+     * @param rshCommand Optional remote-shell wrapper (e.g. {"ssh", "user@host"}).
+     *                   When non-empty, the first element is the executable and
+     *                   the rest are prepended to the tmux invocation.
      */
     bool start(const QString &tmuxPath = QString(),
                const QStringList &tmuxArgs = {},
-               const QStringList &command = {QStringLiteral("new-session"), QStringLiteral("-A")});
+               const QStringList &command = {QStringLiteral("new-session"), QStringLiteral("-A")},
+               const QStringList &rshCommand = {});
 
     TmuxController *controller() const;
 
     QString tmuxPath() const;
     QStringList tmuxArgs() const;
     QStringList command() const;
+    QStringList rshCommand() const;
 
 Q_SIGNALS:
     void disconnected();
@@ -69,6 +75,7 @@ private:
     QString _tmuxPath;
     QStringList _tmuxArgs;
     QStringList _command;
+    QStringList _rshCommand;
 };
 
 } // namespace Konsole

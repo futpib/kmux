@@ -47,19 +47,35 @@ TmuxProcessBridge::~TmuxProcessBridge()
     }
 }
 
-bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxArgs, const QStringList &command)
+bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxArgs, const QStringList &command, const QStringList &rshCommand)
 {
-    QString path = tmuxPath;
-    if (path.isEmpty()) {
-        path = QStandardPaths::findExecutable(QStringLiteral("tmux"));
-    }
-    if (path.isEmpty()) {
-        return false;
+    QString resolvedTmuxPath = tmuxPath;
+    QString executable;
+    QStringList leadingArgs;
+
+    if (rshCommand.isEmpty()) {
+        if (resolvedTmuxPath.isEmpty()) {
+            resolvedTmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
+        }
+        if (resolvedTmuxPath.isEmpty()) {
+            return false;
+        }
+        executable = resolvedTmuxPath;
+    } else {
+        // tmuxPath refers to the binary on the remote host; resolve only to a
+        // bare default, never probe PATH (that would check the local host).
+        if (resolvedTmuxPath.isEmpty()) {
+            resolvedTmuxPath = QStringLiteral("tmux");
+        }
+        executable = rshCommand.first();
+        leadingArgs = rshCommand.mid(1);
+        leadingArgs << resolvedTmuxPath;
     }
 
-    _tmuxPath = path;
+    _tmuxPath = resolvedTmuxPath;
     _tmuxArgs = tmuxArgs;
     _command = command;
+    _rshCommand = rshCommand;
 
     // Create a socketpair for tmux's stdout. Sockets have flow control
     // (backpressure) unlike pipes, so tmux's non-blocking writes won't
@@ -103,13 +119,14 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
 
     TmuxControllerRegistry::instance()->registerController(_controller);
 
-    QStringList args = tmuxArgs;
+    QStringList args = leadingArgs;
+    args << tmuxArgs;
     if (KonsoleTmuxBridge().isDebugEnabled()) {
         args << QStringLiteral("-vvvv");
     }
     args << QStringLiteral("-C");
     args << command;
-    _process->start(path, args);
+    _process->start(executable, args);
 
     // Close the child's end in the parent after fork
     ::close(childFd);
@@ -139,6 +156,11 @@ QStringList TmuxProcessBridge::tmuxArgs() const
 QStringList TmuxProcessBridge::command() const
 {
     return _command;
+}
+
+QStringList TmuxProcessBridge::rshCommand() const
+{
+    return _rshCommand;
 }
 
 void TmuxProcessBridge::onReadyRead()

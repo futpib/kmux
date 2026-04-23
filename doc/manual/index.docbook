@@ -1542,10 +1542,22 @@ For more information, please visit
 </varlistentry>
 
 <varlistentry>
-<term><option>-e</option> <parameter>command</parameter></term>
+<term><option>-c</option> <parameter>command</parameter></term>
 <listitem><para><action>Execute</action>
 <parameter>command</parameter> instead of the normal shell.</para>
 <note><para>This option will catch all following arguments passed to &konsole;, and execute it as <parameter>command</parameter>. So this option should always be used as the last option.</para></note>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term><option>-e</option>, <option>--rsh</option> <parameter>cmd</parameter></term>
+<listitem><para>Remote shell command used to run tmux, e.g. <userinput>ssh user@host</userinput>. The value is split with shell-like quoting and prepended to the tmux invocation. Defaults to the <envar>KMUX_RSH</envar> environment variable.</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term><option>--tmux-path</option> <parameter>prog</parameter></term>
+<listitem><para>Path or name of the <command>tmux</command> program to run. In local mode this is resolved against the local <envar>PATH</envar>; with <option>--rsh</option> it refers to the binary on the remote host. Defaults to <userinput>tmux</userinput>.</para>
 </listitem>
 </varlistentry>
 
@@ -2005,18 +2017,18 @@ This is most noticeable when a command that connects to an external device or sy
 </para></listitem>
 
 <listitem><para>
-&konsole; treats arguments after the <option>-e</option> option as one command and runs it directly, instead  of parsing it and possibly dividing it into sub-commands for execution. This is different from xterm.
+&konsole; treats arguments after the <option>-c</option> option as one command and runs it directly, instead  of parsing it and possibly dividing it into sub-commands for execution. This is different from xterm.
 </para>
 
 <para>
     <itemizedlist mark='opencircle'>
 
     <listitem><para>
-<command>konsole -e "command1 ; command2"</command> does not work
+<command>konsole -c "command1 ; command2"</command> does not work
     </para></listitem>
 
     <listitem><para>
-<command>konsole -e $SHELL -c "command1 ; command2"</command> works
+<command>konsole -c $SHELL -c "command1 ; command2"</command> works
     </para></listitem>
 
     </itemizedlist>
