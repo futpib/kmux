@@ -865,6 +865,9 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     auto existingTerminals = paneSplitter->findChildren<TerminalDisplay *>();
     QCOMPARE(existingTerminals.size(), 3);
 
+    // Enlarge the window so the 3-way horizontal layout leaves each pane
+    // tall enough for tmux to accept a vertical split.
+    attach.mw->resize(2048, 768);
     // Show and activate the window so setFocus() works
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -998,6 +1001,9 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     auto existingTerminals = paneSplitter->findChildren<TerminalDisplay *>();
     QCOMPARE(existingTerminals.size(), 3);
 
+    // Enlarge the window so the nested layout leaves pane0 tall enough
+    // for tmux to accept a vertical split.
+    attach.mw->resize(2048, 768);
     // Show and activate the window
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6530,6 +6536,10 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     TmuxTestDSL::AttachResult attach;
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
+    // Enlarge the window so tmux panes remain big enough to split multiple
+    // times without hitting tmux's minimum pane size; the default offscreen
+    // window size (640×480) leaves panes around 30×2 after the first split.
+    attach.mw->resize(2048, 1024);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -6602,9 +6612,12 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     QVERIFY(bottomLeft);
     QVERIFY(bottomRight);
 
-    // Assert all four panes are equally sized (within 1px rounding tolerance).
+    // Assert all four panes are equally sized. Tmux splits its cell grid, not
+    // pixels: an N-cell pane split in two yields (N-1)/2 and (N-1)/2 (or the
+    // split is off by one cell when N-1 is odd). Translating back to pixels
+    // gives up to one cell's worth of difference, so tolerate that.
     auto approxEqual = [](int a, int b) {
-        return std::abs(a - b) <= 1;
+        return std::abs(a - b) <= 20;
     };
     const QList<int> outerSizes = paneSplitter->sizes();
     QCOMPARE(outerSizes.size(), 2);
@@ -6661,6 +6674,10 @@ void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
     TmuxTestDSL::AttachResult attach;
     TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
 
+    // Enlarge the window so tmux panes remain big enough to split multiple
+    // times without hitting tmux's minimum pane size; the default offscreen
+    // window size (640×480) leaves panes around 30×2 after the first split.
+    attach.mw->resize(2048, 768);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
