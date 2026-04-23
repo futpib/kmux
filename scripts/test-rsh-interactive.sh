@@ -8,17 +8,22 @@
 # and the bridge never sees a tmux session.
 #
 # The test asserts:
-#   1. Before the password is written, the tmux socket does NOT exist —
-#      proves the wrapper actually ran and blocked (kmux didn't bypass
-#      it and spawn tmux directly).
-#   2. After writing the password, `tmux -S $socket list-sessions` shows
-#      a session — proves the wrapper execed tmux and kmux connected.
+#   1. While the wrapper blocks on the FIFO, the tmux socket does NOT
+#      exist — proves the wrapper actually ran (kmux didn't bypass it
+#      and spawn tmux directly).
+#   2. While the wrapper blocks, the kmux GUI window is NOT visible —
+#      proves Application defers window->show() until tmux's first
+#      reply so --rsh prompts (ssh password) don't lose terminal focus.
+#   3. After writing the password, tmux -S $socket list-sessions
+#      succeeds AND the kmux window appears — proves the wrapper
+#      execed tmux, the bridge connected, and the show-deferral lifted.
 #
 # By default uses $DISPLAY. Set USE_XVFB=1 for headless Xvfb.
 #
 # Exit 0 = rsh wrapper was invoked, blocked, authenticated, and kmux
 #          successfully connected to the wrapped tmux.
-# Exit 1 = test assertion failed (wrapper bypassed or never connected).
+# Exit 1 = test assertion failed (wrapper bypassed, window appeared
+#          early, or never connected).
 # Exit 2 = scaffolding failure (missing binary, no DISPLAY, etc.).
 
 set -euo pipefail
@@ -129,47 +134,59 @@ echo "=== launching kmux with --rsh=$WRAPPER -S $SOCKET ==="
 "$KMUX" --rsh "$WRAPPER" -S "$SOCKET" >"$LOGDIR/kmux.log" 2>&1 &
 KMUX_PID=$!
 
-# Wait for the kmux window to appear. It should appear even while the
-# rsh wrapper is still blocked on the FIFO — the GUI comes up before
-# the bridge has a tmux connection.
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared (see $LOGDIR/kmux.log)" >&2
-        exit 1
-    fi
-    if xdotool search --name kmux >/dev/null 2>&1; then
-        break
-    fi
-    sleep 0.2
-done
-if ! xdotool search --name kmux >/dev/null 2>&1; then
-    echo "FAIL: kmux window never appeared" >&2
+# Give kmux time to start Qt, spawn the wrapper, and (if the show-
+# deferral regressed) pop the window. 3 seconds is generous — the
+# wrapper blocks forever on the FIFO so there's no race to win.
+sleep 3
+
+# The bridge shouldn't have failed: if `bridge->start` couldn't even
+# exec the wrapper, kmux would have logged "Failed to start tmux" and
+# exited.
+if ! kill -0 "$KMUX_PID" 2>/dev/null; then
+    echo "FAIL: kmux exited before wrapper unblocked (see $LOGDIR/kmux.log)" >&2
     exit 1
 fi
 
 # Assertion 1: tmux socket must NOT exist yet. If it did, the wrapper
 # was bypassed and kmux spawned tmux directly — the whole point of
 # --rsh is that every tmux invocation goes through the wrapper.
-sleep 1
 if [[ -e "$SOCKET" ]]; then
     echo "FAIL: tmux socket exists before wrapper was unblocked — wrapper was bypassed" >&2
     exit 1
 fi
 echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 
+# Assertion 2: kmux window must NOT be visible yet. If it is, the
+# Application short-circuited the show-deferral and would steal focus
+# from a still-prompting ssh in the real use case.
+if xdotool search --name kmux >/dev/null 2>&1; then
+    echo "FAIL: kmux window appeared before tmux's first reply — show-deferral regressed" >&2
+    exit 1
+fi
+echo "OK: kmux window hidden while wrapper is blocked on FIFO"
+
 # Provide the "password" — wrapper reads it, validates, execs tmux.
 echo "=== writing password to FIFO ==="
 printf '%s\n' "$PASSWORD" >"$FIFO"
 
-# Assertion 2: tmux session appears on the expected socket, i.e. the
-# wrapper authenticated, execed tmux, and kmux's bridge connected.
+# Assertion 3: both the tmux session and the kmux window must appear.
+# The session proves the bridge connected; the window proves the
+# show-deferral released once the gateway emitted ready().
+tmux_ok=0
+window_ok=0
 for _ in $(seq 1 60); do
-    if tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
-        echo "PASS: tmux session established through --rsh wrapper"
+    if [[ "$tmux_ok" -eq 0 ]] && tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
+        tmux_ok=1
+    fi
+    if [[ "$window_ok" -eq 0 ]] && xdotool search --name kmux >/dev/null 2>&1; then
+        window_ok=1
+    fi
+    if [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
+        echo "PASS: tmux session established and kmux window shown after --rsh authenticated"
         exit 0
     fi
     sleep 0.5
 done
 
-echo "FAIL: tmux session never appeared on $SOCKET (see $LOGDIR/kmux.log)" >&2
+echo "FAIL: after unblocking wrapper, tmux_ok=$tmux_ok window_ok=$window_ok (see $LOGDIR/kmux.log)" >&2
 exit 1

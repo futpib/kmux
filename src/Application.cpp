@@ -321,41 +321,39 @@ int Application::newInstance()
     // create a new window or use an existing one
     MainWindow *window = processWindowArgs(createdNewMainWindow);
 
-    {
-        // Spawn tmux in plain control mode (-C) as a hidden subprocess.
-        // No PTY, no Session, no terminal emulation — TmuxProcessBridge
-        // pipes stdout lines to TmuxGateway and stdin commands back.
-        auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
+    // Spawn tmux in plain control mode (-C) as a hidden subprocess.
+    // No PTY, no Session, no terminal emulation — TmuxProcessBridge
+    // pipes stdout lines to TmuxGateway and stdin commands back.
+    auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
 
-        // Build tmux args: [-S <socket>]
-        QStringList tmuxArgs;
-        if (m_parser->isSet(QStringLiteral("socket"))) {
-            tmuxArgs << QStringLiteral("-S") << m_parser->value(QStringLiteral("socket"));
-        }
+    // Build tmux args: [-S <socket>]
+    QStringList tmuxArgs;
+    if (m_parser->isSet(QStringLiteral("socket"))) {
+        tmuxArgs << QStringLiteral("-S") << m_parser->value(QStringLiteral("socket"));
+    }
 
-        // Build tmux command: "new-session -A [-s <session>]"
-        QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A")};
-        if (m_parser->isSet(QStringLiteral("session"))) {
-            tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
-        }
+    // Build tmux command: "new-session -A [-s <session>]"
+    QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A")};
+    if (m_parser->isSet(QStringLiteral("session"))) {
+        tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
+    }
 
-        // Optional remote-shell wrapper (rsync-style): --rsh overrides
-        // KMUX_RSH. Split with shell-like quoting so "ssh -p 2222 host" works.
-        QString rshString;
-        if (m_parser->isSet(QStringLiteral("rsh"))) {
-            rshString = m_parser->value(QStringLiteral("rsh"));
-        } else {
-            rshString = qEnvironmentVariable("KMUX_RSH");
-        }
-        const QStringList rshCommand = rshString.isEmpty() ? QStringList() : QProcess::splitCommand(rshString);
+    // Optional remote-shell wrapper (rsync-style): --rsh overrides
+    // KMUX_RSH. Split with shell-like quoting so "ssh -p 2222 host" works.
+    QString rshString;
+    if (m_parser->isSet(QStringLiteral("rsh"))) {
+        rshString = m_parser->value(QStringLiteral("rsh"));
+    } else {
+        rshString = qEnvironmentVariable("KMUX_RSH");
+    }
+    const QStringList rshCommand = rshString.isEmpty() ? QStringList() : QProcess::splitCommand(rshString);
 
-        const QString tmuxPath = m_parser->isSet(QStringLiteral("tmux-path")) ? m_parser->value(QStringLiteral("tmux-path")) : QString();
+    const QString tmuxPath = m_parser->isSet(QStringLiteral("tmux-path")) ? m_parser->value(QStringLiteral("tmux-path")) : QString();
 
-        if (!bridge->start(tmuxPath, tmuxArgs, tmuxCommand, rshCommand)) {
-            qWarning() << "Failed to start tmux";
-            delete bridge;
-            return 0;
-        }
+    if (!bridge->start(tmuxPath, tmuxArgs, tmuxCommand, rshCommand)) {
+        qWarning() << "Failed to start tmux";
+        delete bridge;
+        return 0;
     }
 
     // if the background-mode argument is supplied, start the background
@@ -363,6 +361,10 @@ int Application::newInstance()
     if (m_parser->isSet(QStringLiteral("background-mode"))) {
         startBackgroundMode(window);
     } else {
+        // Defer showing the window until tmux sends its first reply. If
+        // --rsh is prompting for input (e.g. ssh password) on the launching
+        // terminal, popping the GUI now would steal focus mid-typing.
+        //
         // Qt constrains top-level windows which have not been manually
         // resized (via QWidget::resize()) to a maximum of 2/3rds of the
         //  screen size.
@@ -378,13 +380,19 @@ int Application::newInstance()
 
         // If not restoring size from last time or only adding new tab,
         // resize window to chosen profile size (see Bug:345403)
-        if (createdNewMainWindow) {
-            QTimer::singleShot(0, window, &MainWindow::show);
-        } else {
-            window->setWindowState(window->windowState() & (~Qt::WindowMinimized | Qt::WindowActive));
-            window->show();
-            window->activateWindow();
-        }
+        QPointer<MainWindow> windowGuard(window);
+        connect(bridge, &TmuxProcessBridge::ready, window, [windowGuard, createdNewMainWindow]() {
+            if (!windowGuard) {
+                return;
+            }
+            if (createdNewMainWindow) {
+                windowGuard->show();
+            } else {
+                windowGuard->setWindowState(windowGuard->windowState() & (~Qt::WindowMinimized | Qt::WindowActive));
+                windowGuard->show();
+                windowGuard->activateWindow();
+            }
+        });
     }
 
     return 1;

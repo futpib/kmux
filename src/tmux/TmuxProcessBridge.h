@@ -59,6 +59,11 @@ public:
 
 Q_SIGNALS:
     void disconnected();
+    /// Emitted once the tmux client sends its first %begin line — i.e. the
+    /// rsh wrapper (if any) authenticated, tmux started, and the control
+    /// protocol is live. Callers use this to hold back UI that would
+    /// otherwise steal focus from a still-prompting rsh (ssh password).
+    void ready();
 
 private:
     void onReadyRead();

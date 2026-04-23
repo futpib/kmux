@@ -115,6 +115,7 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     connect(_process, &QProcess::finished, this, &TmuxProcessBridge::onProcessFinished);
 
     connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
+    connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxProcessBridge::teardown);
 
     TmuxControllerRegistry::instance()->registerController(_controller);
