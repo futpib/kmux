@@ -22,6 +22,8 @@ private Q_SLOTS:
     void testConnectNoServer();
     void testConnectServerNoSessions();
     void testConnectServerPreexistingSession();
+    void testRshSingleTokenWrapper();
+    void testRshMultiTokenWrapperAndDefaultTmuxPath();
 
 private:
     void killTmuxServer();

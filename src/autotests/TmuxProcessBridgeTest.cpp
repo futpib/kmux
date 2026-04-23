@@ -178,6 +178,77 @@ void TmuxProcessBridgeTest::testConnectServerPreexistingSession()
     delete mwGuard.data();
 }
 
+void TmuxProcessBridgeTest::testRshSingleTokenWrapper()
+{
+    // rsh="env" is a local no-op wrapper: `env <tmux> -S <socket> -C ...`
+    // behaves identically to running tmux directly. Verifies the bridge
+    // wraps argv correctly when rsh is a single token and tmuxPath is an
+    // absolute path.
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    ViewManager *vm = mw->viewManager();
+
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    bool started =
+        bridge->start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath()}, {QStringLiteral("new-session"), QStringLiteral("-A")}, {QStringLiteral("env")});
+    QVERIFY(started);
+    QCOMPARE(bridge->rshCommand(), QStringList{QStringLiteral("env")});
+
+    QPointer<TabbedViewContainer> container = vm->activeContainer();
+    QVERIFY(container);
+
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
+
+    auto *controller = bridge->controller();
+    QVERIFY(controller);
+    QVERIFY(TmuxControllerRegistry::instance()->controllers().contains(controller));
+
+    delete mwGuard.data();
+}
+
+void TmuxProcessBridgeTest::testRshMultiTokenWrapperAndDefaultTmuxPath()
+{
+    // rsh="env KMUX_RSH_TEST=1" is a two-token wrapper that also sets an
+    // env var on the wrapped tmux. tmuxPath is left empty, which in rsh
+    // mode defaults to the literal string "tmux" — env finds it in PATH.
+    // Verifies: (a) leading args beyond argv[0] are threaded through,
+    //           (b) rsh mode skips local findExecutable on the tmux path,
+    //           (c) the env var actually reaches the tmux server.
+    const QStringList rshCommand = {QStringLiteral("env"), QStringLiteral("KMUX_RSH_TEST=1")};
+    const QString sessionName = QStringLiteral("rshtest");
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    ViewManager *vm = mw->viewManager();
+
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    bool started = bridge->start(QString(),
+                                 {QStringLiteral("-S"), tmuxSocketPath()},
+                                 {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), sessionName},
+                                 rshCommand);
+    QVERIFY(started);
+    QCOMPARE(bridge->tmuxPath(), QStringLiteral("tmux"));
+    QCOMPARE(bridge->rshCommand(), rshCommand);
+
+    QPointer<TabbedViewContainer> container = vm->activeContainer();
+    QVERIFY(container);
+
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
+
+    // Verify KMUX_RSH_TEST reached the tmux server's process environment.
+    // show-environment only reports vars tmux explicitly copies into session
+    // envs (update-environment filter), so we query the server's own env via
+    // run-shell, which execs the given shell command with the server's env.
+    QProcess queryEnv;
+    queryEnv.start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath(), QStringLiteral("run-shell"), QStringLiteral("printenv KMUX_RSH_TEST")});
+    QVERIFY(queryEnv.waitForFinished(5000));
+    QCOMPARE(queryEnv.exitCode(), 0);
+    const QString output = QString::fromUtf8(queryEnv.readAllStandardOutput()).trimmed();
+    QCOMPARE(output, QStringLiteral("1"));
+
+    delete mwGuard.data();
+}
+
 QTEST_MAIN(TmuxProcessBridgeTest)
 
 #include "moc_TmuxProcessBridgeTest.cpp"

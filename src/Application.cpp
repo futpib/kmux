@@ -79,14 +79,14 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
         {{QStringLiteral("list-profiles")}, i18nc("@info:shell", "List the available profiles")},
         {{QStringLiteral("list-profile-properties")}, i18nc("@info:shell", "List all the profile properties names and their type (for use with -p)")},
         {{QStringLiteral("p")}, i18nc("@info:shell", "Change the value of a profile property."), QStringLiteral("property=value")},
-        {{QStringLiteral("c")},
+        {{QStringLiteral("e")},
          i18nc("@info:shell", "Command to execute. This option will catch all following arguments, so use it as the last option."),
          QStringLiteral("cmd")},
         {{QStringLiteral("force-reuse")},
          i18nc("@info:shell", "Force re-using the existing instance even if it breaks functionality, e. g. --new-tab. Mostly for debugging.")},
         {{QStringLiteral("s"), QStringLiteral("session")}, i18nc("@info:shell", "Name of the tmux session to attach to or create"), QStringLiteral("name")},
         {{QStringLiteral("S"), QStringLiteral("socket")}, i18nc("@info:shell", "Path to the tmux server socket"), QStringLiteral("path")},
-        {{QStringLiteral("e"), QStringLiteral("rsh")},
+        {{QStringLiteral("rsh")},
          i18nc("@info:shell", "Remote shell command used to run tmux (e.g. \"ssh user@host\"). Defaults to the KMUX_RSH environment variable."),
          QStringLiteral("cmd")},
         {{QStringLiteral("tmux-path")},
@@ -116,7 +116,7 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
 
 QStringList Application::getCustomCommand(QStringList &args)
 {
-    int i = args.indexOf(QStringLiteral("-c"));
+    int i = args.indexOf(QStringLiteral("-e"));
     QStringList customCommand;
     if ((0 < i) && (i < (args.size() - 1))) {
         // -e was specified with at least one extra argument
@@ -339,7 +339,7 @@ int Application::newInstance()
             tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
         }
 
-        // Optional remote-shell wrapper (rsync-style): --rsh / -e overrides
+        // Optional remote-shell wrapper (rsync-style): --rsh overrides
         // KMUX_RSH. Split with shell-like quoting so "ssh -p 2222 host" works.
         QString rshString;
         if (m_parser->isSet(QStringLiteral("rsh"))) {

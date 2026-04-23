@@ -87,9 +87,9 @@ case "$service" in
         '(--show-menubar --hide-menubar)'--{show,hide}-menubar'[Toggle the menubar, overriding the default setting]' \
         '(--show-tabbar --hide-tabbar)'--{show,hide}-tabbar'[Toggle the tabbar, overriding the default setting]' \
         \
-        '(-e --rsh)'{-e,--rsh=}'[Remote shell command used to run tmux (e.g. "ssh user@host"). Defaults to $KMUX_RSH.]:cmd:' \
+        '--rsh=[Remote shell command used to run tmux (e.g. "ssh user@host"). Defaults to $KMUX_RSH.]:cmd:' \
         '--tmux-path=[Path or name of the tmux program (local, or remote with --rsh). Defaults to "tmux".]:prog:_command_names' \
         \
-        '-c[Command to execute. This option will catch all following arguments, so use it as the last option.]:program: _command_names -e:*::program arguments: _normal'
+        '-e[Command to execute. This option will catch all following arguments, so use it as the last option.]:program: _command_names -e:*::program arguments: _normal'
     ;;
 esac
