@@ -22,6 +22,7 @@
 #include "widgets/ViewSplitter.h"
 
 #include <QLoggingCategory>
+#include <QTimer>
 
 Q_LOGGING_CATEGORY(KonsoleTmuxController, "konsole.tmux.controller", QtWarningMsg)
 
@@ -656,8 +657,18 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
         //    session didn't exist yet, so we deferred focus.
         // 2. A subsequent %layout-change rebuilt the splitter tree, destroying
         //    the previously focused display — we need to focus the new one.
+        // Do it both synchronously and deferred: showEvent on freshly-inserted
+        // splitters runs setFocusProxy during queued event delivery and can
+        // steal focus from the pane we just focused, so retry after the event
+        // loop drains.
         if (_activePaneId >= 0 && _windowPanes.value(windowId).contains(_activePaneId)) {
-            focusPane(_activePaneId);
+            const int targetPaneId = _activePaneId;
+            focusPane(targetPaneId);
+            QTimer::singleShot(0, this, [this, windowId, targetPaneId]() {
+                if (_activePaneId == targetPaneId && _windowPanes.value(windowId).contains(targetPaneId)) {
+                    focusPane(targetPaneId);
+                }
+            });
         }
 
         // Entering zoom — the full layout was applied above (it contains all panes),
