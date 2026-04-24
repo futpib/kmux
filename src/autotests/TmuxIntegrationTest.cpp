@@ -503,32 +503,53 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
     // tmux's pane_width derives from the page-wide window size (see
     // TmuxResizeCoordinator::sendClientSize), so they differ by ~1 cell per
     // pane by design.
-    QTRY_VERIFY_WITH_TIMEOUT([&]() {
-        QProcess check;
-        check.start(tmuxPath,
-                    {QStringLiteral("-S"),
-                     ctx.socketPath,
-                     QStringLiteral("list-panes"),
-                     QStringLiteral("-t"),
-                     ctx.sessionName,
-                     QStringLiteral("-F"),
-                     QStringLiteral("#{pane_width} #{pane_height}")});
-        check.waitForFinished(3000);
-        QStringList paneLines = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (paneLines.size() != 2) return false;
-        QStringList pane0 = paneLines[0].split(QLatin1Char(' '));
-        QStringList pane1 = paneLines[1].split(QLatin1Char(' '));
-        if (pane0.size() != 2 || pane1.size() != 2) return false;
-        int w0 = pane0[0].toInt();
-        int h0 = pane0[1].toInt();
-        int w1 = pane1[0].toInt();
-        int h1 = pane1[1].toInt();
-        if (w0 <= w1)
-            return false; // left must be wider after 3:1 resize
-        // Ratio within 10% of 3:1, both panes same height (sibling in HSplit).
-        double ratio = double(w0) / double(w1);
-        return ratio > 2.7 && ratio < 3.3 && h0 == h1;
-    }(), 10000);
+    QString lastTmuxOutput;
+    int lastW0 = -1, lastH0 = -1, lastW1 = -1, lastH1 = -1;
+    double lastRatio = -1.0;
+    QTRY_VERIFY2_WITH_TIMEOUT(
+        [&]() {
+            QProcess check;
+            check.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_width} #{pane_height}")});
+            check.waitForFinished(3000);
+            lastTmuxOutput = QString::fromUtf8(check.readAllStandardOutput()).trimmed();
+            QStringList paneLines = lastTmuxOutput.split(QLatin1Char('\n'));
+            if (paneLines.size() != 2)
+                return false;
+            QStringList pane0 = paneLines[0].split(QLatin1Char(' '));
+            QStringList pane1 = paneLines[1].split(QLatin1Char(' '));
+            if (pane0.size() != 2 || pane1.size() != 2)
+                return false;
+            lastW0 = pane0[0].toInt();
+            lastH0 = pane0[1].toInt();
+            lastW1 = pane1[0].toInt();
+            lastH1 = pane1[1].toInt();
+            if (lastW0 <= lastW1)
+                return false; // left must be wider after 3:1 resize
+            // Ratio within 10% of 3:1, both panes same height (sibling in HSplit).
+            lastRatio = double(lastW0) / double(lastW1);
+            return lastRatio > 2.7 && lastRatio < 3.3 && lastH0 == lastH1;
+        }(),
+        qPrintable(QStringLiteral("tmux list-panes: [%1] | parsed w0=%2 h0=%3 w1=%4 h1=%5 ratio=%6 | leftDisplay->columns()=%7 rightDisplay->columns()=%8 "
+                                  "newLeft=%9 newRight=%10 total=%11")
+                       .arg(lastTmuxOutput)
+                       .arg(lastW0)
+                       .arg(lastH0)
+                       .arg(lastW1)
+                       .arg(lastH1)
+                       .arg(lastRatio)
+                       .arg(leftDisplay->columns())
+                       .arg(rightDisplay->columns())
+                       .arg(newLeft)
+                       .arg(newRight)
+                       .arg(total)),
+        10000);
 
     // Also verify tmux window size matches
     // Verify tmux window size is internally consistent: for an HSplit with
@@ -1140,27 +1161,41 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     // shrink feedback loop across focus swaps). The two values differ by
     // ~1 cell per pane, so an equality check is structurally wrong. Instead,
     // verify the splitter's 3:1 request propagated to tmux.
-    QTRY_VERIFY_WITH_TIMEOUT([&]() {
-        QProcess check;
-        check.start(tmuxPath,
-                    {QStringLiteral("-S"),
-                     ctx.socketPath,
-                     QStringLiteral("list-panes"),
-                     QStringLiteral("-t"),
-                     ctx.sessionName,
-                     QStringLiteral("-F"),
-                     QStringLiteral("#{pane_width}")});
-        check.waitForFinished(3000);
-        QStringList paneWidths = QString::fromUtf8(check.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
-        if (paneWidths.size() != 2) return false;
-        int left = paneWidths[0].toInt();
-        int right = paneWidths[1].toInt();
-        if (left <= right)
-            return false; // left must be the wider one (we set 3:1)
-        // Ratio within 10% of 3:1.
-        double ratio = double(left) / double(right);
-        return ratio > 2.7 && ratio < 3.3;
-    }(), 10000);
+    QString lastPtyTmuxOutput;
+    int lastPtyLeft = -1, lastPtyRight = -1;
+    double lastPtyRatio = -1.0;
+    QTRY_VERIFY2_WITH_TIMEOUT(
+        [&]() {
+            QProcess check;
+            check.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_width}")});
+            check.waitForFinished(3000);
+            lastPtyTmuxOutput = QString::fromUtf8(check.readAllStandardOutput()).trimmed();
+            QStringList paneWidths = lastPtyTmuxOutput.split(QLatin1Char('\n'));
+            if (paneWidths.size() != 2)
+                return false;
+            lastPtyLeft = paneWidths[0].toInt();
+            lastPtyRight = paneWidths[1].toInt();
+            if (lastPtyLeft <= lastPtyRight)
+                return false; // left must be the wider one (we set 3:1)
+            // Ratio within 10% of 3:1.
+            lastPtyRatio = double(lastPtyLeft) / double(lastPtyRight);
+            return lastPtyRatio > 2.7 && lastPtyRatio < 3.3;
+        }(),
+        qPrintable(QStringLiteral("tmux list-panes: [%1] | parsed left=%2 right=%3 ratio=%4 | expectedLeftCols=%5 expectedRightCols=%6")
+                       .arg(lastPtyTmuxOutput)
+                       .arg(lastPtyLeft)
+                       .arg(lastPtyRight)
+                       .arg(lastPtyRatio)
+                       .arg(expectedLeftCols)
+                       .arg(expectedRightCols)),
+        10000);
 
     // 5. Run 'stty size' in each pane and verify the PTY dimensions match the
     // sizes tmux reports — not TerminalDisplay::lines/columns(), which are
@@ -1337,19 +1372,35 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
             heights.append(s.toInt());
         return heights;
     };
-    QTRY_VERIFY_WITH_TIMEOUT(
+    QList<int> lastNestedHeights;
+    int lastNestedTopH = -1, lastNestedBotH = -1;
+    double lastNestedRatio = -1.0;
+    QTRY_VERIFY2_WITH_TIMEOUT(
         [&]() {
-            QList<int> heights = readPaneHeights();
-            if (heights.size() != 3)
+            lastNestedHeights = readPaneHeights();
+            if (lastNestedHeights.size() != 3)
                 return false;
             // Pane order: %0 (left), %1 (top-right), %2 (bottom-right)
-            int topH = heights[1];
-            int botH = heights[2];
-            if (topH <= botH)
+            lastNestedTopH = lastNestedHeights[1];
+            lastNestedBotH = lastNestedHeights[2];
+            if (lastNestedTopH <= lastNestedBotH)
                 return false; // top must be taller (we set 3:1)
-            double ratio = double(topH) / double(botH);
-            return ratio > 2.7 && ratio < 3.3;
+            lastNestedRatio = double(lastNestedTopH) / double(lastNestedBotH);
+            return lastNestedRatio > 2.7 && lastNestedRatio < 3.3;
         }(),
+        qPrintable(QStringLiteral("tmux pane heights: size=%1 h[0]=%2 h[1]=%3 h[2]=%4 | topH=%5 botH=%6 ratio=%7 | topRightDisplay->lines()=%8 "
+                                  "bottomRightDisplay->lines()=%9 newTop=%10 newBottom=%11")
+                       .arg(lastNestedHeights.size())
+                       .arg(lastNestedHeights.size() > 0 ? lastNestedHeights[0] : -1)
+                       .arg(lastNestedHeights.size() > 1 ? lastNestedHeights[1] : -1)
+                       .arg(lastNestedHeights.size() > 2 ? lastNestedHeights[2] : -1)
+                       .arg(lastNestedTopH)
+                       .arg(lastNestedBotH)
+                       .arg(lastNestedRatio)
+                       .arg(topRightDisplay->lines())
+                       .arg(bottomRightDisplay->lines())
+                       .arg(newTop)
+                       .arg(newBottom)),
         10000);
 
     // 6. Run 'stty size' in each nested pane and verify the pty size reflects
