@@ -35,6 +35,7 @@ jobs:
                 kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
                 ktextwidgets kwidgetsaddons kservice ki18n \
                 icu tmux util-linux \
+                ttf-dejavu \
                 xorg-server-xvfb xorg-xdpyinfo xorg-twm xdotool dbus
 
               cmake -B build -G Ninja -DBUILD_TESTING=ON
