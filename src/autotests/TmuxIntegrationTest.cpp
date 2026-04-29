@@ -1220,6 +1220,7 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     const int rightW = p1[0].toInt();
     const int rightH = p1[1].toInt();
 
+    QString lastSttyOutput;
     auto runSttyAndCheck = [&](const QString &paneTarget, int expectedLines, int expectedCols) -> bool {
         // Send stty size
         QProcess sendKeys;
@@ -1239,12 +1240,35 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
         capture.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("capture-pane"), QStringLiteral("-t"), paneTarget, QStringLiteral("-p")});
         capture.waitForFinished(3000);
         QString output = QString::fromUtf8(capture.readAllStandardOutput());
+        lastSttyOutput = output;
         QString expected = QString::number(expectedLines) + QStringLiteral(" ") + QString::number(expectedCols);
         return output.contains(expected);
     };
 
-    QTRY_VERIFY_WITH_TIMEOUT(runSttyAndCheck(ctx.sessionName + QStringLiteral(":0.0"), leftH, leftW), 10000);
-    QTRY_VERIFY_WITH_TIMEOUT(runSttyAndCheck(ctx.sessionName + QStringLiteral(":0.1"), rightH, rightW), 10000);
+    QTRY_VERIFY2_WITH_TIMEOUT(
+        runSttyAndCheck(ctx.sessionName + QStringLiteral(":0.0"), leftH, leftW),
+        qPrintable(
+            QStringLiteral("pane 0 stty mismatch: expected '%1 %2' | tmux list-panes leftW=%3 leftH=%4 rightW=%5 rightH=%6 | last capture-pane output: [%7]")
+                .arg(leftH)
+                .arg(leftW)
+                .arg(leftW)
+                .arg(leftH)
+                .arg(rightW)
+                .arg(rightH)
+                .arg(lastSttyOutput)),
+        10000);
+    QTRY_VERIFY2_WITH_TIMEOUT(
+        runSttyAndCheck(ctx.sessionName + QStringLiteral(":0.1"), rightH, rightW),
+        qPrintable(
+            QStringLiteral("pane 1 stty mismatch: expected '%1 %2' | tmux list-panes leftW=%3 leftH=%4 rightW=%5 rightH=%6 | last capture-pane output: [%7]")
+                .arg(rightH)
+                .arg(rightW)
+                .arg(leftW)
+                .arg(leftH)
+                .arg(rightW)
+                .arg(rightH)
+                .arg(lastSttyOutput)),
+        10000);
 
     // Wait for any pending callbacks
     QTest::qWait(500);
