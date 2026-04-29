@@ -62,7 +62,12 @@ while true; do
         printf '%s %s\n' "$ROWS" "$COLS" >"$size_file" 2>/dev/null || true
     fi
 
-    out=""
+    # \033[2J wipes the visible screen each frame so cells the fixture
+    # doesn't itself rewrite this iteration (e.g. the bottom-right cell
+    # the last row deliberately leaves blank, or content that belonged to
+    # a now-truncated row after a resize-shrink) read back as default
+    # fill rather than as residue from a larger previous pane size.
+    out="${ESC}[2J"
     for ((row=0; row<ROWS; row++)); do
         ch="${chars[row % nchars]}"
         printf -v pad '%*s' "$COLS" ''
