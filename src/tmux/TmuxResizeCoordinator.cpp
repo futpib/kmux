@@ -292,6 +292,14 @@ void TmuxResizeCoordinator::sendClientSize()
         // which with two clients creates a shrink feedback loop on each
         // focus swap. The page size is the client's true capacity and
         // mirrors what constrainSplitterToLayout compares against.
+        //
+        // From the page size we still must subtract the per-pane chrome
+        // (margin + scrollbar + highlight-scrolled gutter horizontally;
+        // margin + header bar vertically). Without that subtraction we tell
+        // tmux we have N more columns than the cell grid actually renders,
+        // and tmux pushes a TUI's full-row write through a viewport that's
+        // missing those last cells — which the renderer wraps onto the
+        // next row, scrolling correct content off the top.
         auto displays = windowSplitter->findChildren<TerminalDisplay *>();
         if (displays.isEmpty()) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: no displays for windowId=" << windowId;
@@ -306,11 +314,19 @@ void TmuxResizeCoordinator::sendClientSize()
         }
 
         QSize pageSize = page->size();
-        int totalCols = qBound(1, pageSize.width() / fontWidth, 1023);
-        int totalLines = qMax(1, pageSize.height() / fontHeight);
+        QSize chrome = td->cellChromeSize();
+        // TODO: in a multi-pane window each pane carries its own chrome and
+        // every splitter handle steals a few more pixels — a correct
+        // computation would walk the splitter tree. For the single-pane
+        // case (and any layout where the per-axis pane count is 1) this
+        // single chrome subtraction matches the renderable cell grid.
+        int availWidth = qMax(0, pageSize.width() - chrome.width());
+        int availHeight = qMax(0, pageSize.height() - chrome.height());
+        int totalCols = qBound(1, availWidth / fontWidth, 1023);
+        int totalLines = qMax(1, availHeight / fontHeight);
 
-        qCDebug(KonsoleTmuxResize) << "  computeSize page: windowId=" << windowId << "pageSize=" << pageSize << "fontW=" << fontWidth << "fontH=" << fontHeight
-                                   << "→ cols=" << totalCols << "lines=" << totalLines;
+        qCDebug(KonsoleTmuxResize) << "  computeSize page: windowId=" << windowId << "pageSize=" << pageSize << "chrome=" << chrome << "fontW=" << fontWidth
+                                   << "fontH=" << fontHeight << "→ cols=" << totalCols << "lines=" << totalLines;
 
         if (totalCols <= 0 || totalLines <= 0) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: skipping windowId=" << windowId << "totalSize=" << QSize(totalCols, totalLines) << "(non-positive)";

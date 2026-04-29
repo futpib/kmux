@@ -1278,6 +1278,37 @@ QSize TerminalDisplay::sizeHint() const
     return _size;
 }
 
+QSize TerminalDisplay::cellChromeSize() const
+{
+    // Mirrors the subtractions calcGeometry() applies to contentsRect() to
+    // derive _contentRect: inner margin on every side, the highlight-scrolled
+    // gutter when enabled, the scroll bar when it has a non-hidden position,
+    // and the header bar when visible. QWidget::isHidden() on the scroll bar
+    // is unreliable here — Qt may report it hidden until the parent has been
+    // shown for the first time, but calcGeometry() still reserves its width.
+    int hChrome = _margin * 2;
+    int vChrome = _margin * 2;
+
+    if (_scrollBar) {
+        if (_scrollBar->highlightScrolledLines().isEnabled()) {
+            hChrome += _scrollBar->highlightScrolledLines().HIGHLIGHT_SCROLLED_LINES_WIDTH * 2;
+        }
+        if (_scrollBar->scrollBarPosition() != Enum::ScrollBarHidden) {
+            int sbw = _scrollBar->width();
+            if (sbw <= 0) {
+                sbw = _scrollBar->sizeHint().width();
+            }
+            hChrome += sbw;
+        }
+    }
+
+    if (_headerBar && _headerBar->isVisible()) {
+        vChrome += _headerBar->height();
+    }
+
+    return QSize(hChrome, vChrome);
+}
+
 // showEvent and hideEvent are reimplemented here so that it appears to other classes that the
 // display has been resized when the display is hidden or shown.
 //

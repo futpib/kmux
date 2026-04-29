@@ -249,6 +249,19 @@ public:
     {
         return _contentRect;
     }
+
+    /**
+     * Pixels of widget chrome surrounding the cell grid: the inner margin
+     * on every side, the vertical scroll bar, the highlight-scrolled-lines
+     * gutter (when enabled), and the header bar (when visible).
+     *
+     * Intended for callers (TmuxResizeCoordinator) that need to derive
+     * "how many cells fit in this many pixels" without going through the
+     * widget's current QSize — which can be transiently constrained or
+     * stretched and would mislead the answer.
+     */
+    QSize cellChromeSize() const;
+
     bool openLinksByDirectClick() const
     {
         return _openLinksByDirectClick;

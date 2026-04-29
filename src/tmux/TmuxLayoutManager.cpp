@@ -238,9 +238,16 @@ static void constrainSplitterToLayout(ViewSplitter *splitter, const TmuxLayoutNo
         return;
     }
 
-    // Compute the pixel size the layout needs
-    int layoutPixelWidth = layout.width * fontWidth;
-    int layoutPixelHeight = layout.height * fontHeight;
+    // Compute the pixel size the layout needs. Add chrome (margin, scroll bar,
+    // header, hsl gutter) so the display has enough pixels to render every
+    // layout cell — without that, the splitter is pinned to layout*font, the
+    // display fills the splitter, contentRect = splitter - chrome, and the
+    // cells the display can actually paint shrink to layout - ceil(chrome/
+    // font). sendClientSize then re-advertises the full layout, layout-change
+    // pins again, the display loses another row/col, and so on.
+    QSize chrome = td->cellChromeSize();
+    int layoutPixelWidth = layout.width * fontWidth + chrome.width();
+    int layoutPixelHeight = layout.height * fontHeight + chrome.height();
 
     // Compare with the page's available space
     QSize available = page->size();
