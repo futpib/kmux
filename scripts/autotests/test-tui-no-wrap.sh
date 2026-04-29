@@ -93,7 +93,13 @@ echo "=== launching kmux to attach to existing session ==="
 # cols × one row — too degenerate for the wrap assertion to be meaningful.
 # 1100x700 fits inside the 1280x720 Xvfb screen lib.sh provisions and gives
 # a comfortable ~150x45 pane.
-"$KMUX" -S "$SOCKET" -s "$SESSION" -geometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
+#
+# konsole.tmux.* debug logging produces the refresh-client -C lines and
+# %layout-change events so a failure dump (below) can show what size kmux
+# advertised vs what tmux echoed back.
+QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true' \
+    QT_ASSUME_STDERR_HAS_CONSOLE=1 \
+    "$KMUX" -S "$SOCKET" -s "$SESSION" -geometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
 KMUX_PID=$!
 
 cleanup_kmux() {
@@ -122,9 +128,16 @@ done
 echo "OK: kmux window appeared (winid=$WIN)"
 
 # Allow kmux to negotiate pane size with tmux and the fixture to redraw at
-# the new dimensions. Two seconds is plenty given the fixture redraws at 10Hz
-# and tmux propagates resize within a frame or two.
-sleep 2
+# the new dimensions. Sample the fixture's size and tmux's pane size every
+# 200ms so a failure dump can show whether they converge or oscillate.
+echo "--- fixture size (rows cols) | tmux pane (cols rows) ---"
+for _ in $(seq 1 10); do
+    sleep 0.2
+    fix_sample="(missing)"
+    [[ -e "$SIZE_FILE" ]] && fix_sample=$(cat "$SIZE_FILE")
+    tmux_sample=$(tmux -S "$SOCKET" display-message -p -t "$SESSION" '#{pane_width} #{pane_height}' 2>/dev/null || echo "(error)")
+    printf '  fixture=%-10s tmux=%s\n' "$fix_sample" "$tmux_sample"
+done
 
 # Read the size the FIXTURE itself observed via stty, not tmux's
 # `display-message #{pane_width}` — those can differ. The fixture's stty is
@@ -239,7 +252,50 @@ for ((row=0; row<n_to_check; row++)); do
 done
 
 if (( fail )); then
-    echo "see $LOGDIR/kmux.log for kmux output" >&2
+    echo "" >&2
+    echo "===== diagnostics =====" >&2
+    echo "" >&2
+    echo "--- tmux display-message ---" >&2
+    tmux -S "$SOCKET" display-message -p -t "$SESSION" \
+        'pane_width=#{pane_width} pane_height=#{pane_height} window_width=#{window_width} window_height=#{window_height} client_width=#{client_width} client_height=#{client_height}' >&2 || true
+    echo "" >&2
+    echo "--- tmux list-panes ---" >&2
+    tmux -S "$SOCKET" list-panes -t "$SESSION" \
+        -F '#{pane_id} #{pane_width}x#{pane_height} active=#{pane_active}' >&2 || true
+    echo "" >&2
+    echo "--- tmux list-clients ---" >&2
+    tmux -S "$SOCKET" list-clients >&2 || true
+    echo "" >&2
+    echo "--- fixture's last-written size (TUI_SIZE_FILE) ---" >&2
+    cat "$SIZE_FILE" >&2 || true
+    echo "" >&2
+    echo "--- kmux DBus row inventory ---" >&2
+    {
+        echo "kmux returned ${#LINES[@]} lines; fixture wrote $FIX_ROWS"
+        if (( ${#LINES[@]} > 0 )); then
+            echo "row 0: len=${#LINES[0]} content='${LINES[0]:0:30}...'"
+            mid=$(( ${#LINES[@]} / 2 ))
+            echo "row $mid: len=${#LINES[$mid]} content='${LINES[$mid]:0:30}...'"
+            last_idx=$(( ${#LINES[@]} - 1 ))
+            echo "row $last_idx: len=${#LINES[$last_idx]} content='${LINES[$last_idx]:0:30}...'"
+            # Find the longest line — that's kmux's max rendered width.
+            max_len=0
+            for line in "${LINES[@]}"; do
+                if (( ${#line} > max_len )); then max_len=${#line}; fi
+            done
+            echo "max line length seen: $max_len"
+        fi
+    } >&2
+    echo "" >&2
+    echo "--- konsole.tmux.resize log lines (the size kmux advertised) ---" >&2
+    grep -aE 'konsole\.tmux\.resize' "$LOGDIR/kmux.log" \
+        | tail -40 >&2 || true
+    echo "" >&2
+    echo "--- bridge: refresh-client / layout-change traffic ---" >&2
+    grep -aE 'refresh-client|%layout-change|%window-add|%session-changed' "$LOGDIR/kmux.log" \
+        | tail -20 >&2 || true
+    echo "" >&2
+    echo "(full kmux output: $LOGDIR/kmux.log)" >&2
     exit 1
 fi
 
