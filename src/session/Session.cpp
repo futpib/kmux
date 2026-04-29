@@ -2171,6 +2171,44 @@ QStringList Session::getDisplayedTextList(int startLineOffset, int endLineOffset
     return list;
 }
 
+QStringList Session::getCurrentScreenLines()
+{
+    auto *screen = _views.at(0)->screenWindow()->screen();
+    const int screenLines = screen->getLines();
+    if (screenLines <= 0) {
+        return QStringList();
+    }
+
+    // The screen image lives at buffer indices [histLines, histLines+screenLines).
+    // ScreenWindow's currentLine cursor can drift into scrollback after a
+    // tmux-driven resize reflows old content; bypassing it here gives the
+    // live cell grid every call, which is the contract this method's
+    // tests need.
+    const int histLines = screen->getHistLines();
+    const int firstScreenLine = histLines;
+    const int lastScreenLine = histLines + screenLines - 1;
+
+    QStringList list;
+    QTextStream stream;
+    PlainTextDecoder decoder;
+
+    for (int currLine = firstScreenLine; currLine <= lastScreenLine; ++currLine) {
+        QString lineContent;
+        stream.setString(&lineContent, QIODevice::ReadWrite);
+        decoder.begin(&stream);
+        screen->writeLinesToStream(&decoder, currLine, currLine);
+        decoder.end();
+
+        if (!lineContent.isEmpty() && lineContent.back() == QLatin1Char('\n')) {
+            lineContent.removeLast();
+        }
+
+        list.append(lineContent);
+    }
+
+    return list;
+}
+
 int Session::foregroundProcessId()
 {
     int pid;

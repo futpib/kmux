@@ -846,6 +846,23 @@ public Q_SLOTS:
     Q_SCRIPTABLE QStringList getDisplayedTextList(int startLineOffset, int endLineOffset);
 
     /**
+     * Returns the current on-screen image as one QString per visible row.
+     *
+     * Unlike getAllDisplayedTextList, this reads the live screen lines
+     * directly (lines [histLines, histLines + screenLines)) rather than
+     * walking through ScreenWindow::currentLine. After a tmux-driven
+     * resize the screen window can sit in scrollback while the actual
+     * pane content lives on the screen image; tests that want a per-
+     * pane "what is kmux painting right now" need this view, not the
+     * scrolled-buffer view.
+     *
+     * The number of returned rows equals Screen::getLines() (the
+     * emulator's cell-grid height), so the result also tells callers
+     * what kmux thinks the pane height is.
+     */
+    Q_SCRIPTABLE QStringList getCurrentScreenLines();
+
+    /**
      * DBus slot to get an XDG activation token.
      * Will check if the passed cookieForRequest is the m_activationCookie one for safety.
      * Will try to generate a token and pass it back.
