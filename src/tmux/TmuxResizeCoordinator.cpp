@@ -28,6 +28,61 @@ Q_LOGGING_CATEGORY(KonsoleTmuxResize, "konsole.tmux.resize", QtWarningMsg)
 namespace Konsole
 {
 
+// Cells the widget tree could draw if tmux gave it the chance, derived
+// from each leaf's current pixel size minus chrome divided by font. The
+// caller takes max() of this and the layout's already-in-use cell count
+// (TmuxLayoutManager::buildLayoutNode), so:
+//
+//   - On a fresh attach the pixel capacity wins over a tmux session that
+//     spawned at the default 80x24, telling tmux to grow the pane to fit
+//     kmux's window.
+//   - In a settled multi-pane window the layout cells win (the pixel
+//     walk is fragile in offscreen tests when QSplitter children drift a
+//     pixel during a re-layout), giving stable refresh-client values.
+//
+// Cross-axis composition takes max — tmux's HSplit forces all children
+// to the parent's height (and VSplit to the parent's width), so the
+// parent's true capacity is the larger of any child along that axis.
+struct PaneCells {
+    int cols;
+    int rows;
+};
+
+static PaneCells maxCellsForWidget(QWidget *w)
+{
+    if (auto *td = qobject_cast<TerminalDisplay *>(w)) {
+        int fontW = td->terminalFont()->fontWidth();
+        int fontH = td->terminalFont()->fontHeight();
+        if (fontW <= 0 || fontH <= 0) {
+            return {0, 0};
+        }
+        QSize size = td->size();
+        QSize chrome = td->cellChromeSize();
+        int cols = qMax(0, (size.width() - chrome.width()) / fontW);
+        int rows = qMax(0, (size.height() - chrome.height()) / fontH);
+        return {cols, rows};
+    }
+    auto *splitter = qobject_cast<ViewSplitter *>(w);
+    if (!splitter || splitter->count() == 0) {
+        return {0, 0};
+    }
+    bool horizontal = splitter->orientation() == Qt::Horizontal;
+    int n = splitter->count();
+    int sumCols = 0, sumRows = 0;
+    int maxCols = 0, maxRows = 0;
+    for (int i = 0; i < n; ++i) {
+        PaneCells child = maxCellsForWidget(splitter->widget(i));
+        sumCols += child.cols;
+        sumRows += child.rows;
+        maxCols = qMax(maxCols, child.cols);
+        maxRows = qMax(maxRows, child.rows);
+    }
+    if (horizontal) {
+        return {sumCols + (n - 1), maxRows};
+    }
+    return {maxCols, sumRows + (n - 1)};
+}
+
 static void setSubtreeHeight(TmuxLayoutNode &node, int height)
 {
     node.height = height;
@@ -284,49 +339,54 @@ void TmuxResizeCoordinator::sendClientSize()
             continue;
         }
 
-        // Measure the page (the full tab area), not the splitter or pane
-        // content rectangles. When this client is inactive the splitter is
-        // pinned by constrainSplitterToLayout to a sub-area of the page, and
-        // per-pane contentRect excludes TerminalDisplay's inner margins — so
-        // walking the pane tree under-reports by ~1 col per layout apply,
-        // which with two clients creates a shrink feedback loop on each
-        // focus swap. The page size is the client's true capacity and
-        // mirrors what constrainSplitterToLayout compares against.
+        // Two views of "what does this client want as a window size?":
         //
-        // From the page size we still must subtract the per-pane chrome
-        // (margin + scrollbar + highlight-scrolled gutter horizontally;
-        // margin + header bar vertically). Without that subtraction we tell
-        // tmux we have N more columns than the cell grid actually renders,
-        // and tmux pushes a TUI's full-row write through a viewport that's
-        // missing those last cells — which the renderer wraps onto the
-        // next row, scrolling correct content off the top.
+        //   layoutCells = TmuxLayoutManager::buildLayoutNode(...)
+        //     The cells already in use — display->columns()/lines() summed
+        //     up the splitter tree the same way select-layout encodes them.
+        //     Stable across calls (driven by tmux's setForcedSize), so
+        //     repeated sendClientSize calls don't drift a pane by a cell
+        //     and desync the pty from tmux's pane_width.
+        //
+        //   pixelCells = maxCellsForWidget(...)
+        //     The cells we *could* draw if tmux let us, derived from each
+        //     leaf's pixel size minus chrome. Bigger than layoutCells when
+        //     kmux's pixels exceed what tmux currently allocates (initial
+        //     attach where tmux's pane is still its default 28 cols, or
+        //     after the user enlarges the kmux window).
+        //
+        // Use max(layoutCells, pixelCells) per axis so:
+        //
+        //   - A freshly-attached pane grows to the kmux window instead of
+        //     staying pinned at tmux's default and scrolling recovered
+        //     content off-screen.
+        //   - A settled multi-pane layout keeps emitting the same number
+        //     each refresh, even when QSplitter shifts a child a pixel
+        //     during a re-layout — which is what makes the per-pane chrome
+        //     accounting safe to deploy.
+        //
+        // Both walks compose per-pane (sum + n-1 for separators on the
+        // split axis, max on the cross axis) — that's what makes multi-
+        // pane work: each extra pane carries its own chrome, plus a Qt
+        // splitter handle eats more pixels, and telling tmux N cols when
+        // only N - K*chrome - handles fit is the multi-pane wrap bug.
+        // Tmux divides by the layout, the rightmost cells fall outside
+        // what kmux can render, and a TUI's full-row write wraps onto
+        // the next row, scrolling correct content off the top.
         auto displays = windowSplitter->findChildren<TerminalDisplay *>();
         if (displays.isEmpty()) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: no displays for windowId=" << windowId;
             continue;
         }
-        auto *td = displays.first();
-        int fontWidth = td->terminalFont()->fontWidth();
-        int fontHeight = td->terminalFont()->fontHeight();
-        if (fontWidth <= 0 || fontHeight <= 0) {
-            qCDebug(KonsoleTmuxResize) << "sendClientSize: bad font metrics for windowId=" << windowId << "fontW=" << fontWidth << "fontH=" << fontHeight;
-            continue;
-        }
 
-        QSize pageSize = page->size();
-        QSize chrome = td->cellChromeSize();
-        // TODO: in a multi-pane window each pane carries its own chrome and
-        // every splitter handle steals a few more pixels — a correct
-        // computation would walk the splitter tree. For the single-pane
-        // case (and any layout where the per-axis pane count is 1) this
-        // single chrome subtraction matches the renderable cell grid.
-        int availWidth = qMax(0, pageSize.width() - chrome.width());
-        int availHeight = qMax(0, pageSize.height() - chrome.height());
-        int totalCols = qBound(1, availWidth / fontWidth, 1023);
-        int totalLines = qMax(1, availHeight / fontHeight);
+        TmuxLayoutNode node = TmuxLayoutManager::buildLayoutNode(windowSplitter, _paneManager);
+        PaneCells pixelCells = maxCellsForWidget(windowSplitter);
+        int totalCols = qBound(1, qMax(node.width, pixelCells.cols), 1023);
+        int totalLines = qMax(1, qMax(node.height, pixelCells.rows));
 
-        qCDebug(KonsoleTmuxResize) << "  computeSize page: windowId=" << windowId << "pageSize=" << pageSize << "chrome=" << chrome << "fontW=" << fontWidth
-                                   << "fontH=" << fontHeight << "→ cols=" << totalCols << "lines=" << totalLines;
+        qCDebug(KonsoleTmuxResize) << "  computeSize tree: windowId=" << windowId << "pageSize=" << page->size() << "splitterSize=" << windowSplitter->size()
+                                   << "layoutCells=" << QSize(node.width, node.height) << "pixelCells=" << QSize(pixelCells.cols, pixelCells.rows)
+                                   << "→ cols=" << totalCols << "lines=" << totalLines;
 
         if (totalCols <= 0 || totalLines <= 0) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: skipping windowId=" << windowId << "totalSize=" << QSize(totalCols, totalLines) << "(non-positive)";
