@@ -97,7 +97,7 @@ kmux_test_setup() {
 
     local required=(xdotool)
     if [[ "${USE_XVFB:-0}" == "1" ]]; then
-        required+=(Xvfb dbus-launch xdpyinfo)
+        required+=(Xvfb dbus-launch)
     fi
     for t in "${required[@]}"; do
         command -v "$t" >/dev/null || kmux_test_bail 2 "$t not installed"
@@ -127,8 +127,11 @@ kmux_test_setup() {
         Xvfb "$display" -screen 0 1280x720x24 -nolisten tcp >"$LOGDIR/xvfb.log" 2>&1 &
         _KMUX_TEST_XVFB_PID=$!
         export DISPLAY="$display"
+        # Poll until the Xvfb socket is up. Probe via xdotool (already a
+        # required dependency) rather than xdpyinfo, so the test scaffold
+        # has one fewer xorg-* package to pull in.
         for _ in $(seq 1 50); do
-            xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
+            xdotool getdisplaygeometry >/dev/null 2>&1 && break
             sleep 0.1
         done
         eval "$(dbus-launch --sh-syntax)"
