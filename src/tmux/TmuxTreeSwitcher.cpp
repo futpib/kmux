@@ -288,6 +288,14 @@ bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
     }
 
     if (event->type() == QEvent::FocusOut) {
+        auto *focusEvent = static_cast<QFocusEvent *>(event);
+        // Programmatic focus changes (e.g. TmuxController::focusPane refocusing
+        // the active pane after a %layout-change) use Qt::OtherFocusReason and
+        // must not dismiss the switcher — otherwise a stray tmux notification
+        // tears the popup down underneath the user mid-navigation.
+        if (focusEvent->reason() == Qt::OtherFocusReason) {
+            return QWidget::eventFilter(obj, event);
+        }
         // Defer the close decision to the next event-loop spin so we query the
         // *settled* focus target, not the transient state mid-transition.
         // Checking hasFocus() synchronously on our children races Qt's focus
