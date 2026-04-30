@@ -5631,6 +5631,124 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSessions()
+{
+    // Ctrl+B s should open a TmuxTreeSwitcher in Sessions mode: only the
+    // session rows are visible at the top level, every session is collapsed
+    // (windows/panes hidden) but expandable, and arrow + Enter navigation
+    // switches the controller to the highlighted session.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctxA;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctxA);
+    auto cleanupA = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+    });
+
+    const QString sessionBName = ctxA.sessionName + QStringLiteral("-B");
+    QProcess newSessionB;
+    newSessionB.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctxA.socketPath,
+                       QStringLiteral("new-session"),
+                       QStringLiteral("-d"),
+                       QStringLiteral("-s"),
+                       sessionBName,
+                       QStringLiteral("sleep 60")});
+    QVERIFY(newSessionB.waitForFinished(5000));
+    QCOMPARE(newSessionB.exitCode(), 0);
+    auto cleanupB = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctxA.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), sessionBName});
+        kill.waitForFinished(5000);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    const int initialSessionId = controller->sessionId();
+    QVERIFY(initialSessionId >= 0);
+
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QTest::keyClick(palette, Qt::Key_S);
+
+    // The palette dispatches the QAction via QTimer::singleShot(0), so the
+    // switcher appears on the next event-loop spin.
+    TmuxTreeSwitcher *switcher = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((switcher = attach.mw->findChild<TmuxTreeSwitcher *>()) != nullptr, 5000);
+    QVERIFY(QTest::qWaitForWindowExposed(switcher));
+    QCOMPARE(int(switcher->initialMode()), int(TmuxTreeSwitcher::InitialMode::Sessions));
+
+    // Wait for queryTree to populate both sessions.
+    QAbstractItemModel *model = switcher->treeView()->model();
+    QTRY_COMPARE_WITH_TIMEOUT(model->rowCount(), 2, 10000);
+
+    // Top level holds only sessions, each collapsed in the view but expandable.
+    QModelIndex sessionAIdx;
+    QModelIndex sessionBIdx;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        QModelIndex idx = model->index(i, 0);
+        QCOMPARE(idx.data(TmuxTreeModel::NodeTypeRole).toInt(), int(TmuxTreeModel::SessionNode));
+        QVERIFY2(model->rowCount(idx) > 0, "session row should have window children in the model (expandable)");
+        QVERIFY2(!switcher->treeView()->isExpanded(idx), "session row should be collapsed initially");
+        if (idx.data(TmuxTreeModel::IdRole).toInt() == initialSessionId) {
+            sessionAIdx = idx;
+        } else {
+            sessionBIdx = idx;
+        }
+    }
+    QVERIFY(sessionAIdx.isValid());
+    QVERIFY(sessionBIdx.isValid());
+
+    // The active session is preselected at the SessionNode level so arrow
+    // keys move between sessions, not into the active session's panes.
+    QModelIndex preselected = switcher->treeView()->currentIndex();
+    QCOMPARE(preselected.data(TmuxTreeModel::NodeTypeRole).toInt(), int(TmuxTreeModel::SessionNode));
+    QCOMPARE(preselected.data(TmuxTreeModel::IdRole).toInt(), initialSessionId);
+
+    // The switcher routes typing through its QLineEdit search bar, which
+    // forwards arrow keys to the tree view via an event filter — that is the
+    // path a real keystroke would take, so we drive keys through it.
+    auto *searchInput = switcher->findChild<QLineEdit *>();
+    QVERIFY(searchInput);
+
+    // Right expands the current session, Left collapses it again — the user
+    // can drill into windows/panes if they want, the collapse is just the
+    // default.
+    QTest::keyClick(searchInput, Qt::Key_Right);
+    QTRY_VERIFY_WITH_TIMEOUT(switcher->treeView()->isExpanded(sessionAIdx), 2000);
+    QTest::keyClick(searchInput, Qt::Key_Left);
+    QTRY_VERIFY_WITH_TIMEOUT(!switcher->treeView()->isExpanded(sessionAIdx), 2000);
+
+    // Down moves the selection to the next collapsed session, then Enter
+    // triggers tmux's switch-client to that session.
+    QTest::keyClick(searchInput, Qt::Key_Down);
+    QTRY_COMPARE_WITH_TIMEOUT(switcher->treeView()->currentIndex(), sessionBIdx, 2000);
+    QTest::keyClick(searchInput, Qt::Key_Return);
+
+    const int sessionBId = sessionBIdx.data(TmuxTreeModel::IdRole).toInt();
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionId(), sessionBId, 10000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
 {
     // The palette keeps the raw tmux command ("choose-tree -Zw") in column 1

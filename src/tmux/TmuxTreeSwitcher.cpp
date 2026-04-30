@@ -176,7 +176,23 @@ void TmuxTreeSwitcher::applyInitialExpansion()
 
 void TmuxTreeSwitcher::reselectFirst()
 {
-    // Find the globally active pane: active session → active window → active pane.
+    // Preselect the active row at the depth the user is meant to navigate
+    // first — for Sessions mode the active session, for Windows the active
+    // window, for Panes the active pane. Picking a deeper row would misdirect
+    // arrow keys, but worse, QTreeView::scrollTo() auto-expands every ancestor
+    // of the current index, which would silently undo the
+    // applyInitialExpansion() collapse we just ran.
+    const int targetType = [this] {
+        switch (_initialMode) {
+        case InitialMode::Sessions:
+            return int(TmuxTreeModel::SessionNode);
+        case InitialMode::Windows:
+            return int(TmuxTreeModel::WindowNode);
+        case InitialMode::Panes:
+            return int(TmuxTreeModel::PaneNode);
+        }
+        Q_UNREACHABLE();
+    }();
     auto *m = _proxyModel;
     std::function<QModelIndex(const QModelIndex &, bool)> findActive = [&](const QModelIndex &parent, bool ancestorsActive) -> QModelIndex {
         int rows = m->rowCount(parent);
@@ -185,7 +201,7 @@ void TmuxTreeSwitcher::reselectFirst()
             bool thisActive = idx.data(TmuxTreeModel::IsActiveRole).toBool();
             bool chainActive = ancestorsActive && thisActive;
             int type = idx.data(TmuxTreeModel::NodeTypeRole).toInt();
-            if (chainActive && type == TmuxTreeModel::PaneNode) {
+            if (chainActive && type == targetType) {
                 return idx;
             }
             QModelIndex child = findActive(idx, chainActive);
@@ -196,9 +212,9 @@ void TmuxTreeSwitcher::reselectFirst()
     };
     QModelIndex target = findActive({}, true);
     if (!target.isValid() && m->rowCount() > 0) {
-        // first leaf: descend always to the first child
+        // Fallback: first row at the target depth.
         target = m->index(0, 0);
-        while (m->rowCount(target) > 0) {
+        while (target.isValid() && target.data(TmuxTreeModel::NodeTypeRole).toInt() != targetType && m->rowCount(target) > 0) {
             target = m->index(0, 0, target);
         }
     }
