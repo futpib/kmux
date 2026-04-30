@@ -5281,6 +5281,65 @@ void TmuxIntegrationTest::testDetachFromTmuxAction()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testNewTmuxSessionAction()
+{
+    // Triggering the new-tmux-session action should ask tmux to create a brand
+    // new session on the same server and switch the control client to it. The
+    // server should grow from 1 to 2 sessions and the controller's session id
+    // should change to the newly created one.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        // kill-server tears down whatever sessions the action created on top
+        // of our seed session — we don't know their tmux-assigned names.
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionId() >= 0, 10000);
+    const int initialSessionId = controller->sessionId();
+
+    QAction *newSessionAction = attach.mw->actionCollection()->action(QStringLiteral("new-tmux-session"));
+    QVERIFY2(newSessionAction, "new-tmux-session action not found");
+
+    newSessionAction->trigger();
+
+    // tmux replies with the new session id, the controller issues switch-client,
+    // and tmux follows up with %session-changed — at which point the controller
+    // re-initialises against the new session.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionId() != initialSessionId && controller->sessionId() >= 0, 10000);
+
+    QProcess listSessions;
+    listSessions.start(tmuxPath,
+                       {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions"), QStringLiteral("-F"), QStringLiteral("#{session_id}")});
+    QVERIFY(listSessions.waitForFinished(5000));
+    QCOMPARE(listSessions.exitCode(), 0);
+    const QStringList serverSessions = QString::fromUtf8(listSessions.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(serverSessions.size(), 2);
+
+    delete attach.mw.data();
+}
+
 // Pressing the tmux prefix (default C-b) on the kmux window opens the prefix
 // palette populated from tmux's own `list-keys -T prefix`. The next keystroke
 // resolves to a binding and the raw tmux command is sent back through the

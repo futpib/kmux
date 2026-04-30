@@ -421,6 +421,7 @@ private Q_SLOTS:
     void detachActiveTab();
     void mergeActiveTab();
     void detachFromTmux();
+    void newTmuxSession();
     void showTmuxTreeSwitcher();
     void showTmuxTreeSwitcherSessions();
     void showTmuxTreeSwitcherWindows();

@@ -256,6 +256,12 @@ void ViewManager::setupActions()
     action->setText(i18nc("@action:inmenu", "Detach from tmux Session"));
     connect(action, &QAction::triggered, this, &ViewManager::detachFromTmux);
 
+    action = collection->addAction(QStringLiteral("new-tmux-session"));
+    action->setEnabled(true);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("tab-new")));
+    action->setText(i18nc("@action:inmenu", "New tmux Session"));
+    connect(action, &QAction::triggered, this, &ViewManager::newTmuxSession);
+
     action = collection->addAction(QStringLiteral("tmux-tree-switcher"));
     action->setEnabled(true);
     action->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
@@ -632,6 +638,19 @@ void ViewManager::detachFromTmux()
             ctrl->requestDetach();
         }
     }
+}
+
+void ViewManager::newTmuxSession()
+{
+    Session *activeSession = _pluggedController ? _pluggedController->session().data() : nullptr;
+    if (!activeSession) {
+        return;
+    }
+    auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(activeSession);
+    if (!ctrl) {
+        return;
+    }
+    ctrl->requestNewSession();
 }
 
 namespace

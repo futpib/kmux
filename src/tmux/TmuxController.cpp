@@ -164,6 +164,31 @@ void TmuxController::requestNewWindow(const QString &directory, NewWindowCallbac
     });
 }
 
+void TmuxController::requestNewSession(NewSessionCallback callback)
+{
+    TmuxCommand cmd(QStringLiteral("new-session"));
+    cmd.flag(QStringLiteral("-d")).flag(QStringLiteral("-P")).format(QStringLiteral("#{session_id}"));
+    _gateway->sendCommand(cmd, [this, cb = std::move(callback)](bool success, const QString &response) {
+        int newSessionId = -1;
+        if (success) {
+            const QString trimmed = response.trimmed();
+            if (trimmed.startsWith(QLatin1Char('$'))) {
+                bool ok = false;
+                int id = trimmed.mid(1).toInt(&ok);
+                if (ok) {
+                    newSessionId = id;
+                }
+            }
+        }
+        if (newSessionId >= 0) {
+            requestSwitchSession(newSessionId);
+        }
+        if (cb) {
+            cb(newSessionId);
+        }
+    });
+}
+
 void TmuxController::requestSplitPane(int paneId, Qt::Orientation orientation, const QString &directory)
 {
     QString direction = (orientation == Qt::Horizontal) ? QStringLiteral("-h") : QStringLiteral("-v");

@@ -46,6 +46,12 @@ public:
     // Callback receives the new window id, or -1 on failure.
     using NewWindowCallback = std::function<void(int newWindowId)>;
     void requestNewWindow(const QString &directory = QString(), NewWindowCallback callback = nullptr);
+    // Create a new detached tmux session on the same server and switch the
+    // control client to it. The callback (if provided) receives the new
+    // session id, or -1 on failure — it fires after the switch has been
+    // dispatched but before tmux's %session-changed notification lands.
+    using NewSessionCallback = std::function<void(int newSessionId)>;
+    void requestNewSession(NewSessionCallback callback = nullptr);
     void requestSplitPane(int paneId, Qt::Orientation orientation, const QString &directory = QString());
     void requestClosePane(int paneId);
     void requestCloseWindow(int windowId);
