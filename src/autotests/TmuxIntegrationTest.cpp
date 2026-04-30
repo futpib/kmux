@@ -5340,6 +5340,101 @@ void TmuxIntegrationTest::testNewTmuxSessionAction()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testNewTmuxSessionThenSplitPane()
+{
+    // After new-tmux-session has switched the controller to a freshly created
+    // session, hitting the split-view keyboard shortcut should land the split
+    // in *that* session — not leak back into the seed session. We drive the
+    // shortcut (Ctrl+Shift+( / split-view-left-right) through the real action
+    // collection rather than calling controller->requestSplitPane directly,
+    // because the bug we're guarding against lives in the focus / current-
+    // session lookup that splitView() does on the way to the controller.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        QProcess kill;
+        kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+        kill.waitForFinished(5000);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    // Rename the seed session to "0" so it lex-sorts *before* the auto-named
+    // new session ("1"). This matches what real users see: when kmux launches
+    // without an explicit -s argument, tmux auto-names the seed session "0",
+    // and tmux's `list-panes -a` (used by the controller to rediscover the
+    // active pane after switch-client) iterates sessions in lex order by name.
+    // Without this rename, the seed sorts after "1" and the bug is hidden.
+    {
+        QProcess rename;
+        rename.start(tmuxPath,
+                     {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("rename-session"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("0")});
+        QVERIFY(rename.waitForFinished(5000));
+        QCOMPARE(rename.exitCode(), 0);
+    }
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionId() >= 0, 10000);
+    const int initialSessionId = controller->sessionId();
+
+    QAction *newSessionAction = attach.mw->actionCollection()->action(QStringLiteral("new-tmux-session"));
+    QVERIFY2(newSessionAction, "new-tmux-session action not found");
+    newSessionAction->trigger();
+
+    // Wait for the switch to complete: session id changes, then the controller
+    // re-discovers the active pane on the freshly attached session.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionId() != initialSessionId && controller->sessionId() >= 0, 10000);
+    const int newSessionId = controller->sessionId();
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+
+    QAction *splitAction = attach.mw->actionCollection()->action(QStringLiteral("split-view-left-right"));
+    QVERIFY2(splitAction, "split-view-left-right action not found");
+    splitAction->trigger();
+
+    auto countPanesForSession = [&](int sessionId) {
+        QProcess listPanes;
+        listPanes.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("list-panes"),
+                         QStringLiteral("-s"),
+                         QStringLiteral("-t"),
+                         QStringLiteral("$") + QString::number(sessionId),
+                         QStringLiteral("-F"),
+                         QStringLiteral("#{pane_id}")});
+        if (!listPanes.waitForFinished(5000)) {
+            return -1;
+        }
+        if (listPanes.exitCode() != 0) {
+            return -1;
+        }
+        return static_cast<int>(QString::fromUtf8(listPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts).size());
+    };
+
+    // The split should land in the new session (2 panes), and the seed session
+    // should remain untouched (1 pane).
+    QTRY_COMPARE_WITH_TIMEOUT(countPanesForSession(newSessionId), 2, 10000);
+    QCOMPARE(countPanesForSession(initialSessionId), 1);
+
+    delete attach.mw.data();
+}
+
 // Pressing the tmux prefix (default C-b) on the kmux window opens the prefix
 // palette populated from tmux's own `list-keys -T prefix`. The next keystroke
 // resolves to a binding and the raw tmux command is sent back through the

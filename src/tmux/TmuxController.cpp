@@ -93,41 +93,56 @@ void TmuxController::initialize()
                           });
 
     // Determine the currently active pane — tmux doesn't send an initial
-    // %window-pane-changed on attach, so we have to ask.
-    _gateway->sendCommand(
-        TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(QStringLiteral("#{pane_id} #{pane_active} #{window_active} #{window_id}")),
-        [this](bool success, const QString &response) {
-            if (!success)
-                return;
-            // Find the active pane. If we're restricted to a specific window
-            // (detach-tab flow), pick the active pane within that window
-            // instead — tmux's session-wide active window may be one we've
-            // filtered out, and falling back to such a pane would land
-            // _activePaneId on a hidden window we don't track panes for.
-            const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-            for (const QString &line : lines) {
-                const QStringList parts = line.split(QLatin1Char(' '));
-                if (parts.size() < 4)
-                    continue;
-                bool paneActive = parts[1].toInt() != 0;
-                bool windowActive = parts[2].toInt() != 0;
-                int winId = parts[3].startsWith(QLatin1Char('@')) ? parts[3].mid(1).toInt() : -1;
+    // %window-pane-changed on attach, so we have to ask. Scope to *our*
+    // session: `list-panes -a` orders sessions in lex name order and the
+    // first `pane_active && window_active` row would otherwise land us on a
+    // pane belonging to a sibling session (silently splitting the wrong
+    // session when the user invokes split-view right after switch-client).
+    //
+    // Skip when _sessionId is still -1 — the first initialize() call fires
+    // on the gateway's ready() (first %begin), which arrives before tmux
+    // sends %session-changed. A second initialize() runs from
+    // onSessionChanged() once the id is known and will issue this query.
+    if (_sessionId < 0) {
+        queryPrefixBindings();
+        return;
+    }
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes"))
+                              .flag(QStringLiteral("-s"))
+                              .sessionTarget(_sessionId)
+                              .format(QStringLiteral("#{pane_id} #{pane_active} #{window_active} #{window_id}")),
+                          [this](bool success, const QString &response) {
+                              if (!success)
+                                  return;
+                              // Find the active pane. If we're restricted to a specific window
+                              // (detach-tab flow), pick the active pane within that window
+                              // instead — tmux's session-wide active window may be one we've
+                              // filtered out, and falling back to such a pane would land
+                              // _activePaneId on a hidden window we don't track panes for.
+                              const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                              for (const QString &line : lines) {
+                                  const QStringList parts = line.split(QLatin1Char(' '));
+                                  if (parts.size() < 4)
+                                      continue;
+                                  bool paneActive = parts[1].toInt() != 0;
+                                  bool windowActive = parts[2].toInt() != 0;
+                                  int winId = parts[3].startsWith(QLatin1Char('@')) ? parts[3].mid(1).toInt() : -1;
 
-                bool matches = false;
-                if (_restrictedWindowId >= 0) {
-                    matches = paneActive && winId == _restrictedWindowId;
-                } else {
-                    matches = paneActive && windowActive;
-                }
-                if (matches) {
-                    QString paneStr = parts[0];
-                    if (paneStr.startsWith(QLatin1Char('%'))) {
-                        _activePaneId = paneStr.mid(1).toInt();
-                    }
-                    break;
-                }
-            }
-        });
+                                  bool matches = false;
+                                  if (_restrictedWindowId >= 0) {
+                                      matches = paneActive && winId == _restrictedWindowId;
+                                  } else {
+                                      matches = paneActive && windowActive;
+                                  }
+                                  if (matches) {
+                                      QString paneStr = parts[0];
+                                      if (paneStr.startsWith(QLatin1Char('%'))) {
+                                          _activePaneId = paneStr.mid(1).toInt();
+                                      }
+                                      break;
+                                  }
+                              }
+                          });
 
     queryPrefixBindings();
 }
@@ -274,9 +289,7 @@ void TmuxController::requestSelectPane(int paneId)
 
 void TmuxController::requestSwitchSession(int sessionId)
 {
-    TmuxCommand cmd(QStringLiteral("switch-client"));
-    cmd.flag(QStringLiteral("-t")).arg(QStringLiteral("$") + QString::number(sessionId));
-    _gateway->sendCommand(cmd);
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("switch-client")).sessionTarget(sessionId));
 }
 
 void TmuxController::queryTree(TreeCallback callback)
@@ -288,7 +301,7 @@ void TmuxController::queryTree(TreeCallback callback)
         "#{window_id}\t#{window_name}\t#{window_active}\t"
         "#{pane_id}\t#{pane_title}\t#{pane_active}");
     int currentSessionId = _sessionId;
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-a")).format(fmt),
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(fmt),
                           [callback, currentSessionId](bool success, const QString &response) {
                               QList<SessionDescriptor> sessions;
                               if (!success) {

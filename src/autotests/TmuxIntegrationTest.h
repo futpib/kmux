@@ -86,6 +86,7 @@ private Q_SLOTS:
     void testMergeTabBackPreservesPaneContent();
     void testDetachFromTmuxAction();
     void testNewTmuxSessionAction();
+    void testNewTmuxSessionThenSplitPane();
     void testTreeSwitcherActivePreselected();
     void testTreeSwitcherSwitchesPaneSameWindow();
     void testTreeSwitcherSwitchesPaneDifferentWindow();
