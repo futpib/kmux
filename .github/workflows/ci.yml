@@ -15,6 +15,10 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    # Hard cap so a hung test in CI doesn't burn an Actions minute budget up
+    # to GitHub's 6h job ceiling. Per-test timeouts (ctest --timeout, the
+    # `timeout` wrapper in run-all.sh) are the real fix; this is the backstop.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -40,6 +44,6 @@ jobs:
 
               cmake -B build -G Ninja -DBUILD_TESTING=ON
               cmake --build build
-              QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+              QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure --timeout 300
               USE_XVFB=1 ./scripts/autotests/run-all.sh
             '
