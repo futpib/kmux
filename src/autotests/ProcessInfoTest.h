@@ -26,6 +26,7 @@ private Q_SLOTS:
     void testProcessValidity();
     void testProcessCwd();
     void testProcessNameSpecialChars();
+    void testNullProcessInfoWithExternalPidReadsUserAndArgs();
 
 private:
     std::unique_ptr<ProcessInfo> createProcInfo(const KProcess &proc);

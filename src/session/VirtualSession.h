@@ -31,6 +31,11 @@ public:
     void setExternalProcessName(const QString &name);
     void setExternalCurrentDir(const QString &dir);
     void setExternalPaneTitle(const QString &title);
+    // Bind the underlying NullProcessInfo to a real OS pid so the
+    // existing %u / %B / SSH-argv expansion paths populate from the
+    // kernel. Used by tmux panes, where pane_pid is the shell process
+    // running inside the tmux pane.
+    void setExternalPid(int pid);
 
 protected:
     void run() override;

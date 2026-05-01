@@ -43,6 +43,18 @@ void VirtualSession::setExternalPaneTitle(const QString &title)
     setSessionAttribute(WindowTitle, title);
 }
 
+void VirtualSession::setExternalPid(int pid)
+{
+    auto *nullInfo = static_cast<NullProcessInfo *>(_sessionProcessInfo);
+    bool ok = false;
+    const int currentPid = nullInfo->pid(&ok);
+    if (ok && currentPid == pid) {
+        return;
+    }
+    nullInfo->setExternalPid(pid);
+    Q_EMIT sessionAttributeChanged();
+}
+
 void VirtualSession::run()
 {
     // No-op: virtual sessions have no PTY to start

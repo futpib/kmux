@@ -674,6 +674,159 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Make the pane's cwd a known token so we can assert %d expansion.
+    QProcess sendCd;
+    sendCd.start(tmuxPath,
+                 {QStringLiteral("-S"),
+                  ctx.socketPath,
+                  QStringLiteral("send-keys"),
+                  QStringLiteral("-t"),
+                  ctx.sessionName,
+                  QStringLiteral("cd /tmp"),
+                  QStringLiteral("Enter")});
+    QVERIFY(sendCd.waitForFinished(5000));
+    QCOMPARE(sendCd.exitCode(), 0);
+    QTest::qWait(500);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw, 5000));
+
+    // Wait for the post-attach pane-info poll to fold pane_current_command
+    // (%n) and pane_current_path (%d) into the VirtualSession.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            const QString title = attach.mw->windowTitle();
+            return title.contains(QStringLiteral("tmp")) && title.contains(QStringLiteral("bash"));
+        }(),
+        10000);
+
+    const QString finalTitle = attach.mw->windowTitle();
+    qWarning() << "MainWindow title:" << finalTitle;
+
+    QVERIFY2(!finalTitle.isEmpty(), "MainWindow title is empty when attached to tmux — useless");
+    // The empty-SSH-format failure mode the user reported was a literal
+    // "() — kmux" caption, produced when getDynamicTitle() picked the
+    // RemoteTabTitleFormat "(%u) %H" but couldn't extract user/host.
+    QVERIFY2(!finalTitle.startsWith(QStringLiteral("()")),
+             qPrintable(QStringLiteral("MainWindow title \"%1\" starts with empty-format placeholder \"()\"").arg(finalTitle)));
+    // The default LocalTabTitleFormat "%d : %n" should produce something
+    // readable now that pane_current_path / pane_current_command flow
+    // into the VirtualSession via setExternalCurrentDir / setExternalProcessName.
+    QVERIFY2(finalTitle.contains(QStringLiteral("tmp")),
+             qPrintable(QStringLiteral("MainWindow title \"%1\" does not contain cwd basename \"tmp\" — %d expansion broken").arg(finalTitle)));
+    QVERIFY2(finalTitle.contains(QStringLiteral("bash")),
+             qPrintable(QStringLiteral("MainWindow title \"%1\" does not contain pane command \"bash\" — %n expansion broken").arg(finalTitle)));
+
+    // Cleanup
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testSshInsideTmuxResolvesUserAndHost()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Replace the bash process in the pane with sh, but argv[0] = "ssh" via
+    // bash's `exec -a`. tmux's pane_current_command on Linux comes from
+    // /proc/<pid>/cmdline argv[0], so the pane reports its command as "ssh"
+    // — which triggers Konsole's SSH expansion path. SSHProcessInfo then
+    // parses the rest of /proc/<pid>/cmdline to extract user and host.
+    //
+    // 198.51.100.42 is in the TEST-NET-2 range and unallocated, so a
+    // string match on it can't false-match anything else on the system.
+    const QString fakeUser = QStringLiteral("kmuxtest");
+    const QString fakeHost = QStringLiteral("198.51.100.42");
+    const QString sshArgs = fakeUser + QLatin1Char('@') + fakeHost;
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("exec -a ssh sh -c 'while :; do sleep 1; done' ") + sshArgs,
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTest::qWait(500);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw, 5000));
+
+    // The pre-fix failure mode was that pane_pid wasn't pushed into the
+    // VirtualSession's ProcessInfo, so SSHProcessInfo couldn't read
+    // /proc/<pid>/cmdline, so user and host stayed empty, and the
+    // RemoteTabTitleFormat "(%u) %H" rendered as just "() ".
+    // After this change the pid is wired through, /proc reads succeed,
+    // and both user and host land in the title.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            const QString title = attach.mw->windowTitle();
+            return title.contains(fakeHost);
+        }(),
+        10000);
+
+    const QString finalTitle = attach.mw->windowTitle();
+    qWarning() << "MainWindow title (SSH-in-tmux):" << finalTitle;
+
+    QVERIFY2(finalTitle.contains(fakeHost),
+             qPrintable(QStringLiteral("MainWindow title \"%1\" does not contain SSH host \"%2\" — SSHProcessInfo couldn't read /proc/<pid>/cmdline")
+                            .arg(finalTitle, fakeHost)));
+    QVERIFY2(finalTitle.contains(fakeUser), qPrintable(QStringLiteral("MainWindow title \"%1\" does not contain SSH user \"%2\"").arg(finalTitle, fakeUser)));
+
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testWindowNameWithSpaces()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();

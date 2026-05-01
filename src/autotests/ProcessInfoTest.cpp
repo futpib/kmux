@@ -13,8 +13,13 @@
 #include <QTest>
 
 // Konsole
+#include "../NullProcessInfo.h"
 #include "../ProcessInfo.h"
 #include "../session/Session.h"
+
+// Unix
+#include <pwd.h>
+#include <unistd.h>
 
 // Others
 #include <memory>
@@ -109,6 +114,40 @@ void ProcessInfoTest::testProcessNameSpecialChars()
 
     mainProc.write(QStringLiteral("exit\n").toLocal8Bit());
     mainProc.waitForFinished(100);
+#endif
+}
+
+void ProcessInfoTest::testNullProcessInfoWithExternalPidReadsUserAndArgs()
+{
+#ifdef Q_OS_LINUX
+    // After NullProcessInfo::setExternalPid binds the instance to a real
+    // OS pid, the /proc/<pid>/... reads should populate UID, user name,
+    // and argv exactly like UnixProcessInfo would. This is the substrate
+    // that lets tmux panes resolve %u/%B and SSHProcessInfo extract
+    // user/host from the pane process's command line.
+    NullProcessInfo info(0);
+    info.setExternalPid(static_cast<int>(getpid()));
+
+    bool ok = false;
+
+    const int uid = info.userId(&ok);
+    QVERIFY2(ok, "UID was not set from /proc/<pid>/status");
+    QCOMPARE(uid, static_cast<int>(getuid()));
+
+    const QString user = info.userName();
+    QVERIFY2(!user.isEmpty(), "User name was not resolved via getpwuid_r");
+
+    struct passwd *expected = getpwuid(getuid());
+    QVERIFY(expected != nullptr);
+    QCOMPARE(user, QLatin1String(expected->pw_name));
+
+    const QVector<QString> args = info.arguments(&ok);
+    QVERIFY2(ok, "Arguments flag was not set");
+    QVERIFY2(!args.isEmpty(), "Arguments were not read from /proc/<pid>/cmdline");
+    QVERIFY2(args[0].endsWith(QLatin1String("ProcessInfoTest")),
+             qPrintable(QStringLiteral("argv[0] is \"%1\", expected to end in ProcessInfoTest").arg(args[0])));
+#else
+    QSKIP("setExternalPid only reads /proc on Linux");
 #endif
 }
 

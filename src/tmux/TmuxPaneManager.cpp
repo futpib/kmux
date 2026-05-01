@@ -173,8 +173,7 @@ QList<int> TmuxPaneManager::allPaneIds() const
 
 void TmuxPaneManager::queryPaneTitleInfo()
 {
-    static const QString format = QStringLiteral(
-        "#{pane_id}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}");
+    static const QString format = QStringLiteral("#{pane_id}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{pane_pid}");
 
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(format), [this](bool success, const QString &response) {
         if (!success || response.isEmpty()) {
@@ -183,7 +182,7 @@ void TmuxPaneManager::queryPaneTitleInfo()
         const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         for (const QString &line : lines) {
             const QStringList parts = line.split(QLatin1Char('\t'));
-            if (parts.size() < 4) {
+            if (parts.size() < 5) {
                 continue;
             }
             const QString &paneIdStr = parts[0];
@@ -198,6 +197,11 @@ void TmuxPaneManager::queryPaneTitleInfo()
             const QString &command = parts[1];
             const QString &path = parts[2];
             const QString &title = parts[3];
+            bool pidOk = false;
+            const int panePid = parts[4].toInt(&pidOk);
+            if (pidOk && panePid > 0) {
+                session->setExternalPid(panePid);
+            }
             if (!command.isEmpty()) {
                 session->setExternalProcessName(command);
             }

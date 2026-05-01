@@ -8,6 +8,7 @@
 #define NULLPROCESSINFO_H
 
 #include "ProcessInfo.h"
+#include "konsoleprivate_export.h"
 
 namespace Konsole
 {
@@ -18,7 +19,7 @@ namespace Konsole
  *
  * isValid() will always return false for instances of NullProcessInfo
  */
-class NullProcessInfo : public ProcessInfo
+class KONSOLEPRIVATE_EXPORT NullProcessInfo : public ProcessInfo
 {
 public:
     /**
@@ -29,6 +30,11 @@ public:
 
     void setExternalName(const QString &name);
     void setExternalCurrentDir(const QString &dir);
+    // Bind this NullProcessInfo to a real OS pid so the /proc/<pid>/...
+    // backed reads below populate user/UID/arguments. Used by tmux panes,
+    // where pane_current_command/path arrive separately but argv/UID need
+    // to come from the kernel.
+    void setExternalPid(int pid);
 
 protected:
     void readProcessInfo(int pid) override;
@@ -36,6 +42,9 @@ protected:
     bool readCurrentDir(int pid) override;
     bool readArguments(int pid) override;
     void readUserName(void) override;
+
+private:
+    int _externalPid = 0;
 };
 
 }

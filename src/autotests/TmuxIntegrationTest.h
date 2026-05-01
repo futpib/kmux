@@ -33,6 +33,8 @@ private Q_SLOTS:
     void testTmuxAttachComplexPromptRecovery();
     void testSplitterResizePropagatedToTmux();
     void testTmuxPaneTitleInfo();
+    void testMainWindowTitleReflectsTmuxPane();
+    void testSshInsideTmuxResolvesUserAndHost();
     void testWindowNameWithSpaces();
     void testSplitPaneFocusesNewPane();
     void testSplitPaneFocusesNewPaneComplexLayout();
