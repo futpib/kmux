@@ -59,6 +59,9 @@ TabbedViewContainer::TabbedViewContainer(ViewManager *connectedViewManager, QWid
     setTabBar(tabBarWidget);
     setDocumentMode(true);
     setMovable(true);
+    // Watch for mouse presses so the resulting setCurrentIndex carries
+    // MouseFocusReason — see eventFilter().
+    tabBar()->installEventFilter(this);
     connect(tabBarWidget, &DetachableTabBar::moveTabToWindow, this, &TabbedViewContainer::moveTabToWindow);
     tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
     _newTabButton->setIcon(QIcon::fromTheme(QStringLiteral("tab-new")));
@@ -334,7 +337,9 @@ void TabbedViewContainer::moveActiveView(MoveDirection direction)
         insertTab(currentIndex, swappedPage, swappedIcon, swappedTitle);
         insertTab(newIndex, currentPage, currentIcon, currentTitle);
     }
-    setCurrentIndex(newIndex);
+    // moveActiveView is bound to a keyboard shortcut ("Move Tab Left/Right"),
+    // so the post-swap focus on the moved tab is user-initiated.
+    setCurrentIndex(newIndex, Qt::ShortcutFocusReason);
 }
 
 void TabbedViewContainer::terminalDisplayDropped(TerminalDisplay *terminalDisplay)
@@ -402,7 +407,10 @@ void TabbedViewContainer::addSplitter(ViewSplitter *viewSplitter, int index)
         updateTitle(qobject_cast<ViewProperties *>(terminalDisplays.at(0)->sessionController()));
         updateColor(qobject_cast<ViewProperties *>(terminalDisplays.at(0)->sessionController()));
     }
-    setCurrentIndex(index);
+    // addSplitter is plumbing — a freshly-created tab being placed in
+    // the container, not a user picking it. OtherFocusReason marks it
+    // as programmatic so the tmux echo is suppressed.
+    setCurrentIndex(index, Qt::OtherFocusReason);
 }
 
 void TabbedViewContainer::addView(TerminalDisplay *view)
@@ -421,7 +429,10 @@ void TabbedViewContainer::addView(TerminalDisplay *view)
     // Put this view on the foreground if it requests so, eg. on bell activity
     connect(view, &TerminalDisplay::activationRequest, this, &Konsole::TabbedViewContainer::activateView);
 
-    setCurrentIndex(index);
+    // addView is plumbing — focusing the just-inserted tab is part of
+    // building the UI, not a user gesture. OtherFocusReason keeps the
+    // tmux echo path quiet for the synthesized switch.
+    setCurrentIndex(index, Qt::OtherFocusReason);
     Q_EMIT viewAdded(view);
 }
 
@@ -503,23 +514,43 @@ void TabbedViewContainer::activateView(const QString & /*xdgActivationToken*/)
     }
 }
 
-void TabbedViewContainer::activateNextView()
+void TabbedViewContainer::activateNextView(Qt::FocusReason reason)
 {
     QWidget *active = currentWidget();
     int index = indexOf(active);
-    setCurrentIndex(index == count() - 1 ? 0 : index + 1);
+    setCurrentIndex(index == count() - 1 ? 0 : index + 1, reason);
 }
 
-void TabbedViewContainer::activateLastView()
+void TabbedViewContainer::activateLastView(Qt::FocusReason reason)
 {
-    setCurrentIndex(count() - 1);
+    setCurrentIndex(count() - 1, reason);
 }
 
-void TabbedViewContainer::activatePreviousView()
+void TabbedViewContainer::activatePreviousView(Qt::FocusReason reason)
 {
     QWidget *active = currentWidget();
     int index = indexOf(active);
-    setCurrentIndex(index == 0 ? count() - 1 : index - 1);
+    setCurrentIndex(index == 0 ? count() - 1 : index - 1, reason);
+}
+
+void TabbedViewContainer::setCurrentIndex(int index, Qt::FocusReason reason)
+{
+    _pendingFocusReason = reason;
+    QTabWidget::setCurrentIndex(index);
+}
+
+bool TabbedViewContainer::eventFilter(QObject *watched, QEvent *event)
+{
+    // Stamp MouseFocusReason for actual tab-area clicks (mouse buttons
+    // 1-3 on a tab). Drag-and-drop and modifier-clicks come through
+    // the same event but we want them all treated as user-initiated.
+    if (watched == tabBar() && event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (tabBar()->tabAt(mouseEvent->position().toPoint()) >= 0) {
+            _pendingFocusReason = Qt::MouseFocusReason;
+        }
+    }
+    return QTabWidget::eventFilter(watched, event);
 }
 
 void TabbedViewContainer::keyReleaseEvent(QKeyEvent *event)
@@ -548,7 +579,10 @@ void TabbedViewContainer::tabDoubleClicked(int index)
 void TabbedViewContainer::renameTab(int index)
 {
     if (index != -1) {
-        setCurrentIndex(index);
+        // Renaming is reached via right-click → "Rename Tab", so the
+        // tab the user is renaming is necessarily the one they just
+        // clicked on — hence MouseFocusReason for the implied switch.
+        setCurrentIndex(index, Qt::MouseFocusReason);
         viewSplitterAt(index)->activeTerminalDisplay()->sessionController()->rename();
     }
 }
@@ -589,6 +623,11 @@ void TabbedViewContainer::openTabContextMenu(const QPoint &point)
 
 void TabbedViewContainer::currentTabChanged(int index)
 {
+    // Consume the pending reason now and reset, so callers that didn't
+    // set one (e.g. setCurrentIndex from addSplitter) get the default
+    // "programmatic" treatment on the next tick.
+    const Qt::FocusReason reason = _pendingFocusReason;
+    _pendingFocusReason = Qt::OtherFocusReason;
     if (index != -1) {
         auto splitview = viewSplitterAt(index);
         if (!splitview) {
@@ -598,7 +637,7 @@ void TabbedViewContainer::currentTabChanged(int index)
         setTabActivity(index, false);
         _tabIconState[splitview].notification = Session::NoNotification;
         if (view != nullptr) {
-            Q_EMIT activeViewChanged(view);
+            Q_EMIT activeViewChanged(view, reason);
             updateIcon(view->sessionController());
         }
     } else {
@@ -608,10 +647,13 @@ void TabbedViewContainer::currentTabChanged(int index)
 
 void TabbedViewContainer::wheelScrolled(int delta)
 {
+    // Mouse-wheel over the tab bar is a user gesture, so propagate it
+    // as a Mouse focus change — controllerChanged treats that as
+    // user-initiated and echoes the new active pane to tmux.
     if (delta < 0) {
-        activateNextView();
+        activateNextView(Qt::MouseFocusReason);
     } else {
-        activatePreviousView();
+        activatePreviousView(Qt::MouseFocusReason);
     }
 }
 

@@ -285,6 +285,16 @@ void TmuxController::requestSelectWindow(int windowId)
 void TmuxController::requestSelectPane(int paneId)
 {
     _gateway->sendCommand(TmuxCommand(QStringLiteral("select-pane")).paneTarget(paneId));
+    // Update our cached active-pane id synchronously. Tmux sends back a
+    // %window-pane-changed notification when it processes the select-pane,
+    // but that's asynchronous over the bridge socket. Operations issued
+    // in the same gesture — most notably a split-pane right after a tab
+    // switch via ViewManager — would otherwise read the *old* pane and
+    // target it, sending the user's split into the previous tab. The
+    // commands queue in order on the gateway, so by the time tmux acts
+    // on a follow-up split-pane it will have already processed the
+    // select-pane and the cached id we wrote here matches reality.
+    _activePaneId = paneId;
 }
 
 void TmuxController::requestSwitchSession(int sessionId)

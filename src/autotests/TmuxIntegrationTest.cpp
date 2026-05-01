@@ -4957,8 +4957,11 @@ void TmuxIntegrationTest::testDetachTabFromTmuxCreatesNewKmuxWindow()
         }(),
         10000);
 
-    // Focus tab 1, the multi-pane one we'll detach.
-    container->setCurrentIndex(1);
+    // Focus tab 1, the multi-pane one we'll detach. OtherFocusReason
+    // matches the pre-2-arg-API behaviour: the test is positioning
+    // itself, not asserting on the tmux echo path that
+    // ShortcutFocusReason would trigger.
+    container->setCurrentIndex(1, Qt::OtherFocusReason);
     QCOMPARE(container->currentIndex(), 1);
 
     // Map each tab to its tmux window ID so we can assert on "which window
@@ -5155,7 +5158,7 @@ void TmuxIntegrationTest::testMergeTabBackFromTmux()
     QVERIFY(detachedWindowId >= 0);
 
     // Detach tab 1 — produces a restricted MainWindow for detachedWindowId.
-    container->setCurrentIndex(1);
+    container->setCurrentIndex(1, Qt::OtherFocusReason);
     QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
     QVERIFY(detachAction);
     detachAction->trigger();
@@ -5257,7 +5260,7 @@ void TmuxIntegrationTest::testMergeTabBackPicksWindowWithMostTabs()
     QTRY_COMPARE_WITH_TIMEOUT(attachB.container->count(), 2, 10000);
 
     // Detach A's tab 0 (= targetWindowId), creating a restricted MainWindow C.
-    attachA.container->setCurrentIndex(0);
+    attachA.container->setCurrentIndex(0, Qt::OtherFocusReason);
     QAction *detachAction = attachA.mw->actionCollection()->action(QStringLiteral("detach-tab"));
     QVERIFY(detachAction);
     detachAction->trigger();
@@ -5383,7 +5386,7 @@ void TmuxIntegrationTest::testMergeTabBackPreservesPaneContent()
     QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(sessionBefore).contains(QStringLiteral("MERGE_TEST_MARKER")), 10000);
 
     // Detach the tab carrying the content.
-    container->setCurrentIndex(1);
+    container->setCurrentIndex(1, Qt::OtherFocusReason);
     QAction *detachAction = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
     QVERIFY(detachAction);
     detachAction->trigger();

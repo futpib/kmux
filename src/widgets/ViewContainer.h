@@ -84,14 +84,38 @@ public:
     /** Sets tab progress */
     void updateProgress(ViewProperties *item);
 
-    /** Changes the active view to the next view */
-    void activateNextView();
+    /** Changes the active view to the next view. `reason` is the
+     * Qt::FocusReason carried through to the new view's setFocus
+     * via the activeViewChanged signal. Use ShortcutFocusReason for
+     * user-driven tab switches (so the focus change is echoed to the
+     * underlying tmux session via ViewManager::controllerChanged). */
+    void activateNextView(Qt::FocusReason reason);
 
-    /** Changes the active view to the previous view */
-    void activatePreviousView();
+    /** Changes the active view to the previous view. See activateNextView
+     * for the reason parameter. */
+    void activatePreviousView(Qt::FocusReason reason);
 
-    /** Changes the active view to the last view */
-    void activateLastView();
+    /** Changes the active view to the last view. See activateNextView
+     * for the reason parameter. */
+    void activateLastView(Qt::FocusReason reason);
+
+    /** Switch to tab `index`, propagating `reason` through the
+     * currentTabChanged → activeViewChanged → ViewManager::activateView
+     * → TerminalDisplay::setFocus chain so it lands in
+     * SessionController::viewFocused with the right intent. The 1-arg
+     * QTabWidget::setCurrentIndex is hidden (= delete below) so that
+     * forgetting the reason is a compile error: every tab switch in
+     * kmux drives tmux's active-pane mirror, and silently picking
+     * OtherFocusReason desynchronises the two. */
+    void setCurrentIndex(int index, Qt::FocusReason reason);
+
+    // Block the inherited 1-arg QTabWidget::setCurrentIndex(int) — the
+    // reason matters and the compiler should refuse calls without one.
+    // Qt's internal click → QTabBar::setCurrentIndex path does not go
+    // through this method (it's on a different class), so this doesn't
+    // break tab-bar interactions; eventFilter stamps the click reason
+    // before Qt processes it.
+    void setCurrentIndex(int) = delete;
 
     void setCssFromFile(const QUrl &url);
 
@@ -206,8 +230,14 @@ Q_SIGNALS:
      */
     void moveViewRequest(int index, int sessionControllerId);
 
-    /** Emitted when the active view changes */
-    void activeViewChanged(TerminalDisplay *view);
+    /** Emitted when the active view changes. The reason is the focus
+     * reason that should be propagated to the new view's setFocus() call,
+     * so callers like ViewManager::activateView can distinguish
+     * user-driven tab switches (Shift+Left, click on tab) from
+     * programmatic ones (focusPane echoing a tmux notification). It is
+     * stamped from TabbedViewContainer's pending-reason slot, set by
+     * the navigation entry points before they call setCurrentIndex. */
+    void activeViewChanged(TerminalDisplay *view, Qt::FocusReason reason);
 
     /** Emitted when a view is added to the container. */
     void viewAdded(TerminalDisplay *view);
@@ -235,6 +265,15 @@ protected:
     void closeTerminalTab(int idx);
 
     void keyReleaseEvent(QKeyEvent *event) override;
+
+    /** Watches the QTabBar for mouse-press events and stamps
+     * MouseFocusReason on the pending-focus slot before Qt processes
+     * the click — that way the click-driven setCurrentIndex (which
+     * does not go through activate{Next,Previous,Last}View) carries
+     * a user-initiated focus reason instead of the default
+     * OtherFocusReason, and ViewManager::controllerChanged echoes
+     * it to tmux. */
+    bool eventFilter(QObject *watched, QEvent *event) override;
 private Q_SLOTS:
     void viewDestroyed(QObject *view);
     void konsoleConfigChanged();
@@ -265,6 +304,13 @@ private:
     bool _stylesheetSet = false;
 
     QHash<const QWidget *, TabIconState> _tabIconState;
+    // Stamped by tab-navigation entry points before they call
+    // setCurrentIndex, then read and reset by currentTabChanged when it
+    // emits activeViewChanged. Defaults to OtherFocusReason so any
+    // setCurrentIndex caller that hasn't set it (initial wiring,
+    // bookkeeping after addView, etc.) is treated as programmatic and
+    // doesn't get echoed to tmux.
+    Qt::FocusReason _pendingFocusReason = Qt::OtherFocusReason;
     ViewManager *_connectedViewManager;
     QMenu *_contextPopupMenu;
     QToolButton *_newTabButton;

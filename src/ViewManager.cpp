@@ -436,7 +436,9 @@ void ViewManager::setupActions()
     for (int i = 0; i < SWITCH_TO_TAB_COUNT; ++i) {
         action = new QAction(i18nc("@action Shortcut entry", "Switch to Tab %1", i + 1), this);
         connect(action, &QAction::triggered, this, [this, i]() {
-            switchToView(i);
+            // Alt+N is a keyboard shortcut — propagate that so tmux's
+            // active-pane mirror follows the user's switch.
+            switchToView(i, Qt::ShortcutFocusReason);
         });
         collection->addAction(QStringLiteral("switch-to-tab-%1").arg(i), action);
         _multiTabOnlyActions << action;
@@ -474,9 +476,9 @@ void ViewManager::toggleActionsBasedOnState()
     }
 }
 
-void ViewManager::switchToView(int index)
+void ViewManager::switchToView(int index, Qt::FocusReason reason)
 {
-    _viewContainer->setCurrentIndex(index);
+    _viewContainer->setCurrentIndex(index, reason);
 }
 
 void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisplay, Qt::FocusReason reason)
@@ -490,12 +492,17 @@ void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisp
     }
     auto toplevelSplitter = splitter->getToplevelSplitter();
 
-    // Focus the TermialDisplay
+    // Focus the TerminalDisplay first. QTabWidget keeps non-current
+    // tabs' widgets parented but hidden, so this gives focus
+    // internally without changing the visible tab. The visible tab is
+    // updated below.
     terminalDisplay->setFocus(reason);
 
     if (_viewContainer->viewSplitterAt(_viewContainer->currentIndex()) != toplevelSplitter) {
-        // Focus the tab
-        switchToView(_viewContainer->indexOfSplitter(toplevelSplitter));
+        // Forward the same reason so the user-initiated history walk
+        // (Ctrl+Tab) ends up echoed to tmux but a programmatic call
+        // (OtherFocusReason) does not.
+        switchToView(_viewContainer->indexOfSplitter(toplevelSplitter), reason);
     }
 }
 
@@ -546,17 +553,22 @@ void ViewManager::nextContainer()
 
 void ViewManager::nextView()
 {
-    _viewContainer->activateNextView();
+    // Triggered by the "Next Tab" QAction (Shift+Right / Ctrl+PgDown),
+    // i.e. a keyboard shortcut. ShortcutFocusReason is what
+    // controllerChanged checks before echoing the focus change to tmux,
+    // so the user's tab switch updates tmux's active window/pane and
+    // subsequent split/respawn requests target the visible tab.
+    _viewContainer->activateNextView(Qt::ShortcutFocusReason);
 }
 
 void ViewManager::previousView()
 {
-    _viewContainer->activatePreviousView();
+    _viewContainer->activatePreviousView(Qt::ShortcutFocusReason);
 }
 
 void ViewManager::lastView()
 {
-    _viewContainer->activateLastView();
+    _viewContainer->activateLastView(Qt::ShortcutFocusReason);
 }
 
 void ViewManager::activateLastUsedView(bool reverse)
@@ -988,13 +1000,40 @@ void ViewManager::focusAnotherTerminal(ViewSplitter *toplevelSplitter)
     }
 }
 
-void ViewManager::activateView(TerminalDisplay *view)
+void ViewManager::activateView(TerminalDisplay *view, Qt::FocusReason reason)
 {
-    if (view) {
-        // focus the activated view, this will cause the SessionController
-        // to notify the world that the view has been focused and the appropriate UI
-        // actions will be plugged in.
-        view->setFocus(Qt::OtherFocusReason);
+    if (!view) {
+        return;
+    }
+    // Set focus so the SessionController gets a viewFocused signal and
+    // the rest of the UI re-plugs around the new view. Note: when the
+    // tab switch is driven by setCurrentIndex, QStackedLayout has
+    // already setFocus'd the new page (with OtherFocusReason — Qt's
+    // internal default), so our setFocus is a no-op for the focus
+    // event chain. The plumbing already happened via that earlier
+    // OtherFocusReason path; what's left to do is the tmux echo, which
+    // we drive directly below instead of riding the focus chain a
+    // second time.
+    view->setFocus(reason);
+
+    // Mirror the user's tab switch into tmux's active-pane state so
+    // requestSplitPane() and friends target the visible tab. Skipped
+    // for OtherFocusReason (programmatic plumbing — addView, addSplitter,
+    // focusPane echoing a tmux notification) so we don't loop.
+    const bool userInitiated =
+        reason == Qt::MouseFocusReason || reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason || reason == Qt::ShortcutFocusReason;
+    if (!userInitiated) {
+        return;
+    }
+    if (auto *controller = view->sessionController()) {
+        if (Session *session = controller->session()) {
+            if (auto *ctrl = TmuxControllerRegistry::instance()->controllerForSession(session)) {
+                const int paneId = ctrl->paneIdForSession(session);
+                if (paneId >= 0 && paneId != ctrl->activePaneId()) {
+                    ctrl->requestSelectPane(paneId);
+                }
+            }
+        }
     }
 }
 
@@ -1199,15 +1238,19 @@ void ViewManager::controllerChanged(SessionController *controller, Qt::FocusReas
     _pluggedController = controller;
     Q_EMIT activeViewChanged(controller);
 
-    // If the newly-focused view is a tmux pane, tell tmux to match. tmux's
-    // active-pane state drives requestSplitPane() and other pane-target
-    // operations, and Qt focus changes (arrow-key nav, clicks) would otherwise
-    // leave it pointing at the previously-active pane.
+    // If the newly-focused view is a tmux pane, tell tmux to match.
+    // This handles user-initiated focus changes that bypass our
+    // ViewManager::activateView path — split-focus shortcuts
+    // (focus-view-above etc.), direct clicks on a TerminalDisplay
+    // inside the same tab, and Tab/Backtab navigation through the
+    // window's focus chain. Tab switches go through activateView,
+    // which mirrors the same echo logic there because Qt's internal
+    // QStackedLayout focus-handling can short-circuit our setFocus to
+    // a no-op (the new page already had focus).
     //
-    // Only echo user-initiated focus changes: clicks, shortcut-driven focus nav
-    // (focus-view-above etc.), and tab traversal. Programmatic focus changes —
-    // in particular our own focusPane() call in response to a tmux notification
-    // — use OtherFocusReason and must not be echoed, or we'd loop.
+    // Programmatic focus changes — in particular our own focusPane()
+    // call in response to a tmux notification — use OtherFocusReason
+    // and must not be echoed, or we'd loop.
     const bool userInitiated =
         reason == Qt::MouseFocusReason || reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason || reason == Qt::ShortcutFocusReason;
     if (!userInitiated) {

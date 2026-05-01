@@ -451,9 +451,12 @@ void restoreSession(Application &app)
 
         // TODO: HACK without the code below the sessions would be `uninitialized`
         // and the tabs wouldn't display the correct information.
+        // Cycle is plumbing during command-line parsing — flag it as
+        // OtherFocusReason so the per-tab focus changes don't hit
+        // tmux's active-pane mirror.
         auto tabbedContainer = qobject_cast<Konsole::TabbedViewContainer *>(mainWindow->centralWidget());
         for (int i = 0; i < tabbedContainer->count(); i++) {
-            tabbedContainer->setCurrentIndex(i);
+            tabbedContainer->setCurrentIndex(i, Qt::OtherFocusReason);
         }
     }
 }

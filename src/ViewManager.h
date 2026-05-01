@@ -439,8 +439,14 @@ private Q_SLOTS:
     // void viewFocused( SessionController* controller );
 
     // called when the active view in a ViewContainer changes, so
-    // that we can plug the appropriate actions into the UI
-    void activateView(TerminalDisplay *view);
+    // that we can plug the appropriate actions into the UI. The
+    // reason is forwarded to QWidget::setFocus and rides through
+    // CompositeWidgetFocusWatcher → SessionController::viewFocused
+    // into ViewManager::controllerChanged, where it gates the
+    // user-initiated tmux echo (so a user's tab switch propagates
+    // to tmux, but our own focusPane() response to a tmux notification
+    // does not loop back). No default — callers must declare intent.
+    void activateView(TerminalDisplay *view, Qt::FocusReason reason);
 
     void focusUp();
     void focusDown();
@@ -485,8 +491,15 @@ private Q_SLOTS:
     // moves active view to the right
     void moveActiveViewRight();
     // switches to the view at visual position 'index'
-    // in the current container
-    void switchToView(int index);
+    // in the current container. The reason is stamped on the
+    // TabbedViewContainer's pending-focus slot so the resulting
+    // currentTabChanged → activeViewChanged → activateView chain
+    // calls setFocus with it. Use ShortcutFocusReason for keyboard-
+    // driven switches (Alt+N), MouseFocusReason for clicks, and
+    // OtherFocusReason for programmatic plumbing (e.g. tab-fixup
+    // after an external focus change). No default — callers must
+    // declare intent so tmux's active-pane mirror stays in sync.
+    void switchToView(int index, Qt::FocusReason reason);
     // gives focus and switches the terminal display, changing tab if needed
     void switchToTerminalDisplay(TerminalDisplay *terminalDisplay, Qt::FocusReason reason);
 
