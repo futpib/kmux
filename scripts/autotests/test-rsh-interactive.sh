@@ -88,7 +88,13 @@ echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 # Assertion 2: kmux window must NOT be visible yet. If it is, the
 # Application short-circuited the show-deferral and would steal focus
 # from a still-prompting ssh in the real use case.
-if xdotool search --name kmux >/dev/null 2>&1; then
+#
+# `--onlyvisible` matters: QApplication creates a "Qt Selection Owner
+# for kmux" helper for clipboard plumbing as soon as it starts, and
+# without `--onlyvisible` xdotool matches that on substring before any
+# MainWindow has been mapped — the test would always claim the window
+# appeared, even when the show-deferral is working.
+if xdotool search --onlyvisible --name kmux >/dev/null 2>&1; then
     echo "FAIL: kmux window appeared before tmux's first reply — show-deferral regressed" >&2
     exit 1
 fi
@@ -107,7 +113,7 @@ for _ in $(seq 1 60); do
     if [[ "$tmux_ok" -eq 0 ]] && tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
         tmux_ok=1
     fi
-    if [[ "$window_ok" -eq 0 ]] && xdotool search --name kmux >/dev/null 2>&1; then
+    if [[ "$window_ok" -eq 0 ]] && xdotool search --onlyvisible --name kmux >/dev/null 2>&1; then
         window_ok=1
     fi
     if [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
