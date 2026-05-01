@@ -24,7 +24,7 @@ export QT_LOGGING_RULES="org.kde.konsole.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # Menu navigation via xdotool needs a focused window, which bare Xvfb
 # doesn't provide on its own — have lib.sh spawn twm when USE_XVFB=1.
-export KMUX_TEST_NEED_WM=1
+export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
 
 kmux_test_setup
 
@@ -33,6 +33,12 @@ LAUNCH_WIN=""
 # Spawns kmux in the background of the CURRENT shell (not a subshell) and
 # waits for its window to appear. Returns via globals so the child is not
 # reaped when a subshell exits.
+#
+# `--onlyvisible` is required: QApplication creates a "Qt Selection Owner
+# for kmux" helper for clipboard plumbing as soon as it starts, and a
+# plain --name match would return that immediately (before any MainWindow
+# has been mapped). The keystrokes that follow would then race a window
+# that isn't ready to receive them.
 launch_and_wait_for_window() {
     local logfile="$1"
     "$KMUX" >"$logfile" 2>&1 &
@@ -43,7 +49,7 @@ launch_and_wait_for_window() {
             echo "error: kmux exited before window appeared (see $logfile)" >&2
             return 1
         fi
-        LAUNCH_WIN=$(xdotool search --name kmux 2>/dev/null | tail -1 || true)
+        LAUNCH_WIN=$(xdotool search --onlyvisible --name kmux 2>/dev/null | tail -1 || true)
         if [[ -n "$LAUNCH_WIN" ]]; then
             return 0
         fi
@@ -54,16 +60,31 @@ launch_and_wait_for_window() {
     return 1
 }
 
+# Quit kmux and wait for it to exit. We don't rely on Ctrl+Q here: a kmux
+# with running tmux pane sessions pops a "Confirm Close" dialog on quit,
+# and under Xvfb+twm xdotool keystrokes don't reliably reach that dialog
+# to dismiss it. The previous fan-out — `xdotool key --window` to every
+# match of "kmux" — also targeted the invisible "Qt Selection Owner for
+# kmux" auxiliary X window, where XSendEvent could block.
+#
+# SIGTERM short-circuits all of that: kmux installs no SIGTERM handler,
+# so the kernel default terminates the process. The toolbar Hidden flag
+# is already on disk by the time we get here (KConfigGroup::sync runs
+# inside the eventFilter for QEvent::Hide), so nothing relevant is lost.
+# SIGKILL is the last-ditch backstop in case the process is wedged in a
+# kernel uninterruptible state.
 kill_and_wait() {
     local pid="$1"
-    xdotool search --name kmux 2>/dev/null | while read -r w; do
-        xdotool key --window "$w" ctrl+q 2>/dev/null || true
-    done
-    for _ in $(seq 1 30); do
-        if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 50); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+            return 0
+        fi
         sleep 0.1
     done
-    kill "$pid" 2>/dev/null || true
+    echo "warn: kmux $pid did not exit on SIGTERM after 5s, sending SIGKILL" >&2
+    kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
 }
 
@@ -71,29 +92,39 @@ echo "=== run 1: hide sessionToolbar ==="
 launch_and_wait_for_window "$LOGDIR/run1.log"
 PID1=$LAUNCH_PID
 WIN1=$LAUNCH_WIN
+echo "  run1 window mapped: pid=$PID1 win=$WIN1"
 sleep 1
+# Be explicit about focus: twm's focus-follows-mouse model means the
+# pointer (parked at 0,0 by Xvfb) decides who gets keystrokes, not
+# whichever window mapped last. Activate the kmux window directly so
+# the menu mnemonics that follow land on it.
+xdotool windowactivate --sync "$WIN1" 2>/dev/null || true
 
 # Settings menu → Toolbars Shown → Session Toolbar (the only entry).
-# Without a WM, focus is fragile — send events to the whole display and
-# pace them so the menu has time to open between strokes. Alt+S opens
-# Settings; 'b' is the mnemonic for "Tool&bars Shown"; Return picks the
-# highlighted "Session Toolbar" entry (the only item in the submenu).
+# Alt+S opens Settings; 'b' is the mnemonic for "Tool&bars Shown";
+# Return picks the highlighted "Session Toolbar" entry (the only item
+# in the submenu).
 DELAY_MS=150
+echo "  sending menu keystrokes..."
 xdotool key --delay "$DELAY_MS" alt+s
 sleep 0.5
 xdotool key --delay "$DELAY_MS" b
 sleep 0.5
 xdotool key --delay "$DELAY_MS" Return
 sleep 1
-
+echo "  killing run1..."
 kill_and_wait "$PID1"
+echo "  run1 finished"
 
 echo "=== run 2: check visibility ==="
 launch_and_wait_for_window "$LOGDIR/run2.log"
 PID2=$LAUNCH_PID
 WIN2=$LAUNCH_WIN
+echo "  run2 window mapped: pid=$PID2 win=$WIN2"
 sleep 2
+echo "  killing run2..."
 kill_and_wait "$PID2"
+echo "  run2 finished"
 
 # Sanity-check: confirm run 1 actually observed a sessionToolbar HIDE event.
 if ! grep -q 'toolbar HIDE "sessionToolbar"' "$LOGDIR/run1.log"; then
