@@ -1,0 +1,30 @@
+name: Sync upstream.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kuma0128/sync-upstream-action@c037cb0d0bd35006dceb21e42a8a976fb9861e45 # v1.2.0
+        with:
+          upstream_repo: KDE/konsole
+          upstream_branch: master
+          target_branch: master
+          mode: pr
+          pr_title: 'Sync upstream KDE/konsole master'
+          pr_labels: upstream-sync
+          create_issue_on_conflict: true
+          token: ${{ secrets.GITHUB_TOKEN }}
