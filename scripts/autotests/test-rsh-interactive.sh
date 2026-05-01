@@ -32,6 +32,11 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/autotests/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# Capture kmux/Qt diagnostics in the kmux.log we already keep. Cheap, and
+# turns the failure path's tail-of-log dump from empty into useful.
+export QT_LOGGING_RULES="org.kde.konsole.debug=true"
+export QT_ASSUME_STDERR_HAS_CONSOLE=1
+
 kmux_test_setup
 
 command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
@@ -89,12 +94,14 @@ echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 # Application short-circuited the show-deferral and would steal focus
 # from a still-prompting ssh in the real use case.
 #
-# `--onlyvisible` matters: QApplication creates a "Qt Selection Owner
-# for kmux" helper for clipboard plumbing as soon as it starts, and
-# without `--onlyvisible` xdotool matches that on substring before any
-# MainWindow has been mapped — the test would always claim the window
-# appeared, even when the show-deferral is working.
-if xdotool search --onlyvisible --name kmux >/dev/null 2>&1; then
+# Match by WM_CLASS, not window title: Qt creates an auxiliary "Qt
+# Selection Owner for kmux" helper for clipboard plumbing as soon as
+# QApplication starts, and a substring --name match would always hit
+# it before any MainWindow exists. WM_CLASS=kmux is set only on the
+# real top-level windows. Combine with --onlyvisible so we distinguish
+# the deferred-hidden MainWindow (which exists but is unmapped) from
+# the post-show one.
+if xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
     echo "FAIL: kmux window appeared before tmux's first reply — show-deferral regressed" >&2
     exit 1
 fi
@@ -113,7 +120,7 @@ for _ in $(seq 1 60); do
     if [[ "$tmux_ok" -eq 0 ]] && tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
         tmux_ok=1
     fi
-    if [[ "$window_ok" -eq 0 ]] && xdotool search --onlyvisible --name kmux >/dev/null 2>&1; then
+    if [[ "$window_ok" -eq 0 ]] && xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
         window_ok=1
     fi
     if [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
@@ -124,4 +131,20 @@ for _ in $(seq 1 60); do
 done
 
 echo "FAIL: after unblocking wrapper, tmux_ok=$tmux_ok window_ok=$window_ok (see $LOGDIR/kmux.log)" >&2
+echo "--- kmux still running? ---" >&2
+if kill -0 "$KMUX_PID" 2>/dev/null; then
+    echo "  yes, pid=$KMUX_PID" >&2
+else
+    echo "  no, exited" >&2
+fi
+echo "--- xdotool windows matching kmux ---" >&2
+visible_set=" $(xdotool search --onlyvisible --class kmux 2>/dev/null | tr '\n' ' ')"
+for w in $(xdotool search --name kmux 2>/dev/null) $(xdotool search --class kmux 2>/dev/null); do
+    name=$(xdotool getwindowname "$w" 2>/dev/null || echo '?')
+    geom=$(xdotool getwindowgeometry "$w" 2>/dev/null | tr '\n' ' ' || echo '?')
+    [[ "$visible_set" == *" $w "* ]] && visible=1 || visible=0
+    echo "  win $w visible=$visible name='$name' $geom" >&2
+done
+echo "--- last 80 lines of kmux.log ---" >&2
+tail -80 "$LOGDIR/kmux.log" >&2 || true
 exit 1

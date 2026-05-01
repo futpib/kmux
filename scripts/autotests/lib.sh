@@ -140,7 +140,20 @@ kmux_test_setup() {
 
         if [[ "${KMUX_TEST_NEED_WM:-0}" == "1" ]]; then
             command -v twm >/dev/null || kmux_test_bail 2 "KMUX_TEST_NEED_WM=1 but twm not installed"
-            twm -display "$DISPLAY" >"$LOGDIR/twm.log" 2>&1 &
+            # Stock twm config asks the user to manually place every new
+            # top-level window, and grabs the X server while waiting. That
+            # grab blocks every other client — including xdotool, which is
+            # how every test interacts with kmux — until someone clicks.
+            # Headless tests have no clicker, so the grab persists forever
+            # and xdotool hangs. RandomPlacement makes twm pick a spot and
+            # skip the grab entirely. NoGrabServer is belt-and-suspenders
+            # for window-management operations that would otherwise grab.
+            local twmrc="$HOMEDIR/.twmrc"
+            cat >"$twmrc" <<'TWMRC_EOF'
+RandomPlacement
+NoGrabServer
+TWMRC_EOF
+            twm -display "$DISPLAY" -f "$twmrc" >"$LOGDIR/twm.log" 2>&1 &
             _KMUX_TEST_WM_PID=$!
             # Give twm a beat to claim the root window before any test
             # windows map; without this, early kmux windows can come up

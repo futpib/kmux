@@ -28,17 +28,31 @@ export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
 
 kmux_test_setup
 
+# kmux ships with AllowMenuAccelerators=false, which strips the
+# &-mnemonics from menu titles so terminal apps don't have to fight Qt
+# for Alt+letter combos. The test drives the Settings menu via those
+# very mnemonics (Alt+S → Tool&bars Shown), so seed an isolated kmuxrc
+# that re-enables them. (KonsoleSettings reads this on the first launch
+# and writes it back, so subsequent runs in the same $HOME pick it up
+# automatically.)
+mkdir -p "$XDG_CONFIG_HOME"
+cat >"$XDG_CONFIG_HOME/kmuxrc" <<'KMUXRC_EOF'
+[KonsoleWindow]
+AllowMenuAccelerators=true
+KMUXRC_EOF
+
 LAUNCH_PID=""
 LAUNCH_WIN=""
 # Spawns kmux in the background of the CURRENT shell (not a subshell) and
 # waits for its window to appear. Returns via globals so the child is not
 # reaped when a subshell exits.
 #
-# `--onlyvisible` is required: QApplication creates a "Qt Selection Owner
-# for kmux" helper for clipboard plumbing as soon as it starts, and a
-# plain --name match would return that immediately (before any MainWindow
-# has been mapped). The keystrokes that follow would then race a window
-# that isn't ready to receive them.
+# Match by WM_CLASS rather than --name: Qt creates an auxiliary "Qt
+# Selection Owner for kmux" helper as soon as QApplication starts, and a
+# substring --name match would return that immediately (before any
+# MainWindow has been mapped). WM_CLASS=kmux is set only on the real
+# top-level windows. --onlyvisible distinguishes the deferred MainWindow
+# (exists but unmapped) from the post-show one.
 launch_and_wait_for_window() {
     local logfile="$1"
     "$KMUX" >"$logfile" 2>&1 &
@@ -49,7 +63,7 @@ launch_and_wait_for_window() {
             echo "error: kmux exited before window appeared (see $logfile)" >&2
             return 1
         fi
-        LAUNCH_WIN=$(xdotool search --onlyvisible --name kmux 2>/dev/null | tail -1 || true)
+        LAUNCH_WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
         if [[ -n "$LAUNCH_WIN" ]]; then
             return 0
         fi
@@ -94,16 +108,20 @@ PID1=$LAUNCH_PID
 WIN1=$LAUNCH_WIN
 echo "  run1 window mapped: pid=$PID1 win=$WIN1"
 sleep 1
-# Be explicit about focus: twm's focus-follows-mouse model means the
-# pointer (parked at 0,0 by Xvfb) decides who gets keystrokes, not
-# whichever window mapped last. Activate the kmux window directly so
-# the menu mnemonics that follow land on it.
-xdotool windowactivate --sync "$WIN1" 2>/dev/null || true
+# Make twm give input focus to the kmux window. windowactivate uses
+# _NET_ACTIVE_WINDOW which twm doesn't support, so use windowfocus
+# (XSetInputFocus) and pair it with windowraise so the window isn't
+# stacked under twm's icon manager.
+xdotool windowraise "$WIN1" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN1" 2>/dev/null || true
+sleep 0.3
 
 # Settings menu → Toolbars Shown → Session Toolbar (the only entry).
 # Alt+S opens Settings; 'b' is the mnemonic for "Tool&bars Shown";
 # Return picks the highlighted "Session Toolbar" entry (the only item
-# in the submenu).
+# in the submenu). Keys go via XTest (no --window) so they take Qt's
+# normal focus path; --window would deliver them as synthetic XSendEvent
+# on the outer frame, which Qt's grab protocol filters out.
 DELAY_MS=150
 echo "  sending menu keystrokes..."
 xdotool key --delay "$DELAY_MS" alt+s
