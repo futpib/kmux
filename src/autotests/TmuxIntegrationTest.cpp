@@ -731,9 +731,10 @@ void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
     // RemoteTabTitleFormat "(%u) %H" but couldn't extract user/host.
     QVERIFY2(!finalTitle.startsWith(QStringLiteral("()")),
              qPrintable(QStringLiteral("MainWindow title \"%1\" starts with empty-format placeholder \"()\"").arg(finalTitle)));
-    // The default LocalTabTitleFormat "%d : %n" should produce something
-    // readable now that pane_current_path / pane_current_command flow
-    // into the VirtualSession via setExternalCurrentDir / setExternalProcessName.
+    // After Phase 1, the existing %d / %n placeholders pull from
+    // pane_current_path / pane_current_command via setExternalCurrentDir
+    // and setExternalProcessName, so the default LocalTabTitleFormat
+    // "%d : %n" should produce something readable.
     QVERIFY2(finalTitle.contains(QStringLiteral("tmp")),
              qPrintable(QStringLiteral("MainWindow title \"%1\" does not contain cwd basename \"tmp\" — %d expansion broken").arg(finalTitle)));
     QVERIFY2(finalTitle.contains(QStringLiteral("bash")),
@@ -802,8 +803,8 @@ void TmuxIntegrationTest::testSshInsideTmuxResolvesUserAndHost()
     // VirtualSession's ProcessInfo, so SSHProcessInfo couldn't read
     // /proc/<pid>/cmdline, so user and host stayed empty, and the
     // RemoteTabTitleFormat "(%u) %H" rendered as just "() ".
-    // After this change the pid is wired through, /proc reads succeed,
-    // and both user and host land in the title.
+    // After Phase 1 the pid is wired through, /proc reads succeed, and
+    // both user and host land in the title.
     QTRY_VERIFY_WITH_TIMEOUT(
         [&]() {
             const QString title = attach.mw->windowTitle();
@@ -862,7 +863,11 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
     QVERIFY2(!sessions.isEmpty(), "Expected a tmux pane session to be created despite spaces in window name");
     paneSession = sessions.first();
 
-    // Verify the tab title matches the evil name
+    // Tab text is now driven by the Konsole title format pipeline (which
+    // doesn't include the tmux window name). What we still need to verify
+    // is that an adversarial window name does not crash the parse path or
+    // leave us without a working tab — i.e. the tab exists and has
+    // non-empty, format-expanded text from the underlying pane.
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
     QVERIFY(controller);
     int paneId = controller->paneIdForSession(paneSession);
@@ -870,8 +875,10 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
     QVERIFY(windowId >= 0);
     int tabIndex = controller->windowToTabIndex().value(windowId, -1);
     QVERIFY(tabIndex >= 0);
-    QString tabText = attach.container->tabText(tabIndex);
-    QCOMPARE(tabText, evilName);
+
+    // Wait for the post-attach poll to populate cmd/path/pid into the
+    // VirtualSession, then for the format pipeline to push a label out.
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.container->tabText(tabIndex).isEmpty(), 5000);
 
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
@@ -3778,7 +3785,16 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container->count() >= 1);
 
-    // Rename the window from tmux
+    // Snapshot the tab text before the rename. Tab text is now driven by
+    // the Konsole title format pipeline (which doesn't include the tmux
+    // window name), so we don't expect the rename to change tab text on
+    // its own. What we do verify is that the rename signal flows cleanly
+    // through onWindowRenamed → queryPaneTitleInfo without crashing or
+    // breaking the tab.
+    auto *containerBefore = attach.mw->viewManager()->activeContainer();
+    QVERIFY(containerBefore->count() >= 1);
+    const QString tabTextBefore = containerBefore->tabText(0);
+
     QProcess renameWindow;
     renameWindow.start(tmuxPath,
                        {QStringLiteral("-S"),
@@ -3790,21 +3806,32 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     QVERIFY(renameWindow.waitForFinished(5000));
     QCOMPARE(renameWindow.exitCode(), 0);
 
-    // Wait for the tab title to update
+    // Confirm via tmux directly that the rename took effect.
     QTRY_VERIFY_WITH_TIMEOUT(
         [&]() {
-            auto *c = attach.mw ? attach.mw->viewManager()->activeContainer() : nullptr;
-            if (!c || c->count() < 1)
+            QProcess listProc;
+            listProc.start(tmuxPath,
+                           {QStringLiteral("-S"),
+                            ctx.socketPath,
+                            QStringLiteral("display-message"),
+                            QStringLiteral("-p"),
+                            QStringLiteral("-t"),
+                            QStringLiteral("%1:0").arg(ctx.sessionName),
+                            QStringLiteral("#{window_name}")});
+            if (!listProc.waitForFinished(2000)) {
                 return false;
-            // Check all tabs for the renamed title
-            for (int i = 0; i < c->count(); ++i) {
-                if (c->tabText(i) == QStringLiteral("my-custom-name")) {
-                    return true;
-                }
             }
-            return false;
+            const QString out = QString::fromUtf8(listProc.readAllStandardOutput()).trimmed();
+            return out == QStringLiteral("my-custom-name");
         }(),
-        10000);
+        5000);
+
+    // The tab still exists, has non-empty (format-driven) text, and the
+    // window-id mapping survived the rename.
+    auto *containerAfter = attach.mw->viewManager()->activeContainer();
+    QCOMPARE(containerAfter->count(), containerBefore->count());
+    QVERIFY(!containerAfter->tabText(0).isEmpty());
+    Q_UNUSED(tabTextBefore);
 
     // Cleanup
     TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
@@ -6272,10 +6299,27 @@ void TmuxIntegrationTest::testTreeSwitcherFuzzyFilter()
                   QStringLiteral("xyzzy-unique")});
     QVERIFY(rename.waitForFinished(5000));
 
-    // Wait for the tab title to propagate
-    auto *container = f.attach.mw->viewManager()->activeContainer();
-    int w1TabIndex = f.controller->windowToTabIndex().value(f.w1WindowId);
-    QTRY_COMPARE_WITH_TIMEOUT(container->tabText(w1TabIndex), QStringLiteral("xyzzy-unique"), 10000);
+    // Wait for tmux to register the rename so the subsequent queryTree
+    // (driven by the switcher) sees the new name. Tab text isn't driven
+    // by the tmux window name anymore, so we ask tmux directly.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            QProcess listProc;
+            listProc.start(f.tmuxPath,
+                           {QStringLiteral("-S"),
+                            f.ctx.socketPath,
+                            QStringLiteral("display-message"),
+                            QStringLiteral("-p"),
+                            QStringLiteral("-t"),
+                            QStringLiteral("%1:1").arg(f.ctx.sessionName),
+                            QStringLiteral("#{window_name}")});
+            if (!listProc.waitForFinished(2000)) {
+                return false;
+            }
+            const QString out = QString::fromUtf8(listProc.readAllStandardOutput()).trimmed();
+            return out == QStringLiteral("xyzzy-unique");
+        }(),
+        5000);
 
     auto *switcher = new TmuxTreeSwitcher(f.attach.mw->viewManager(), f.controller);
     QVERIFY(QTest::qWaitForWindowExposed(switcher));

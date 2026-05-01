@@ -497,7 +497,6 @@ void TmuxController::unhideWindow(int windowId)
             }
             setState(State::ApplyingLayout);
             applyWindowLayout(wId, parsed.value());
-            setWindowTabTitle(wId, windowName);
             setState(State::Idle);
 
             _stateRecovery->queryPaneStates(wId);
@@ -557,18 +556,6 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
     }
 }
 
-void TmuxController::setWindowTabTitle(int windowId, const QString &name)
-{
-    int tabIndex = _windowToTabIndex.value(windowId, -1);
-    if (tabIndex < 0) {
-        return;
-    }
-    TabbedViewContainer *container = _viewManager->activeContainer();
-    if (container) {
-        container->setTabText(tabIndex, name);
-    }
-}
-
 void TmuxController::refreshPaneTitles()
 {
     _paneManager->queryPaneTitleInfo();
@@ -618,7 +605,6 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
         if (parsed.has_value()) {
             collectPaneDimensions(parsed.value());
             applyWindowLayout(windowId, parsed.value());
-            setWindowTabTitle(windowId, windowName);
             newWindowIds.insert(windowId);
             collectPaneIds(parsed.value(), newPaneIds);
         }
@@ -773,7 +759,6 @@ void TmuxController::onWindowAdded(int windowId)
                               if (parsed.has_value()) {
                                   setState(State::ApplyingLayout);
                                   applyWindowLayout(wId, parsed.value());
-                                  setWindowTabTitle(wId, windowName);
                                   setState(State::Idle);
                               }
                           });
@@ -812,7 +797,14 @@ void TmuxController::removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, c
 
 void TmuxController::onWindowRenamed(int windowId, const QString &name)
 {
-    setWindowTabTitle(windowId, name);
+    Q_UNUSED(windowId)
+    Q_UNUSED(name)
+    // Tab text and OS caption are driven by the Konsole title format
+    // pipeline (ViewProperties::title <- Session::getDynamicTitle).
+    // tmux's window_name is not part of Konsole's format vocabulary, so
+    // a tmux-side rename has no effect on the tab text by itself; what
+    // matters is that pane_current_command / pane_current_path stay in
+    // sync, which we refresh here.
     _paneManager->queryPaneTitleInfo();
 }
 

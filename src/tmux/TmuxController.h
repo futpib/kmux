@@ -154,7 +154,6 @@ private:
     bool focusPane(int paneId);
     void maximizePaneInWindow(int windowId, int paneId);
     void clearMaximizeInWindow(int windowId);
-    void setWindowTabTitle(int windowId, const QString &name);
     void refreshPaneTitles();
     void handleListWindowsResponse(bool success, const QString &response);
     void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
