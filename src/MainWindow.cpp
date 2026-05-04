@@ -81,6 +81,7 @@
 
 #include "tmux/TmuxController.h"
 #include "tmux/TmuxControllerRegistry.h"
+#include "tmux/TmuxProcessBridge.h"
 
 #include <konsoledebug.h>
 
@@ -457,6 +458,20 @@ void MainWindow::updateWindowCaption()
     // looks better)
     if (KonsoleSettings::showWindowTitleOnTitleBar()) {
         !userTitle.isEmpty() ? caption = userTitle : caption = QStringLiteral(" ");
+    }
+
+    if (const auto *bridge = findChild<TmuxProcessBridge *>()) {
+        const QStringList rshCommand = bridge->rshCommand();
+        if (!rshCommand.isEmpty()) {
+            QStringList atWords;
+            for (const QString &arg : rshCommand) {
+                if (arg.contains(QLatin1Char('@'))) {
+                    atWords << arg;
+                }
+            }
+            const QString rshSuffix = atWords.size() == 1 ? atWords.first() : rshCommand.join(QLatin1Char(' '));
+            caption = caption + QStringLiteral(" [") + rshSuffix + QStringLiteral("]");
+        }
     }
 
     setCaption(caption);
