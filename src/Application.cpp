@@ -332,8 +332,13 @@ int Application::newInstance()
         tmuxArgs << QStringLiteral("-S") << m_parser->value(QStringLiteral("socket"));
     }
 
-    // Build tmux command: "new-session -A [-s <session>]"
-    QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A")};
+    // Build tmux command: "new-session -A -c <CWD> [-s <session>]"
+    // -c pins the first pane to the directory we were launched from,
+    // independent of where tmux's process CWD ends up. That matters
+    // because TmuxProcessBridge moves tmux's CWD into the XDG state
+    // log dir when -vvvv is on, and without an explicit -c the first
+    // pane would inherit that log dir as its working directory.
+    QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-c"), QDir::currentPath()};
     if (m_parser->isSet(QStringLiteral("session"))) {
         tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
     }

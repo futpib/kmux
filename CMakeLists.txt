@@ -44,7 +44,7 @@ endif()
 # See comments in https://invent.kde.org/utilities/konsole/-/commit/9d8e47298c81fc1e47c998eda1b6e980589274eb
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
-set(QT_MIN_VERSION "6.5.0")
+set(QT_MIN_VERSION "6.7.0")
 set(KF6_DEP_VERSION "6.0.0")
 
 # Release script will create bugzilla versions

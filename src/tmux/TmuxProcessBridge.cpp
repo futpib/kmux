@@ -10,6 +10,7 @@
 #include "TmuxControllerRegistry.h"
 #include "TmuxGateway.h"
 
+#include <QDir>
 #include <QLoggingCategory>
 #include <QSocketNotifier>
 #include <QStandardPaths>
@@ -124,6 +125,14 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     args << tmuxArgs;
     if (KonsoleTmuxBridge().isDebugEnabled()) {
         args << QStringLiteral("-vvvv");
+        // tmux's -v writes tmux-{client,server}-<PID>.log into its CWD,
+        // which would otherwise be wherever the user launched kmux —
+        // typically a project tree, where the files are noise. Park
+        // them under $XDG_STATE_HOME/kmux/tmux-logs/ instead.
+        const QString logDir = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + QStringLiteral("/kmux/tmux-logs");
+        if (QDir().mkpath(logDir)) {
+            _process->setWorkingDirectory(logDir);
+        }
     }
     args << QStringLiteral("-C");
     args << command;
