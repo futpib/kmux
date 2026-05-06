@@ -401,13 +401,6 @@ Q_SIGNALS:
     void profileChangeCommandReceived(const QString &text);
 
     /**
-     * Emitted when a flow control key combination ( Ctrl+S or Ctrl+Q ) is pressed.
-     * @param suspendKeyPressed True if Ctrl+S was pressed to suspend output or Ctrl+Q to
-     * resume output.
-     */
-    void flowControlKeyPressed(bool suspendKeyPressed);
-
-    /**
      * Emitted when the active screen is switched, to indicate whether the primary
      * screen is in use.
      */

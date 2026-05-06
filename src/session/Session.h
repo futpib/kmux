@@ -956,13 +956,6 @@ Q_SIGNALS:
     void profileChangeCommandReceived(const QString &text);
 
     /**
-     * Emitted when the flow control state changes.
-     *
-     * @param enabled True if flow control is enabled or false otherwise.
-     */
-    void flowControlEnabledChanged(bool enabled);
-
-    /**
      * Emitted when the active screen is switched, to indicate whether the primary
      * screen is in use.
      *
@@ -1031,8 +1024,6 @@ private Q_SLOTS:
     void zmodemReadAndSendBlock();
     void zmodemReceiveBlock(const char *data, int len);
     void zmodemFinished();
-
-    void updateFlowControlState(bool suspended);
 
     // Relays the signal from Emulation and sets _isPrimaryScreen
     void onPrimaryScreenInUse(bool use);

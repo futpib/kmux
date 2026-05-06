@@ -18,7 +18,6 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QColor>
-#include <QDesktopServices>
 #include <QDrag>
 #include <QElapsedTimer>
 #include <QEvent>
@@ -484,11 +483,7 @@ void TerminalDisplay::updateImage()
     // can simply be moved up or down
     // disable this shortcut for transparent konsole with scaled pixels, otherwise we get rendering artifacts, see BUG 350651
     if (!(WindowSystemInfo::HAVE_TRANSPARENCY && (qApp->devicePixelRatio() > 1.0)) && _wallpaper->isNull() && !_searchBar->isVisible()) {
-        // if the flow control warning is enabled this will interfere with the
-        // scrolling optimizations and cause artifacts.  the simple solution here
-        // is to just disable the optimization whilst it is visible
-        if (!((_outputSuspendedMessageWidget != nullptr) && _outputSuspendedMessageWidget->isVisible())
-            && !((_readOnlyMessageWidget != nullptr) && _readOnlyMessageWidget->isVisible())) {
+        if (!((_readOnlyMessageWidget != nullptr) && _readOnlyMessageWidget->isVisible())) {
             // hide terminal size label to prevent it being scrolled and show again after scroll
             const bool viewResizeWidget = (_resizeWidget != nullptr) && _resizeWidget->isVisible();
             if (viewResizeWidget) {
@@ -1379,11 +1374,6 @@ void TerminalDisplay::mousePressEvent(QMouseEvent *ev)
         return;
     }
 
-    if (_outputSuspendedMessageWidget != nullptr && _outputSuspendedMessageWidget->isVisible()
-        && _outputSuspendedMessageWidget->frameGeometry().contains(ev->pos())) {
-        return;
-    }
-
     auto [charLine, charColumn] = getCharacterPosition(ev->pos(), !usesMouseTracking());
     QPoint pos = QPoint(charColumn, charLine);
 
@@ -2230,12 +2220,7 @@ out:
 
 bool TerminalDisplay::isInTerminalRegion(const QPoint &point) const
 {
-    // clang-format off
-    const bool inMessageSuspendedWidget = _outputSuspendedMessageWidget &&
-                                          _outputSuspendedMessageWidget->isVisible() &&
-                                          _outputSuspendedMessageWidget->frameGeometry().contains(point);
-    // clang-format on
-    return !(!visibleRegion().contains(point) || _scrollBar->frameGeometry().contains(point) || inMessageSuspendedWidget);
+    return !(!visibleRegion().contains(point) || _scrollBar->frameGeometry().contains(point));
 }
 
 Screen::DecodingOptions TerminalDisplay::currentDecodingOptions()
@@ -2769,42 +2754,6 @@ QRect TerminalDisplay::preeditRect() const
 /*                                Keyboard                                   */
 /*                                                                           */
 /* ------------------------------------------------------------------------- */
-
-void TerminalDisplay::setFlowControlWarningEnabled(bool enable)
-{
-    _flowControlWarningEnabled = enable;
-
-    // if the dialog is currently visible and the flow control warning has
-    // been disabled then hide the dialog
-    if (!enable) {
-        outputSuspended(false);
-    }
-}
-
-void TerminalDisplay::outputSuspended(bool suspended)
-{
-    // create the label when this function is first called
-    if (_outputSuspendedMessageWidget == nullptr) {
-        // This label includes a link to an English language website
-        // describing the 'flow control' (Xon/Xoff) feature found in almost
-        // all terminal emulators.
-        // If there isn't a suitable article available in the target language the link
-        // can simply be removed.
-        _outputSuspendedMessageWidget =
-            createMessageWidget(i18n("<qt>Output has been "
-                                     "<a href=\"https://en.wikipedia.org/wiki/Software_flow_control\">suspended</a>"
-                                     " by pressing Ctrl+S."
-                                     " Press <b>Ctrl+Q</b> to resume.</qt>"));
-
-        connect(_outputSuspendedMessageWidget, &KMessageWidget::linkActivated, this, [](const QString &url) {
-            QDesktopServices::openUrl(QUrl(url));
-        });
-
-        _outputSuspendedMessageWidget->setMessageType(KMessageWidget::Warning);
-    }
-
-    suspended ? _outputSuspendedMessageWidget->animatedShow() : _outputSuspendedMessageWidget->animatedHide();
-}
 
 KMessageWidget *TerminalDisplay::createMessageWidget(const QString &text)
 {

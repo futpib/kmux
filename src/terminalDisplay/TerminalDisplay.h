@@ -292,15 +292,6 @@ public:
 
     bool bracketedPasteMode() const;
 
-    /**
-     * Returns true if the flow control warning box is enabled.
-     * See outputSuspended() and setFlowControlWarningEnabled()
-     */
-    bool flowControlWarningEnabled() const
-    {
-        return _flowControlWarningEnabled;
-    }
-
     /** See setUsesMouseTracking() */
     bool usesMouseTracking() const;
 
@@ -421,16 +412,6 @@ public:
      */
     void scrollScreenWindow(enum ScreenWindow::RelativeScrollMode mode, int amount);
 
-    /**
-     * Causes the widget to display or hide a message informing the user that terminal
-     * output has been suspended (by using the flow control key combination Ctrl+S)
-     *
-     * @param suspended True if terminal output has been suspended and the warning message should
-     *                     be shown or false to indicate that terminal output has been resumed and that
-     *                     the warning message should disappear.
-     */
-    void outputSuspended(bool suspended);
-
     // Used to show/hide the message widget
     void updateReadOnlyState(bool readonly);
 
@@ -490,12 +471,6 @@ public Q_SLOTS:
      * display.
      */
     void pasteFromX11Selection(bool appendEnter = false);
-
-    /**
-     * Changes whether the flow control warning box should be shown when the flow control
-     * stop key (Ctrl+S) are pressed.
-     */
-    void setFlowControlWarningEnabled(bool enable);
 
     /**
      * Sets whether the program currently running in the terminal is interested
@@ -796,12 +771,6 @@ private:
 
     QLabel *_resizeWidget = nullptr;
     QTimer *_resizeTimer = nullptr;
-
-    bool _flowControlWarningEnabled = false;
-
-    // widgets related to the warning message that appears when the user presses Ctrl+S to suspend
-    // terminal output - informing them what has happened and how to resume output
-    KMessageWidget *_outputSuspendedMessageWidget = nullptr;
 
     QSize _size = QSize(0, 0);
 

@@ -3317,27 +3317,11 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
         states |= KeyboardTranslator::ApplicationKeypadState;
     }
 
-    if (!isReadOnly) {
-        // check flow control state
-        if ((modifiers & Qt::ControlModifier) != 0U) {
-            switch (event->key()) {
-            case Qt::Key_S:
-                Q_EMIT flowControlKeyPressed(true);
-                break;
-            case Qt::Key_C:
-                if (m_SixelStarted) {
-                    SixelModeAbort();
-                }
-
-                // Allow the user to take back control
-                resetTokenizer();
-                Q_EMIT flowControlKeyPressed(false);
-                break;
-            case Qt::Key_Q: // cancel flow control
-                Q_EMIT flowControlKeyPressed(false);
-                break;
-            }
+    if (!isReadOnly && (modifiers & Qt::ControlModifier) != 0U && event->key() == Qt::Key_C) {
+        if (m_SixelStarted) {
+            SixelModeAbort();
         }
+        resetTokenizer();
     }
     // look up key binding
     if (_keyTranslator != nullptr) {

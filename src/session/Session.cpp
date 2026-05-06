@@ -136,7 +136,6 @@ void Session::initCommon()
     connect(_emulation, &Konsole::Emulation::zmodemDownloadDetected, this, &Konsole::Session::fireZModemDownloadDetected);
     connect(_emulation, &Konsole::Emulation::zmodemUploadDetected, this, &Konsole::Session::fireZModemUploadDetected);
     connect(_emulation, &Konsole::Emulation::profileChangeCommandReceived, this, &Konsole::Session::profileChangeCommandReceived);
-    connect(_emulation, &Konsole::Emulation::flowControlKeyPressed, this, &Konsole::Session::updateFlowControlState);
     connect(_emulation, &Konsole::Emulation::primaryScreenInUse, this, &Konsole::Session::onPrimaryScreenInUse);
     connect(_emulation, &Konsole::Emulation::selectionChanged, this, &Konsole::Session::selectionChanged);
     connect(_emulation, &Konsole::Emulation::imageResizeRequest, this, &Konsole::Session::resizeRequest);
@@ -873,23 +872,6 @@ void Session::resetNotifications()
     static const Notification availableNotifications[] = {Activity, Silence, Bell};
     for (auto notification : availableNotifications) {
         setPendingNotification(notification, false);
-    }
-}
-
-void Session::updateFlowControlState(bool suspended)
-{
-    if (suspended) {
-        if (flowControlEnabled()) {
-            for (TerminalDisplay *display : std::as_const(_views)) {
-                if (display->flowControlWarningEnabled()) {
-                    display->outputSuspended(true);
-                }
-            }
-        }
-    } else {
-        for (TerminalDisplay *display : std::as_const(_views)) {
-            display->outputSuspended(false);
-        }
     }
 }
 
@@ -1697,8 +1679,6 @@ void Session::setFlowControlEnabled(bool enabled)
     if (_shellProcess != nullptr) {
         _shellProcess->setFlowControlEnabled(_flowControlEnabled);
     }
-
-    Q_EMIT flowControlEnabledChanged(enabled);
 }
 bool Session::flowControlEnabled() const
 {

@@ -210,10 +210,6 @@ SessionController::SessionController(Session *sessionParam, TerminalDisplay *vie
     connect(session(), &Konsole::Session::zmodemDownloadDetected, this, &Konsole::SessionController::zmodemDownload);
     connect(session(), &Konsole::Session::zmodemUploadDetected, this, &Konsole::SessionController::zmodemUpload);
 
-    // listen for flow control status changes
-    connect(session(), &Konsole::Session::flowControlEnabledChanged, view(), &Konsole::TerminalDisplay::setFlowControlWarningEnabled);
-    view()->setFlowControlWarningEnabled(session()->flowControlEnabled());
-
     // take a snapshot of the session state every so often when
     // user activity occurs
     //
