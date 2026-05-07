@@ -85,6 +85,9 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
         {{QStringLiteral("force-reuse")},
          i18nc("@info:shell", "Force re-using the existing instance even if it breaks functionality, e. g. --new-tab. Mostly for debugging.")},
         {{QStringLiteral("s"), QStringLiteral("session")}, i18nc("@info:shell", "Name of the tmux session to attach to or create"), QStringLiteral("name")},
+        {{QStringLiteral("L"), QStringLiteral("socket-name")},
+         i18nc("@info:shell", "Name of the tmux server socket, in tmux's default socket directory ($TMUX_TMPDIR or /tmp)"),
+         QStringLiteral("name")},
         {{QStringLiteral("S"), QStringLiteral("socket")}, i18nc("@info:shell", "Path to the tmux server socket"), QStringLiteral("path")},
         {{QStringLiteral("rsh")},
          i18nc("@info:shell", "Remote shell command used to run tmux (e.g. \"ssh user@host\"). Defaults to the KMUX_RSH environment variable."),
@@ -326,8 +329,11 @@ int Application::newInstance()
     // pipes stdout lines to TmuxGateway and stdin commands back.
     auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
 
-    // Build tmux args: [-S <socket>]
+    // Build tmux args: [-L <name>] [-S <socket>]
     QStringList tmuxArgs;
+    if (m_parser->isSet(QStringLiteral("socket-name"))) {
+        tmuxArgs << QStringLiteral("-L") << m_parser->value(QStringLiteral("socket-name"));
+    }
     if (m_parser->isSet(QStringLiteral("socket"))) {
         tmuxArgs << QStringLiteral("-S") << m_parser->value(QStringLiteral("socket"));
     }
