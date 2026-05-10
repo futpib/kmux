@@ -12,6 +12,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
+#include <QFile>
 #include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
@@ -5994,6 +5995,90 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
     QVERIFY2(!windowsLabel.contains(QLatin1String("choose-tree")), qPrintable(QStringLiteral("w action label leaked raw tmux command: %1").arg(windowsLabel)));
     QVERIFY(!sessionsLabel.isEmpty());
     QVERIFY(!windowsLabel.isEmpty());
+
+    delete attach.mw.data();
+}
+
+// C-b C-b → tmux's default `send-prefix`. The first C-b opens the kmux prefix
+// palette; the second must resolve to the matching binding and dispatch it
+// through the gateway, causing tmux to write a literal C-b (\x02) into the
+// pane's tty. Any app inside tmux that uses C-b as its own prefix or chord
+// (readline, GNU screen, vim's <C-b>, etc.) relies on this passthrough — if
+// the palette swallowed the second C-b, the file would stay empty.
+void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToPane()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Replace bash with `cat > outFile` so any byte typed into the pane lands
+    // in a file we can inspect. The shell redirect creates the file before
+    // cat reads any input — its existence is our "cat is ready" signal.
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/ctrlb-prefix.bin");
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("exec cat > %1").arg(outFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QCOMPARE(controller->prefixShortcut(), QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    // First C-b — the kmux global QAction shortcut spawns the palette.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QVERIFY(palette->hasFocus());
+
+    // Second C-b — the palette resolves the "C-b" token to the default
+    // `send-prefix` binding, hands it to the gateway, then closes itself.
+    QTest::keyClick(palette, Qt::Key_B, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
+
+    // cat's tty is in cooked mode — read() returns on a newline. Send Enter
+    // through the active pane's TerminalDisplay (focus returned to it after
+    // the palette closed) so cat reads "\x02\n" and writes it verbatim.
+    Session *paneSession = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(paneSession);
+    const auto views = paneSession->views();
+    QVERIFY(!views.isEmpty());
+    QTest::keyClick(views.first(), Qt::Key_Return);
+
+    auto readFile = [&]() -> QByteArray {
+        QFile f(outFile);
+        if (!f.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return f.readAll();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02\n"), 10000);
 
     delete attach.mw.data();
 }

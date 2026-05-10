@@ -57,6 +57,7 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteChooseTreeWindow();
     void testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSessions();
     void testTmuxPrefixPaletteShowsActionLabelForChooseTree();
+    void testTmuxPrefixPaletteSendsLiteralPrefixToPane();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
     void testNewWindowInheritsWorkingDirectory();

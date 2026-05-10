@@ -54,6 +54,7 @@ public:
     static QString keyEventToTmuxToken(const QKeyEvent *event);
 
 protected:
+    bool event(QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 

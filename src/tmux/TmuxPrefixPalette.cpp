@@ -253,6 +253,29 @@ QString TmuxPrefixPalette::keyEventToTmuxToken(const QKeyEvent *event)
     return token;
 }
 
+bool TmuxPrefixPalette::event(QEvent *event)
+{
+    // Qt dispatches QEvent::ShortcutOverride before resolving a global QAction
+    // shortcut. If we don't accept it, Ctrl+B (or any other prefix-bound chord
+    // that re-uses a kmux shortcut, e.g. the prefix key itself) is swallowed
+    // by the parent window's `tmux-prefix-palette` QAction and re-spawns the
+    // palette instead of dispatching the matching tmux binding. Accept the
+    // override for keys we have a binding for so keyPressEvent gets them.
+    if (event->type() == QEvent::ShortcutOverride) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        const QString token = keyEventToTmuxToken(ke);
+        if (!token.isEmpty()) {
+            for (const TmuxPrefixBinding &b : std::as_const(_bindings)) {
+                if (b.keyToken == token) {
+                    event->accept();
+                    return true;
+                }
+            }
+        }
+    }
+    return QFrame::event(event);
+}
+
 void TmuxPrefixPalette::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
