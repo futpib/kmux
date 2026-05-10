@@ -23,24 +23,40 @@ TmuxPaneStateRecovery::TmuxPaneStateRecovery(TmuxGateway *gateway, TmuxPaneManag
 {
 }
 
+namespace
+{
+TmuxFormatSpec paneStateSpec()
+{
+    return TmuxFormatSpec({
+        QStringLiteral("pane_id"),
+        QStringLiteral("alternate_on"),
+        QStringLiteral("cursor_x"),
+        QStringLiteral("cursor_y"),
+        QStringLiteral("scroll_region_upper"),
+        QStringLiteral("scroll_region_lower"),
+        QStringLiteral("cursor_flag"),
+        QStringLiteral("insert_flag"),
+        QStringLiteral("keypad_cursor_flag"),
+        QStringLiteral("keypad_flag"),
+        QStringLiteral("wrap_flag"),
+        QStringLiteral("mouse_standard_flag"),
+        QStringLiteral("mouse_button_flag"),
+        QStringLiteral("mouse_any_flag"),
+        QStringLiteral("mouse_sgr_flag"),
+    });
+}
+} // namespace
+
 void TmuxPaneStateRecovery::queryPaneStates(int windowId)
 {
-    static const QString format = QStringLiteral(
-        "#{pane_id}\t#{alternate_on}\t#{cursor_x}\t#{cursor_y}"
-        "\t#{scroll_region_upper}\t#{scroll_region_lower}"
-        "\t#{cursor_flag}\t#{insert_flag}\t#{keypad_cursor_flag}"
-        "\t#{keypad_flag}\t#{wrap_flag}\t#{mouse_standard_flag}"
-        "\t#{mouse_button_flag}\t#{mouse_any_flag}\t#{mouse_sgr_flag}");
-
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes"))
-                              .windowTarget(windowId)
-                              .format(format),
-                          [this, windowId](bool success, const QString &response) {
-                              handlePaneStateResponse(windowId, success, response);
+    TmuxFormatSpec spec = paneStateSpec();
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).windowTarget(windowId).format(spec),
+                          [this, windowId, spec](bool success, const QString &response) {
+                              handlePaneStateResponse(windowId, success, response, spec);
                           });
 }
 
-void TmuxPaneStateRecovery::handlePaneStateResponse(int windowId, bool success, const QString &response)
+void TmuxPaneStateRecovery::handlePaneStateResponse(int windowId, bool success, const QString &response, const TmuxFormatSpec &spec)
 {
     Q_UNUSED(windowId)
 
@@ -48,14 +64,8 @@ void TmuxPaneStateRecovery::handlePaneStateResponse(int windowId, bool success, 
         return;
     }
 
-    const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    for (const QString &line : lines) {
-        const QStringList fields = line.split(QLatin1Char('\t'));
-        if (fields.size() < 15) {
-            continue;
-        }
-
-        QString paneIdStr = fields[0];
+    for (const auto &row : spec.parseRows(response)) {
+        const QString paneIdStr = row.value(QStringLiteral("pane_id"));
         if (!paneIdStr.startsWith(QLatin1Char('%'))) {
             continue;
         }
@@ -63,20 +73,20 @@ void TmuxPaneStateRecovery::handlePaneStateResponse(int windowId, bool success, 
 
         TmuxPaneState state;
         state.paneId = paneId;
-        state.alternateOn = fields[1] == QLatin1String("1");
-        state.cursorX = fields[2].toInt();
-        state.cursorY = fields[3].toInt();
-        state.scrollRegionUpper = fields[4].toInt();
-        state.scrollRegionLower = fields[5].toInt();
-        state.cursorVisible = fields[6] == QLatin1String("1");
-        state.insertMode = fields[7] == QLatin1String("1");
-        state.appCursorKeys = fields[8] == QLatin1String("1");
-        state.appKeypad = fields[9] == QLatin1String("1");
-        state.wrapMode = fields[10] == QLatin1String("1");
-        state.mouseStandard = fields[11] == QLatin1String("1");
-        state.mouseButton = fields[12] == QLatin1String("1");
-        state.mouseAny = fields[13] == QLatin1String("1");
-        state.mouseSGR = fields[14] == QLatin1String("1");
+        state.alternateOn = row.value(QStringLiteral("alternate_on")) == QLatin1String("1");
+        state.cursorX = row.value(QStringLiteral("cursor_x")).toInt();
+        state.cursorY = row.value(QStringLiteral("cursor_y")).toInt();
+        state.scrollRegionUpper = row.value(QStringLiteral("scroll_region_upper")).toInt();
+        state.scrollRegionLower = row.value(QStringLiteral("scroll_region_lower")).toInt();
+        state.cursorVisible = row.value(QStringLiteral("cursor_flag")) == QLatin1String("1");
+        state.insertMode = row.value(QStringLiteral("insert_flag")) == QLatin1String("1");
+        state.appCursorKeys = row.value(QStringLiteral("keypad_cursor_flag")) == QLatin1String("1");
+        state.appKeypad = row.value(QStringLiteral("keypad_flag")) == QLatin1String("1");
+        state.wrapMode = row.value(QStringLiteral("wrap_flag")) == QLatin1String("1");
+        state.mouseStandard = row.value(QStringLiteral("mouse_standard_flag")) == QLatin1String("1");
+        state.mouseButton = row.value(QStringLiteral("mouse_button_flag")) == QLatin1String("1");
+        state.mouseAny = row.value(QStringLiteral("mouse_any_flag")) == QLatin1String("1");
+        state.mouseSGR = row.value(QStringLiteral("mouse_sgr_flag")) == QLatin1String("1");
 
         _paneStates[paneId] = state;
     }

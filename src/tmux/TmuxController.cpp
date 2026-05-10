@@ -304,36 +304,40 @@ void TmuxController::requestSwitchSession(int sessionId)
 
 void TmuxController::queryTree(TreeCallback callback)
 {
-    // list-panes -a with a format that includes session/window/pane + active flags.
-    // Fields separated by tabs; records separated by newlines.
-    const QString fmt = QStringLiteral(
-        "#{session_id}\t#{session_name}\t#{session_attached}\t"
-        "#{window_id}\t#{window_name}\t#{window_active}\t"
-        "#{pane_id}\t#{pane_title}\t#{pane_active}");
+    // Per-call boundary keeps user-controlled fields (session/window names,
+    // pane titles) from shifting the schema if they happen to contain a tab
+    // or newline byte.
+    TmuxFormatSpec spec({
+        QStringLiteral("session_id"),
+        QStringLiteral("session_name"),
+        QStringLiteral("session_attached"),
+        QStringLiteral("window_id"),
+        QStringLiteral("window_name"),
+        QStringLiteral("window_active"),
+        QStringLiteral("pane_id"),
+        QStringLiteral("pane_title"),
+        QStringLiteral("pane_active"),
+    });
     int currentSessionId = _sessionId;
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(fmt),
-                          [callback, currentSessionId](bool success, const QString &response) {
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec),
+                          [callback, currentSessionId, spec](bool success, const QString &response) {
                               QList<SessionDescriptor> sessions;
                               if (!success) {
                                   callback(sessions);
                                   return;
                               }
-                              const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
                               QMap<int, int> sessionIndex; // sessionId -> idx in sessions
                               QMap<QPair<int, int>, int> windowIndex; // (sessionId, windowId) -> idx in that session's windows
-                              for (const QString &line : lines) {
-                                  const QStringList parts = line.split(QLatin1Char('\t'));
-                                  if (parts.size() < 9)
-                                      continue;
-                                  int sessionId = parts[0].mid(1).toInt(); // strip $
-                                  QString sessionName = parts[1];
-                                  bool sessionAttached = parts[2].toInt() != 0;
-                                  int windowId = parts[3].mid(1).toInt(); // strip @
-                                  QString windowName = parts[4];
-                                  bool windowActive = parts[5].toInt() != 0;
-                                  int paneId = parts[6].mid(1).toInt(); // strip %
-                                  QString paneTitle = parts[7];
-                                  bool paneActive = parts[8].toInt() != 0;
+                              for (const auto &row : spec.parseRows(response)) {
+                                  int sessionId = row.value(QStringLiteral("session_id")).mid(1).toInt(); // strip $
+                                  QString sessionName = row.value(QStringLiteral("session_name"));
+                                  bool sessionAttached = row.value(QStringLiteral("session_attached")).toInt() != 0;
+                                  int windowId = row.value(QStringLiteral("window_id")).mid(1).toInt(); // strip @
+                                  QString windowName = row.value(QStringLiteral("window_name"));
+                                  bool windowActive = row.value(QStringLiteral("window_active")).toInt() != 0;
+                                  int paneId = row.value(QStringLiteral("pane_id")).mid(1).toInt(); // strip %
+                                  QString paneTitle = row.value(QStringLiteral("pane_title"));
+                                  bool paneActive = row.value(QStringLiteral("pane_active")).toInt() != 0;
 
                                   if (!sessionIndex.contains(sessionId)) {
                                       SessionDescriptor s;

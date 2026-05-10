@@ -173,19 +173,20 @@ QList<int> TmuxPaneManager::allPaneIds() const
 
 void TmuxPaneManager::queryPaneTitleInfo()
 {
-    static const QString format = QStringLiteral("#{pane_id}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{pane_pid}");
+    TmuxFormatSpec spec({
+        QStringLiteral("pane_id"),
+        QStringLiteral("pane_current_command"),
+        QStringLiteral("pane_current_path"),
+        QStringLiteral("pane_title"),
+        QStringLiteral("pane_pid"),
+    });
 
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(format), [this](bool success, const QString &response) {
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec), [this, spec](bool success, const QString &response) {
         if (!success || response.isEmpty()) {
             return;
         }
-        const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            const QStringList parts = line.split(QLatin1Char('\t'));
-            if (parts.size() < 5) {
-                continue;
-            }
-            const QString &paneIdStr = parts[0];
+        for (const auto &row : spec.parseRows(response)) {
+            const QString paneIdStr = row.value(QStringLiteral("pane_id"));
             if (!paneIdStr.startsWith(QLatin1Char('%'))) {
                 continue;
             }
@@ -194,11 +195,11 @@ void TmuxPaneManager::queryPaneTitleInfo()
             if (!session) {
                 continue;
             }
-            const QString &command = parts[1];
-            const QString &path = parts[2];
-            const QString &title = parts[3];
+            const QString command = row.value(QStringLiteral("pane_current_command"));
+            const QString path = row.value(QStringLiteral("pane_current_path"));
+            const QString title = row.value(QStringLiteral("pane_title"));
             bool pidOk = false;
-            const int panePid = parts[4].toInt(&pidOk);
+            const int panePid = row.value(QStringLiteral("pane_pid")).toInt(&pidOk);
             if (pidOk && panePid > 0) {
                 session->setExternalPid(panePid);
             }

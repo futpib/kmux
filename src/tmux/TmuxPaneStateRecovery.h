@@ -15,6 +15,7 @@
 namespace Konsole
 {
 
+class TmuxFormatSpec;
 class TmuxGateway;
 class TmuxPaneManager;
 
@@ -54,7 +55,7 @@ Q_SIGNALS:
     void paneRecoveryComplete(int paneId);
 
 private:
-    void handlePaneStateResponse(int windowId, bool success, const QString &response);
+    void handlePaneStateResponse(int windowId, bool success, const QString &response, const TmuxFormatSpec &spec);
     void handleCapturePaneResponse(int paneId, bool success, const QString &response);
 
     TmuxGateway *_gateway;

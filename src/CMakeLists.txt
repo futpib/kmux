@@ -261,6 +261,7 @@ set(konsoleprivate_SRCS ${windowadaptors_SRCS}
                         widgets/ViewSplitter.cpp
                         widgets/KonsolePrintManager.cpp
 
+                        tmux/TmuxFormatSpec.cpp
                         tmux/TmuxLayoutParser.cpp
                         tmux/TmuxGateway.cpp
                         tmux/TmuxPaneManager.cpp

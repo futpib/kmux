@@ -10,6 +10,8 @@
 #include <QString>
 #include <QStringList>
 
+#include "TmuxFormatSpec.h"
+
 namespace Konsole
 {
 
@@ -72,6 +74,15 @@ public:
     {
         _parts.append(QStringLiteral("-F \"") + fmt + QStringLiteral("\""));
         return *this;
+    }
+
+    // Prefer this overload over the raw-string one: TmuxFormatSpec uses a
+    // unique nonce as the field/record boundary, so user-controlled values
+    // (window names, pane titles, paths) can't shift the schema by smuggling
+    // in the separator character.
+    TmuxCommand &format(const TmuxFormatSpec &spec)
+    {
+        return format(spec.tmuxFormatString());
     }
 
     TmuxCommand &quotedArg(const QString &value)
