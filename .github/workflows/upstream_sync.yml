@@ -27,6 +27,11 @@ jobs:
           pr_title: 'Sync upstream KDE/konsole master'
           pr_labels: upstream-sync
           git_remote_pull_params: '--allow-unrelated-histories --no-commit --strategy=recursive'
+          is_allow_hooks: true
+          hooks: |
+            precommit:
+              commands:
+                - '! git ls-files --unmerged | read -r _ || { echo "Unresolved merge conflicts"; exit 1; }'
 
       - if: success() && steps.sync.outputs.pr_number != ''
         env:
