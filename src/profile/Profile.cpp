@@ -107,11 +107,13 @@ const std::vector<Profile::PropertyInfo> Profile::DefaultProperties = {
     {FocusBorderColor, "FocusBorderColor", APPEARANCE_GROUP, QColor(Qt::gray)},
     {InvertSelectionColors, "InvertSelectionColors", GENERAL_GROUP, false},
     {EmojiFont, "EmojiFont", APPEARANCE_GROUP, QFont()},
-    {WordMode, "WordMode", APPEARANCE_GROUP, false},
+    {WordMode, "WordMode", APPEARANCE_GROUP, true},
     {WordModeAttr, "WordModeAttr", APPEARANCE_GROUP, false},
-    {WordModeAscii, "WordModeAscii", APPEARANCE_GROUP, true},
+    {WordModeAscii, "WordModeAscii", APPEARANCE_GROUP, false},
     {WordModeBrahmic, "WordModeBrahmic", APPEARANCE_GROUP, false},
+    {WordModeCoding, "WordModeCoding", APPEARANCE_GROUP, true},
     {IgnoreWcWidth, "IgnoreWcWidth", APPEARANCE_GROUP, false},
+    {FontHinting, "FontHinting", APPEARANCE_GROUP, false},
 
 // Keyboard
 #ifdef Q_OS_MACOS
@@ -148,6 +150,7 @@ const std::vector<Profile::PropertyInfo> Profile::DefaultProperties = {
     {PeekPrimaryKeySequence, "PeekPrimaryKeySequence", TERMINAL_GROUP, QString()},
     {LineNumbers, "LineNumbers", TERMINAL_GROUP, 0},
     {AutoSaveInterval, "AutoSaveInterval", TERMINAL_GROUP, 10000},
+    {KittyKeyboardEnabled, "KittyKeyboardEnabled", TERMINAL_GROUP, true},
 
     // Cursor
     {UseCustomCursorColor, "UseCustomCursorColor", CURSOR_GROUP, false},

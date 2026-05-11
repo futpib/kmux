@@ -766,6 +766,17 @@
 <listitem
 ><para
 ><guilabel
+>Suavização de fonte:</guilabel
+> - Isso permite aplicar <ulink url="https://en.wikipedia.org/wiki/Font_hinting"
+>suavização</ulink
+> aos glifos durante a renderização. Isso pode melhorar a legibilidade geral dos caracteres ao usar determinadas fontes e alguns monitores. Também pode ajudar a resolver situações em que os caracteres não são renderizados com a largura ou altura corretas, especialmente quando o modo de palavra está ativado. Se definido, <ulink url="https://doc.qt.io/qt-6/qfont.html#HintingPreference-enum"
+>suavização completa</ulink
+> será usada. Caso contrário, o nível padrão de suavização será usado. </para
+></listitem>
+
+<listitem
+><para
+><guilabel
 >Fonte de emoji:</guilabel
 > - Isso permite especificar a fonte a ser usada para os caracteres Emoji Unicode. Se não for definida, a fonte padrão do perfil será usada, ou alguma fonte alternativa poderá ser usada pelo sistema caso os glifos estejam ausentes. </para
 ></listitem>

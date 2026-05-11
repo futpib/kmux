@@ -463,306 +463,306 @@ void Vt102EmulationTest::testBufferedUpdates()
     QCOMPARE(outputChangedSpy.count(), 2);
 }
 
-void Vt102EmulationTest::testTmuxControlModePassthrough()
+void Vt102EmulationTest::testKittyKeyboardPushPopQuery()
 {
-    // Verify that entering tmux control mode (DCS 1000p) works
-    // and that lines are delivered via tmuxControlModeLineReceived
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy startedSpy(&em, &Vt102Emulation::tmuxControlModeStarted);
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
+    // Initially, flags should be 0
+    // Query: CSI ? u  → should respond CSI ? 0 u
+    const char query[] = "\033[?u";
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
 
-    const uint ESC = 0x1B;
+    // Push flags=1 (disambiguate): CSI > 1 u
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
 
-    // Enter DCS 1000p (tmux control mode)
-    em.receiveChars({ESC, 'P', '1', '0', '0', '0', 'p'});
-    QCOMPARE(startedSpy.count(), 1);
+    // Query again — should be 1
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?1u"));
 
-    // Send a tmux protocol line: "%begin 123 456 0\n"
-    QVector<uint> line;
-    for (char c : QByteArrayLiteral("%begin 123 456 0\n")) {
-        line.append(static_cast<uint>(c));
-    }
-    em.receiveChars(line);
-    QCOMPARE(lineSpy.count(), 1);
-    QCOMPARE(lineSpy.at(0).at(0).toByteArray(), QByteArrayLiteral("%begin 123 456 0"));
+    // Push flags=3: CSI > 3 u
+    const char push3[] = "\033[>3u";
+    em.receiveData(push3, sizeof(push3) - 1);
+
+    // Query — should be 3 (top of stack)
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?3u"));
+
+    // Pop 1 entry: CSI < 1 u
+    const char pop1[] = "\033[<1u";
+    em.receiveData(pop1, sizeof(pop1) - 1);
+
+    // Query — should be back to 1
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?1u"));
+
+    // Pop 1 more entry
+    em.receiveData(pop1, sizeof(pop1) - 1);
+
+    // Query — should be 0 (empty stack)
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
+
+    // Pop from empty stack — should be harmless
+    em.receiveData(pop1, sizeof(pop1) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeUtf8()
+void Vt102EmulationTest::testKittyKeyboardSet()
 {
-    // Verify that Unicode codepoints (from the post-UTF-8-decode path)
-    // are re-encoded as UTF-8 when buffered in the tmux line buffer.
-    // receiveChars() receives Unicode codepoints, not raw bytes.
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
+    const char query[] = "\033[?u";
 
-    const uint ESC = 0x1B;
+    // Push initial flags=0
+    const char push0[] = "\033[>0u";
+    em.receiveData(push0, sizeof(push0) - 1);
 
-    // Enter tmux control mode
-    em.receiveChars({ESC, 'P', '1', '0', '0', '0', 'p'});
+    // Set flags=5, mode=1 (replace): CSI = 5 ; 1 u
+    const char set_replace[] = "\033[=5;1u";
+    em.receiveData(set_replace, sizeof(set_replace) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?5u"));
 
-    // Send Unicode codepoints as they would appear after UTF-8 decoding
-    // ❯ = U+276F, → = U+2192, ─ = U+2500
-    em.receiveChars({0x2192, ' ', 't', 'e', 's', 't', ' ', 0x2500, 0x2500, '\n'});
+    // Set flags=2, mode=2 (OR): CSI = 2 ; 2 u → 5 | 2 = 7
+    const char set_or[] = "\033[=2;2u";
+    em.receiveData(set_or, sizeof(set_or) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?7u"));
 
-    QCOMPARE(lineSpy.count(), 1);
-    QByteArray received = lineSpy.at(0).at(0).toByteArray();
-    // Codepoints should be re-encoded as UTF-8
-    // → = U+2192 = \xE2\x86\x92
-    // ─ = U+2500 = \xE2\x94\x80
-    QByteArray expected("\xE2\x86\x92 test \xE2\x94\x80\xE2\x94\x80");
-    QCOMPARE(received, expected);
+    // Set flags=4, mode=3 (AND-NOT): CSI = 4 ; 3 u → 7 & ~4 = 3
+    const char set_andnot[] = "\033[=4;3u";
+    em.receiveData(set_andnot, sizeof(set_andnot) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?3u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeUtf8ViaReceiveData()
+void Vt102EmulationTest::testKittyKeyboardReset()
 {
-    // Test the real data path: raw bytes go through receiveData() which
-    // UTF-8 decodes them before passing to receiveChars(). The put()
-    // function must re-encode Unicode codepoints back to UTF-8 for
-    // the tmux line buffer.
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
+    const char query[] = "\033[?u";
 
-    // Enter tmux control mode via receiveData (DCS 1000p)
-    const char dcs[] = "\033P1000p";
-    em.receiveData(dcs, sizeof(dcs) - 1);
+    // Push some flags
+    const char push5[] = "\033[>5u";
+    em.receiveData(push5, sizeof(push5) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?5u"));
 
-    // Send a tmux protocol line containing UTF-8 text: "→ test ──\n"
-    // → = U+2192 = \xE2\x86\x92
-    // ─ = U+2500 = \xE2\x94\x80
-    const char line[] = "\xE2\x86\x92 test \xE2\x94\x80\xE2\x94\x80\n";
-    em.receiveData(line, sizeof(line) - 1);
-
-    QCOMPARE(lineSpy.count(), 1);
-    QByteArray received = lineSpy.at(0).at(0).toByteArray();
-    QByteArray expected("\xE2\x86\x92 test \xE2\x94\x80\xE2\x94\x80");
-    QCOMPARE(received, expected);
+    // Reset should clear stacks
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeEscInData()
+void Vt102EmulationTest::testKittyKeyboardDisambiguate()
 {
-    // Verify that ESC bytes within tmux control mode data do NOT
-    // break out of DCS passthrough. Only ESC \ (ST) should terminate it.
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
-    QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
 
-    const uint ESC = 0x1B;
-
-    // Enter tmux control mode
-    em.receiveChars({ESC, 'P', '1', '0', '0', '0', 'p'});
-
-    // Send a line with ESC sequences (like tmux %output containing terminal escape codes)
-    // This simulates: %output %1 \033[0;32mhello\033[0m\n
-    QVector<uint> line;
-    for (char c : QByteArrayLiteral("%output %1 ")) {
-        line.append(static_cast<uint>(c));
-    }
-    // \033[0;32m
-    line.append(ESC);
-    line.append('[');
-    line.append('0');
-    line.append(';');
-    line.append('3');
-    line.append('2');
-    line.append('m');
-    for (char c : QByteArrayLiteral("hello")) {
-        line.append(static_cast<uint>(c));
-    }
-    // \033[0m
-    line.append(ESC);
-    line.append('[');
-    line.append('0');
-    line.append('m');
-    line.append('\n');
-
-    em.receiveChars(line);
-
-    // Should still be in tmux control mode (ESC didn't terminate it)
-    QCOMPARE(endedSpy.count(), 0);
-    // The line should have been received with ESC bytes preserved
-    QCOMPARE(lineSpy.count(), 1);
-    QByteArray received = lineSpy.at(0).at(0).toByteArray();
-    QVERIFY(received.startsWith("%output %1 "));
-    QVERIFY(received.contains("\033[0;32m"));
-    QVERIFY(received.contains("hello"));
-    QVERIFY(received.contains("\033[0m"));
+    // Escape key with Ctrl modifier should use CSI u encoding
+    QKeyEvent escCtrl(QEvent::KeyPress, Qt::Key_Escape, Qt::ControlModifier, QStringLiteral("\x1b"));
+    em.sendKeyEvent(&escCtrl);
+    // Should send CSI 27;5u (modifier 5 = 1 + ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[27;5u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeC1InData()
+void Vt102EmulationTest::testKittyKeyboardEventTypes()
 {
-    // Verify that 8-bit C1 control codes (0x90, 0x9B, 0x9D, etc.)
-    // do NOT break out of DCS passthrough in tmux control mode.
-    // Uses receiveData() to test the real byte-level path.
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
-    QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
+    // Push flags=3 (disambiguate + report event types)
+    const char push3[] = "\033[>3u";
+    em.receiveData(push3, sizeof(push3) - 1);
 
-    // Enter tmux control mode via receiveData
-    const char dcs[] = "\033P1000p";
-    em.receiveData(dcs, sizeof(dcs) - 1);
-
-    // Send a line containing C1 bytes as they would appear in the raw
-    // PTY stream. These bytes (0x90, 0x9B, 0x9D, 0x98) are 8-bit C1
-    // control codes but inside DCS passthrough they should be treated as data.
-    // Note: the UTF-8 decoder will decode these as Unicode codepoints
-    // U+0090, U+009B, U+009D, U+0098 (C2 90, C2 9B, C2 9D, C2 98 in UTF-8).
-    const char line[] = "data \xC2\x90\xC2\x9B\xC2\x9D\xC2\x98\n";
-    em.receiveData(line, sizeof(line) - 1);
-
-    // Should still be in tmux control mode
-    QCOMPARE(endedSpy.count(), 0);
-    QCOMPARE(lineSpy.count(), 1);
-    QByteArray received = lineSpy.at(0).at(0).toByteArray();
-    QVERIFY(received.startsWith("data "));
-    // The C1 codepoints should be re-encoded as UTF-8 (2-byte sequences)
-    QCOMPARE(received, QByteArray("data \xC2\x90\xC2\x9B\xC2\x9D\xC2\x98"));
+    // Key release event for 'a'
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+    em.sendKeyEvent(&release);
+    // Should include event type 3 (release): CSI 97;1:3u
+    QCOMPARE(em.lastSent, QByteArray("\033[97;1:3u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeST()
+void Vt102EmulationTest::testKittyKeyboardReportAllKeys()
 {
-    // Verify that ESC \ (ST) correctly terminates tmux control mode
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
-    QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
+    // Push flags=9 (disambiguate + report all keys as escape codes)
+    const char push9[] = "\033[>9u";
+    em.receiveData(push9, sizeof(push9) - 1);
 
-    const uint ESC = 0x1B;
+    // Plain 'a' key should be reported
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+    em.sendKeyEvent(&press);
+    // Should send CSI 97 u (keycode=97='a', no mods)
+    QCOMPARE(em.lastSent, QByteArray("\033[97u"));
 
-    // Enter tmux control mode
-    em.receiveChars({ESC, 'P', '1', '0', '0', '0', 'p'});
-
-    // Send ESC \ (String Terminator) to exit DCS passthrough
-    em.receiveChars({ESC, '\\'});
-
-    QCOMPARE(endedSpy.count(), 1);
+    // Escape key (no modifiers) with flag 8 should use CSI u
+    QKeyEvent escPress(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier, QStringLiteral("\x1b"));
+    em.sendKeyEvent(&escPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[27u"));
 }
 
-void Vt102EmulationTest::testTmuxControlModeUtf8ChunkBoundary()
+void Vt102EmulationTest::testKittyKeyboardLegacyKeys()
 {
-    // Test that UTF-8 sequences split across receiveData() chunk boundaries
-    // are handled correctly in tmux control mode.
-    // The line "→──\n" is UTF-8: \xE2\x86\x92 \xE2\x94\x80 \xE2\x94\x80 \n
-    // We split at every possible byte boundary within this data.
-    const QByteArray dcs("\033P1000p");
-    const QByteArray fullLine("\xE2\x86\x92\xE2\x94\x80\xE2\x94\x80\n");
-    const QByteArray expected("\xE2\x86\x92\xE2\x94\x80\xE2\x94\x80");
+    TestEmulation em;
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
 
-    // Test splitting at every byte position
-    for (int split = 1; split < fullLine.size(); split++) {
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Up arrow with no modifiers — should use legacy encoding
+    QKeyEvent upPress(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    em.sendKeyEvent(&upPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[A"));
+
+    // Up arrow with Ctrl — should use legacy encoding with modifiers
+    QKeyEvent upCtrl(QEvent::KeyPress, Qt::Key_Up, Qt::ControlModifier);
+    em.sendKeyEvent(&upCtrl);
+    QCOMPARE(em.lastSent, QByteArray("\033[1;5A"));
+
+    // F5 with no modifiers — legacy tilde encoding
+    QKeyEvent f5Press(QEvent::KeyPress, Qt::Key_F5, Qt::NoModifier);
+    em.sendKeyEvent(&f5Press);
+    QCOMPARE(em.lastSent, QByteArray("\033[15~"));
+
+    // F1 with no modifiers — SS3 encoding
+    QKeyEvent f1Press(QEvent::KeyPress, Qt::Key_F1, Qt::NoModifier);
+    em.sendKeyEvent(&f1Press);
+    QCOMPARE(em.lastSent, QByteArray("\033OP"));
+
+    // F1 with Shift — CSI 1;2 P
+    QKeyEvent f1Shift(QEvent::KeyPress, Qt::Key_F1, Qt::ShiftModifier);
+    em.sendKeyEvent(&f1Shift);
+    QCOMPARE(em.lastSent, QByteArray("\033[1;2P"));
+
+    // Delete key — CSI 3 ~
+    QKeyEvent delPress(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+    em.sendKeyEvent(&delPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[3~"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardCtrlLetters()
+{
+    TestEmulation em;
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
+
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Ctrl+C: key=Qt::Key_C, modifiers=ControlModifier, text="\x03"
+    QKeyEvent ctrlC(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, QStringLiteral("\x03"));
+    em.sendKeyEvent(&ctrlC);
+    // Should send CSI 99;5u (keycode=99='c', modifier=5=1+ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[99;5u"));
+
+    // Ctrl+D: key=Qt::Key_D, modifiers=ControlModifier, text="\x04"
+    QKeyEvent ctrlD(QEvent::KeyPress, Qt::Key_D, Qt::ControlModifier, QStringLiteral("\x04"));
+    em.sendKeyEvent(&ctrlD);
+    // Should send CSI 100;5u (keycode=100='d', modifier=5=1+ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[100;5u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardTextKeys()
+{
+    // --- Flag 1 (disambiguate): text keys with non-shift modifiers use CSI u ---
+    {
         TestEmulation em;
         em.reset();
         em.setCodec(TestEmulation::Utf8Codec);
 
-        QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
+        const char push1[] = "\033[>1u";
+        em.receiveData(push1, sizeof(push1) - 1);
 
-        em.receiveData(dcs.constData(), dcs.size());
+        // Ctrl+A → CSI 97;5u
+        QKeyEvent ctrlA(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier, QStringLiteral("\x01"));
+        em.sendKeyEvent(&ctrlA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;5u"));
 
-        // Send in two chunks split at position 'split'
-        QByteArray chunk1 = fullLine.left(split);
-        QByteArray chunk2 = fullLine.mid(split);
-        em.receiveData(chunk1.constData(), chunk1.size());
-        em.receiveData(chunk2.constData(), chunk2.size());
+        // Alt+A → CSI 97;3u
+        QKeyEvent altA(QEvent::KeyPress, Qt::Key_A, Qt::AltModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&altA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;3u"));
 
-        QCOMPARE(lineSpy.count(), 1);
-        QByteArray received = lineSpy.at(0).at(0).toByteArray();
-        if (received != expected) {
-            qWarning() << "Failed at split position" << split
-                       << "chunk1:" << chunk1.toHex(' ')
-                       << "chunk2:" << chunk2.toHex(' ');
-        }
-        QCOMPARE(received, expected);
+        // Ctrl+Shift+A → CSI 97;6u
+        QKeyEvent ctrlShiftA(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier | Qt::ShiftModifier, QStringLiteral("\x01"));
+        em.sendKeyEvent(&ctrlShiftA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;6u"));
     }
-}
 
-void Vt102EmulationTest::testTmuxControlModeUtf8OutputBoundary()
-{
-    // Simulate tmux splitting a UTF-8 character across two %output lines.
-    // The gateway session's receiveData decodes the DCS passthrough.
-    // TmuxGateway decodes octal escapes and calls injectData on the
-    // virtual session. If tmux splits "→─" (UTF-8: E2 86 92 E2 94 80)
-    // as two %output lines where the first has "\342\206" and the second
-    // has "\222\342\224\200", the decoded bytes from each line are passed
-    // to separate injectData calls, splitting the UTF-8 sequence.
-    //
-    // This tests the virtual session's receiveData handling of incomplete
-    // UTF-8 sequences across calls.
-    TestEmulation em;
-    em.reset();
-    em.setCodec(TestEmulation::Utf8Codec);
+    // --- Flag 1 (disambiguate): text keys with only shift or no modifiers use legacy ---
+    {
+        TestEmulation em;
+        em.reset();
+        em.setCodec(TestEmulation::Utf8Codec);
 
-    // Simulate two injectData calls with a UTF-8 split
-    // → = U+2192 = E2 86 92
-    // ─ = U+2500 = E2 94 80
-    // Split after the first byte of → : chunk1 = [E2], chunk2 = [86 92 E2 94 80]
-    const char chunk1[] = "\xE2";
-    const char chunk2[] = "\x86\x92\xE2\x94\x80";
+        const char push1[] = "\033[>1u";
+        em.receiveData(push1, sizeof(push1) - 1);
 
-    em.receiveData(chunk1, sizeof(chunk1) - 1);
-    em.receiveData(chunk2, sizeof(chunk2) - 1);
+        // Plain 'a' → falls through to legacy (no CSI u sent)
+        em.lastSent.clear();
+        QKeyEvent plainA(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&plainA);
+        QVERIFY2(!em.lastSent.contains("\033["), "plain 'a' with flag 1 should use legacy, not CSI u");
 
-    // Read what was rendered on screen
-    QString printed = em._currentScreen->text(0, em._currentScreen->getColumns(), Screen::PlainText);
+        // Shift+A → falls through to legacy (shift consumed by uppercase)
+        em.lastSent.clear();
+        QKeyEvent shiftA(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier, QStringLiteral("A"));
+        em.sendKeyEvent(&shiftA);
+        QVERIFY2(!em.lastSent.contains("\033["), "Shift+A with flag 1 should use legacy, not CSI u");
 
-    // Should contain → and ─
-    QVERIFY2(printed.contains(QChar(0x2192)), qPrintable(QStringLiteral("Missing → (U+2192), got: ") + printed.left(20)));
-    QVERIFY2(printed.contains(QChar(0x2500)), qPrintable(QStringLiteral("Missing ─ (U+2500), got: ") + printed.left(20)));
-}
+        // Space → falls through to legacy
+        em.lastSent.clear();
+        QKeyEvent space(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, QStringLiteral(" "));
+        em.sendKeyEvent(&space);
+        QVERIFY2(!em.lastSent.contains("\033["), "Space with flag 1 should use legacy, not CSI u");
+    }
 
-void Vt102EmulationTest::testTmuxControlModeRawBytePassthrough()
-{
-    // Test that raw UTF-8 bytes in tmux control mode are passed through
-    // without lossy Unicode round-tripping. Previously, receiveData() would
-    // decode raw bytes via QStringDecoder into Unicode, and put() would
-    // re-encode back to UTF-8. When a PTY read split a multi-byte UTF-8
-    // sequence at a chunk boundary, QStringDecoder produced U+FFFD for the
-    // incomplete trailing bytes, corrupting the tmux protocol data.
-    //
-    // The fix: receiveRawData() intercepts raw bytes in tmux control mode
-    // and passes them directly to the line buffer without Unicode round-trip.
+    // --- Flag 8 (report all keys): all text keys use CSI u ---
+    {
+        TestEmulation em;
+        em.reset();
+        em.setCodec(TestEmulation::Utf8Codec);
 
-    // Simulate: DCS entry, then two chunks where the split falls inside
-    // a 3-byte UTF-8 character (╭ = U+256D = E2 95 AD)
-    const QByteArray dcs("\033P1000p");
+        const char push8[] = "\033[>8u";
+        em.receiveData(push8, sizeof(push8) - 1);
 
-    // Full line: "╭──\n" = E2 95 AD E2 94 80 E2 94 80 0A
-    // Split after first byte of ╭: chunk1 = [E2], chunk2 = [95 AD E2 94 80 E2 94 80 0A]
-    const QByteArray chunk1("\xE2");
-    const QByteArray chunk2("\x95\xAD\xE2\x94\x80\xE2\x94\x80\n");
-    const QByteArray expected("\xE2\x95\xAD\xE2\x94\x80\xE2\x94\x80");
+        // Plain 'a' → CSI 97 u
+        QKeyEvent plainA(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&plainA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97u"));
 
-    TestEmulation em;
-    em.reset();
-    em.setCodec(TestEmulation::Utf8Codec);
+        // Shift+A → CSI 97;2u
+        QKeyEvent shiftA(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier, QStringLiteral("A"));
+        em.sendKeyEvent(&shiftA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;2u"));
 
-    QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
-
-    em.receiveData(dcs.constData(), dcs.size());
-    em.receiveData(chunk1.constData(), chunk1.size());
-    em.receiveData(chunk2.constData(), chunk2.size());
-
-    QCOMPARE(lineSpy.count(), 1);
-    QByteArray received = lineSpy.at(0).at(0).toByteArray();
-
-    // Verify exact byte match — no U+FFFD (EF BF BD) substitution
-    QVERIFY2(!received.contains("\xEF\xBF\xBD"),
-             qPrintable(QStringLiteral("U+FFFD found in output! hex: ") + QString::fromLatin1(received.toHex(' '))));
-    QCOMPARE(received, expected);
+        // Space → CSI 32 u
+        QKeyEvent space(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, QStringLiteral(" "));
+        em.sendKeyEvent(&space);
+        QCOMPARE(em.lastSent, QByteArray("\033[32u"));
+    }
 }
 
 QTEST_GUILESS_MAIN(Vt102EmulationTest)

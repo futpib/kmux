@@ -438,10 +438,15 @@ public:
          * Improves display when the font is not strictly monospace
          */
         WordModeBrahmic,
+        /** Use word mode for characters that appear in coding ligatures
+         */
+        WordModeCoding,
         /** Use wcwidth() for problematic characters
          * soft hyphen (\u00ad) has wcwidth=1, but should not be displayed per Unicode.
          */
         IgnoreWcWidth,
+        /** (bool) Enable full font hinting. */
+        FontHinting,
         /** (int) Milliseconds interval between autosave activations
          */
         AutoSaveInterval,
@@ -461,6 +466,11 @@ public:
         BadgeTextOnly,
         /** (int) Badge transparency level (0-255) */
         BadgeTransparency,
+        /** (bool) Whether to allow applications to use the Kitty keyboard protocol
+         * for enhanced keyboard input. The protocol is opt-in by applications,
+         * so enabling this only makes the feature available.
+         */
+        KittyKeyboardEnabled,
     };
 
     Q_ENUM(Property)
@@ -993,6 +1003,11 @@ public:
     int badgeTransparency() const
     {
         return property<int>(Profile::BadgeTransparency);
+    }
+
+    bool fontHinting() const
+    {
+        return property<bool>(Profile::FontHinting);
     }
 
     /** Return a list of all properties names and their type

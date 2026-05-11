@@ -260,19 +260,12 @@ QSize TerminalHeaderBar::minimumSizeHint() const
 
 QSplitter *TerminalHeaderBar::getTopLevelSplitter()
 {
-    QWidget *p = parentWidget();
-    // This is expected.
-    if (qobject_cast<TerminalDisplay *>(p) != nullptr) {
-        p = p->parentWidget();
-    }
-
-    // this is also expected.
-    auto *innerSplitter = qobject_cast<ViewSplitter *>(p);
-    if (innerSplitter == nullptr) {
+    auto *display = qobject_cast<TerminalDisplay *>(parentWidget());
+    if (display == nullptr) {
         return nullptr;
     }
-
-    return innerSplitter->getToplevelSplitter();
+    auto *innerSplitter = ViewSplitter::parentSplitterForDisplay(display);
+    return innerSplitter != nullptr ? innerSplitter->getToplevelSplitter() : nullptr;
 }
 
 void TerminalHeaderBar::applyVisibilitySettings()
@@ -287,7 +280,11 @@ void TerminalHeaderBar::applyVisibilitySettings()
 
     auto *settings = KonsoleSettings::self();
     auto toVisibility = settings->splitViewVisibility();
-    const bool singleTerminalView = (getTopLevelSplitter()->findChildren<TerminalDisplay *>().count() == 1);
+    auto *topLevelSplitter = getTopLevelSplitter();
+    if (topLevelSplitter == nullptr) {
+        return;
+    }
+    const bool singleTerminalView = (topLevelSplitter->findChildren<TerminalDisplay *>().count() == 1);
     switch (toVisibility) {
     case KonsoleSettings::AlwaysShowSplitHeader:
         m_toggleExpandedMode->setDisabled(singleTerminalView);
