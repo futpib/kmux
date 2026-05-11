@@ -753,7 +753,7 @@
 ><para
 ><guilabel
 >ASCII karakterler</guilabel
-> — ASCII karakterlerini yukarıda açıklandığı gibi sözcükler halinde gruplayın. Bu seçeneğin en göze çarpan etkisi, bunun etkinleştirilmesinin programlama bitişik harflerini (bunları destekleyen yazı tipleri için) göstermesidir. Örneğin. &lt;= dizesi ⩽ olarak görüntülenebilir. </para
+> — ASCII karakterlerini yukarıda açıklandığı gibi sözcükler halinde gruplayın. Bu seçeneğin en göze çarpan etkisi, bunun etkinleştirilmesinin programlama bitişik harflerini (bunları destekleyen yazıtipleri için) göstermesidir. Örneğin. &lt;= dizesi ⩽ olarak görüntülenebilir. </para
 ></listitem>
 
 <listitem
@@ -761,6 +761,17 @@
 ><guilabel
 >Brahmi yazısı karakterleri</guilabel
 > — Brahmi karakterlerini yukarıda açıklandığı gibi gruplandırın. Bu seçenek olmadan (yazıtipine bağlı olarak) bazı sözcükler olması gerektiği gibi bağlanmayabilir. Bu etkinleştirildiğinde Brahmi karakterleri konumlarının dışında görünebilir. Örneğin, ikinci satırdaki üçüncü karakter doğrudan birinci satırdaki üçüncü karakterin altında görünmeyebilir. </para
+></listitem>
+
+<listitem
+><para
+><guilabel
+>Yazıtipi piksel hizalama:</guilabel
+> — Bu, glifleri sunarken onlara <ulink url="https://en.wikipedia.org/wiki/Font_hinting"
+>piksel hizalaması</ulink
+> uygulamaya olanak tanır. Belirli yazıtiplerini veya ekranları kullanırken okunabilirliği iyileştirmeye yardımcı olacaktır. Karakterlerin düzgün yükseklik veya genişlik ile çizilmediği bazı durumları çözmeye de yardımcı olabilir; özellikle sözcük kipi etkinken. Ayarlıysa <ulink url="https://doc.qt.io/qt-6/qfont.html#HintingPreference-enum"
+>tam piksel hizalama</ulink
+> kullanılır; aksi takdirde, öntanımlı hizalama düzeyine geçilir. </para
 ></listitem>
 
 <listitem
@@ -3816,7 +3827,7 @@ CommonDirNames=ad1,ad2,ad3…
 > dönüşümü &Mike.McBride; ve &Lauri.Watts; tarafından yapıldı.</para>
 
 <para
->Çeviri: Kaan Özdinçer <email
+>Çeviri: Kaan ÖZDİNÇER <email
 >kaanozdincer@gmail.com</email
 ></para
 ><para

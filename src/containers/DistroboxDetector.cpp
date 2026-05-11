@@ -5,16 +5,38 @@
 */
 
 #include "DistroboxDetector.h"
+#include "DistroboxListParser.h"
 #include "src/konsoledebug.h"
 
 #include <KLocalizedString>
+#include <KSandbox>
 
 #include <QFile>
 #include <QProcess>
-#include <QRegularExpression>
+#include <QSharedPointer>
+#include <QStandardPaths>
 #include <QTextStream>
 
-bool isContainerRuntime(const QList<QByteArray> &args)
+namespace Konsole
+{
+static bool hasDistroboxMarkers(const QHash<QByteArray, QByteArray> &env)
+{
+    return env.contains("DISTROBOX_ENTER_PATH") || env.contains("DBX_CONTAINER_NAME") || env.contains("DISTROBOX_HOST_HOME") || env.contains("CONTAINER_ID");
+}
+
+static QString containerNameFromDistroboxEnv(const QHash<QByteArray, QByteArray> &env)
+{
+    QString containerName = QString::fromUtf8(env.value("DBX_CONTAINER_NAME"));
+    if (containerName.isEmpty()) {
+        containerName = QString::fromUtf8(env.value("DISTROBOX_CONTAINER_NAME"));
+    }
+    if (containerName.isEmpty()) {
+        containerName = QString::fromUtf8(env.value("CONTAINER_ID"));
+    }
+    return containerName;
+}
+
+static bool isContainerRuntime(const QList<QByteArray> &args)
 {
     for (const QByteArray &arg : args) {
         if (arg.endsWith("podman") || arg.endsWith("docker") || arg == "podman" || arg == "docker") {
@@ -24,7 +46,7 @@ bool isContainerRuntime(const QList<QByteArray> &args)
     return false;
 }
 
-std::tuple<QString, bool> parseDistroboxArgs(const QList<QByteArray> &args)
+static std::tuple<QString, bool> parseDistroboxArgs(const QList<QByteArray> &args)
 {
     QString containerName;
     bool isDistrobox = false;
@@ -44,18 +66,47 @@ std::tuple<QString, bool> parseDistroboxArgs(const QList<QByteArray> &args)
     return {containerName, isDistrobox};
 }
 
-const QString getContainerHostname(const QList<QByteArray> &args)
+static QHash<QByteArray, QByteArray> readProcEnvironment(int pid)
 {
-    for (const QByteArray &arg : args) {
-        if (arg.startsWith("--env=HOSTNAME=")) {
-            return QString::fromUtf8(arg.mid(15));
-        }
+    QHash<QByteArray, QByteArray> env;
+    QFile file(QStringLiteral("/proc/%1/environ").arg(pid));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return env;
     }
-    return QString();
+
+    const QList<QByteArray> entries = file.readAll().split('\0');
+    for (const QByteArray &entry : entries) {
+        const int sep = entry.indexOf('=');
+        if (sep <= 0) {
+            continue;
+        }
+        env.insert(entry.left(sep), entry.mid(sep + 1));
+    }
+    return env;
 }
 
-namespace Konsole
+static QString readContainerNameFromContainerEnv(int pid)
 {
+    QFile file(QStringLiteral("/proc/%1/root/run/.containerenv").arg(pid));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+
+    QTextStream stream(&file);
+    while (!stream.atEnd()) {
+        const QString line = stream.readLine().trimmed();
+        if (!line.startsWith(QStringLiteral("name="))) {
+            continue;
+        }
+        QString value = line.mid(5).trimmed();
+        if (value.size() >= 2 && value.startsWith(QLatin1Char('"')) && value.endsWith(QLatin1Char('"'))) {
+            value = value.mid(1, value.size() - 2);
+        }
+        return value;
+    }
+
+    return {};
+}
 
 DistroboxDetector::DistroboxDetector(QObject *parent)
     : IContainerDetector(parent)
@@ -82,6 +133,18 @@ std::optional<ContainerInfo> DistroboxDetector::detect(int pid) const
 {
     if (pid <= 0) {
         return std::nullopt;
+    }
+
+    // Fast-path for sessions started already inside distrobox.
+    const auto env = readProcEnvironment(pid);
+    if (hasDistroboxMarkers(env)) {
+        QString containerName = containerNameFromDistroboxEnv(env);
+        if (containerName.isEmpty()) {
+            containerName = readContainerNameFromContainerEnv(pid);
+        }
+        if (!containerName.isEmpty()) {
+            return buildContainerInfo(containerName);
+        }
     }
 
     // The distrobox-enter script spawns podman/docker with --env= arguments
@@ -118,8 +181,8 @@ std::optional<ContainerInfo> DistroboxDetector::detectFromCmdline(int pid) const
     }
 
     if (containerName.isEmpty()) {
-        qDebug(KonsoleDebug) << "Distrobox detector: container name not found in arguments. Checking HOSTNAME...";
-        containerName = getContainerHostname(args);
+        qDebug(KonsoleDebug) << "Distrobox detector: container name not found in arguments. Checking /run/.containerenv...";
+        containerName = readContainerNameFromContainerEnv(pid);
     }
 
     if (containerName.isEmpty()) {
@@ -127,7 +190,7 @@ std::optional<ContainerInfo> DistroboxDetector::detectFromCmdline(int pid) const
         return std::nullopt;
     }
 
-    qDebug(KonsoleDebug) << "Distrobox container detected (from HOSTNAME):" << containerName;
+    qDebug(KonsoleDebug) << "Distrobox container detected:" << containerName;
     return buildContainerInfo(containerName);
 }
 
@@ -182,11 +245,21 @@ QStringList DistroboxDetector::entryCommand(const QString &containerName) const
 
 void DistroboxDetector::startListContainers()
 {
+    // Return if distrobox is not found
+    if (QStandardPaths::findExecutable(QStringLiteral("distrobox")).isEmpty()) {
+        Q_EMIT listContainersFinished({});
+        return;
+    }
     auto *process = new QProcess(this);
     process->setProgram(QStringLiteral("distrobox"));
-    process->setArguments({QStringLiteral("list"), QStringLiteral("--no-color")});
+    process->setArguments({QStringLiteral("list")});
+    auto done = QSharedPointer<bool>::create(false);
 
-    connect(process, &QProcess::finished, this, [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+    connect(process, &QProcess::finished, this, [this, process, done](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (*done) {
+            return;
+        }
+        *done = true;
         QList<ContainerInfo> containers;
         process->deleteLater();
 
@@ -195,29 +268,25 @@ void DistroboxDetector::startListContainers()
             return;
         }
 
-        // Parse output - format is typically:
-        // ID           | NAME                 | STATUS          | IMAGE
-        // abc123def456 | ubuntu-22            | Up 2 hours      | ubuntu:22.04
         const QString output = QString::fromUtf8(process->readAllStandardOutput());
-        const QStringList lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-
-        // Skip header line
-        for (int i = 1; i < lines.size(); ++i) {
-            const QString &line = lines[i];
-            // Split by |, container name is second column
-            const QStringList columns = line.split(QLatin1Char('|'));
-            if (columns.size() >= 2) {
-                const QString containerName = columns[1].trimmed();
-                if (!containerName.isEmpty()) {
-                    containers.append(buildContainerInfo(containerName));
-                }
-            }
+        const QStringList names = parseDistroboxContainerNames(output);
+        for (const QString &name : names) {
+            containers.append(buildContainerInfo(name));
         }
 
         Q_EMIT listContainersFinished(containers);
     });
 
-    process->start();
+    connect(process, &QProcess::errorOccurred, this, [this, process, done](QProcess::ProcessError) {
+        if (*done) {
+            return;
+        }
+        *done = true;
+        process->deleteLater();
+        Q_EMIT listContainersFinished({});
+    });
+
+    KSandbox::startHostProcess(*process, QProcess::ReadOnly);
 }
 
 } // namespace Konsole

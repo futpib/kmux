@@ -1283,6 +1283,24 @@ notcombine:
     // check if selection is still valid.
     checkSelection(_lastPos, _lastPos);
 
+    // Clear non-kitty graphics placements overlapping with the new character.
+    // kitty has its own delete logic.
+    if (_hasGraphics) {
+        auto i = _graphicsPlacements.begin();
+        while (i != _graphicsPlacements.end()) {
+            TerminalGraphicsPlacement_t *p = i->get();
+            if (p->source != TerminalGraphicsPlacement_t::Kitty && p->row == _cuY && _cuX >= p->col && _cuX < p->col + p->cols) {
+                i = _graphicsPlacements.erase(i);
+            } else {
+                ++i;
+            }
+        }
+
+        if (_graphicsPlacements.empty()) {
+            _hasGraphics = false;
+        }
+    }
+
     Character &currentChar = _screenLines[_cuY][_cuX];
 
     currentChar.character = c;
@@ -1295,6 +1313,10 @@ notcombine:
     }
     if (c <= '~' && c > ' ') {
         currentChar.flags |= EF_ASCII_WORD;
+        if (c == '!' || c == '#' || c == '$' || c == '%' || c == '(' || c == ')' || c == '*' || c == '+' || c == '-' || c == '.' || c == '/' || c == ':'
+            || c == '<' || c == '=' || c == '>' || c == '?' || c == '[' || c == ']' || c == '^' || c == '_' || c == '{' || c == '|' || c == '}' || c == '~') {
+            currentChar.flags |= EF_CODING_WORD;
+        }
     }
     if (c >= 0x900
         && (c <= 0x109f || (c >= 0x1700 && c <= 0x18af) || (c >= 0x1900 && c <= 0x1aaf) || (c >= 0x1b00 && c <= 0x1c4f) || (c >= 0xa800 && c <= 0xa82f)
@@ -1541,6 +1563,26 @@ void Screen::clearImage(int loca, int loce, char c, bool resetLineRendition)
 
     if (_escapeSequenceUrlExtractor) {
         _escapeSequenceUrlExtractor->clearBetween(loca, loce);
+    }
+
+    // Clear non-kitty graphics placements in the cleared area.
+    // kitty has its own delete logic.
+    if (_hasGraphics) {
+        auto i = _graphicsPlacements.begin();
+        while (i != _graphicsPlacements.end()) {
+            TerminalGraphicsPlacement_t *p = i->get();
+            const int startCol = loca % _columns;
+            if (p->source != TerminalGraphicsPlacement_t::Kitty && p->row <= bottomLine && p->row + p->rows > topLine && p->col < _columns
+                && p->col + p->cols > 0 && (p->row > topLine || p->col + p->cols > startCol)) {
+                i = _graphicsPlacements.erase(i);
+            } else {
+                ++i;
+            }
+        }
+
+        if (_graphicsPlacements.empty()) {
+            _hasGraphics = false;
+        }
     }
 }
 
@@ -2037,13 +2079,20 @@ void Screen::writeToStream(TerminalCharacterDecoder *decoder, int startIndex, in
 
     for (int y = top; y <= bottom; ++y) {
         int start = 0;
-        if (y == top || _blockSelectionMode) {
-            start = left;
-        }
-
         int count = -1;
-        if (y == bottom || _blockSelectionMode) {
-            count = right - start + 1;
+
+        if (_blockSelectionMode) {
+            // Normalize selection bounds to ensure a valid [min, max] column range
+            const auto [minimum, maximum] = std::minmax(left, right);
+            start = minimum;
+            count = maximum - minimum + 1;
+        } else {
+            if (y == top) {
+                start = left;
+            }
+            if (y == bottom) {
+                count = right - start + 1;
+            }
         }
 
         const bool appendNewLine = (y != bottom);
@@ -2368,7 +2417,12 @@ void Screen::addHistLine()
         if (newHistLines <= oldHistLines) {
             _droppedLines += oldHistLines - newHistLines + 1;
 
-            currentTerminalDisplay()->removeLines(oldHistLines - newHistLines + 1);
+            // we could arrive here with already destructed currentTerminalDisplay()
+            // see bug 519274
+            if (currentTerminalDisplay()) {
+                currentTerminalDisplay()->removeLines(oldHistLines - newHistLines + 1);
+            }
+
             // We removed some lines, we need to verify if we need to remove a URL.
             if (_escapeSequenceUrlExtractor) {
                 _escapeSequenceUrlExtractor->historyLinesRemoved(oldHistLines - newHistLines + 1);

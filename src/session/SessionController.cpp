@@ -293,6 +293,11 @@ void SessionController::trackOutput(QKeyEvent *event)
         return;
     }
 
+    // Don't jump to bottom on key release (BUG: 519251)
+    if (event->type() == QKeyEvent::KeyRelease) {
+        return;
+    }
+
     view()->screenWindow()->setTrackOutput(true);
 }
 
@@ -668,7 +673,7 @@ void SessionController::setupCommonActions()
     // Open Browser
     action = collection->addAction(QStringLiteral("open-browser"), this, &SessionController::openBrowser);
     action->setText(i18n("Open File Manager"));
-    action->setIcon(QIcon::fromTheme(QStringLiteral("system-file-manager")));
+    action->setIcon(QIcon::fromTheme(QStringLiteral("system-file-manager-symbolic")));
 
     // Copy and Paste
     action = KStandardAction::copy(this, &SessionController::copy, collection);

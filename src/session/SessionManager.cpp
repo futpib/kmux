@@ -307,6 +307,10 @@ void SessionManager::applyProfile(Session *session, const Profile::Ptr &profile,
         session->setFlowControlEnabled(profile->flowControlEnabled());
     }
 
+    if (apply.shouldApply(Profile::KittyKeyboardEnabled)) {
+        session->setKittyKeyboardEnabled(profile->property<bool>(Profile::KittyKeyboardEnabled));
+    }
+
     // Encoding
     if (apply.shouldApply(Profile::DefaultEncoding)) {
         session->setCodec(profile->defaultEncoding().toUtf8());

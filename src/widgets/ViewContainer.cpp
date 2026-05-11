@@ -11,7 +11,9 @@
 // Qt
 #include <QBoxLayout>
 #include <QFile>
+#include <QIcon>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QMenu>
 #include <QTabBar>
 
@@ -26,6 +28,9 @@
 #include "KonsoleSettings.h"
 #include "ViewProperties.h"
 #include "containers/ContainerList.h"
+#include "containers/ContainerRegistry.h"
+#include "containers/ContainerSessionState.h"
+#include "containers/IContainerDetector.h"
 #include "profile/ProfileList.h"
 #include "searchtabs/SearchTabs.h"
 #include "session/Session.h"
@@ -43,6 +48,27 @@
 // TODO Perhaps move everything which is Konsole-specific into different files
 
 using namespace Konsole;
+
+static QString containerBadgeColorStyle(const QColor &color)
+{
+    return QStringLiteral("background-color: %1; border: 1px solid palette(mid); border-radius: 5px;").arg(color.name(QColor::HexRgb));
+}
+
+static QString containerBadgeBackgroundStyle(const QWidget *widget)
+{
+    const auto colorGroup = widget != nullptr ? widget->palette().currentColorGroup() : QPalette::Active;
+    const KColorScheme viewScheme(colorGroup, KColorScheme::View);
+    const QColor background = viewScheme.background(KColorScheme::AlternateBackground).color();
+    return QStringLiteral("background-color: %1; border-top: 1px solid palette(mid);").arg(background.name(QColor::HexRgb));
+}
+
+static ViewSplitter *topLevelSplitterForDisplay(TerminalDisplay *display)
+{
+    Q_ASSERT(display != nullptr);
+    auto *splitter = ViewSplitter::parentSplitterForDisplay(display);
+    Q_ASSERT(splitter != nullptr);
+    return splitter->getToplevelSplitter();
+}
 
 TabbedViewContainer::TabbedViewContainer(ViewManager *connectedViewManager, QWidget *parent)
     : QTabWidget(parent)
@@ -154,10 +180,22 @@ TabbedViewContainer::TabbedViewContainer(ViewManager *connectedViewManager, QWid
 
     konsoleConfigChanged();
     connect(KonsoleSettings::self(), &KonsoleSettings::configChanged, this, &TabbedViewContainer::konsoleConfigChanged);
+    updateActiveContainerBadge();
 }
 
 TabbedViewContainer::~TabbedViewContainer()
 {
+    // Disconnect any remaining badge lambdas before member variables are destroyed.
+    // removeContainerBadge() disconnects when a badge is removed normally, but
+    // displays still in the hash at teardown need explicit disconnection here.
+    // The lambda in ensureContainerBadge accesses _containerBadgeWidgets; without
+    // this, it fires when QObject::~QObject() deletes children after members are
+    // already gone, causing a use-after-free.
+    const auto badgeDisplays = _containerBadgeWidgets.keys();
+    for (TerminalDisplay *display : badgeDisplays) {
+        disconnect(display, &QObject::destroyed, this, nullptr);
+    }
+
     for (int i = 0, end = count(); i < end; i++) {
         auto view = widget(i);
         disconnect(view, &QObject::destroyed, this, &Konsole::TabbedViewContainer::viewDestroyed);
@@ -405,7 +443,7 @@ void TabbedViewContainer::addSplitter(ViewSplitter *viewSplitter, int index)
     }
     if (terminalDisplays.count() > 0) {
         updateTitle(qobject_cast<ViewProperties *>(terminalDisplays.at(0)->sessionController()));
-        updateColor(qobject_cast<ViewProperties *>(terminalDisplays.at(0)->sessionController()));
+        updateColors(qobject_cast<ViewProperties *>(terminalDisplays.at(0)->sessionController()));
     }
     // addSplitter is plumbing — a freshly-created tab being placed in
     // the container, not a user picking it. OtherFocusReason marks it
@@ -450,12 +488,15 @@ void TabbedViewContainer::connectTerminalDisplay(TerminalDisplay *display)
 {
     auto item = display->sessionController();
     connect(item, &Konsole::SessionController::viewFocused, this, &Konsole::TabbedViewContainer::currentSessionControllerChanged);
+    if (const auto session = item->session(); !session.isNull()) {
+        connect(session, &Konsole::Session::containerContextChanged, this, &Konsole::TabbedViewContainer::updateActiveContainerBadge, Qt::UniqueConnection);
+    }
 
     connect(item, &Konsole::ViewProperties::titleChanged, this, &Konsole::TabbedViewContainer::updateTitle);
 
-    connect(item, &Konsole::ViewProperties::colorChanged, this, &Konsole::TabbedViewContainer::updateColor);
+    connect(item, &Konsole::ViewProperties::colorChanged, this, &Konsole::TabbedViewContainer::updateColors);
 
-    connect(item, &Konsole::ViewProperties::activityColorChanged, this, &Konsole::TabbedViewContainer::updateColor);
+    connect(item, &Konsole::ViewProperties::activityColorChanged, this, &Konsole::TabbedViewContainer::updateColors);
 
     connect(item, &Konsole::ViewProperties::iconChanged, this, &Konsole::TabbedViewContainer::updateIcon);
 
@@ -474,6 +515,10 @@ void TabbedViewContainer::disconnectTerminalDisplay(TerminalDisplay *display)
 {
     auto item = display->sessionController();
     item->disconnect(this);
+    if (const auto session = item->session(); !session.isNull()) {
+        disconnect(session, &Konsole::Session::containerContextChanged, this, &Konsole::TabbedViewContainer::updateActiveContainerBadge);
+    }
+    removeContainerBadge(display);
 }
 
 void TabbedViewContainer::viewDestroyed(QObject *view)
@@ -501,7 +546,12 @@ void TabbedViewContainer::forgetView()
 void TabbedViewContainer::activateView(const QString & /*xdgActivationToken*/)
 {
     if (QWidget *widget = qobject_cast<QWidget *>(sender())) {
-        auto topLevelSplitter = qobject_cast<ViewSplitter *>(widget->parentWidget())->getToplevelSplitter();
+        auto *display = qobject_cast<TerminalDisplay *>(widget);
+        auto *splitter = ViewSplitter::parentSplitterForDisplay(display);
+        if (splitter == nullptr) {
+            return;
+        }
+        auto topLevelSplitter = splitter->getToplevelSplitter();
         // The tab page may be a TabPageWidget wrapping the splitter
         QWidget *tabPage = topLevelSplitter->parentWidget();
         if (tabPage) {
@@ -634,11 +684,12 @@ void TabbedViewContainer::currentTabChanged(int index)
             return;
         }
         auto view = splitview->activeTerminalDisplay();
-        setTabActivity(index, false);
-        _tabIconState[splitview].notification = Session::NoNotification;
         if (view != nullptr) {
+            setTabActivity(index, false);
+            _tabIconState[splitview].notification = Session::NoNotification;
             Q_EMIT activeViewChanged(view, reason);
             updateIcon(view->sessionController());
+            updateActiveContainerBadge();
         }
     } else {
         deleteLater();
@@ -688,7 +739,7 @@ void TabbedViewContainer::setTabActivity(int index, bool activity)
 void TabbedViewContainer::updateTitle(ViewProperties *item)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto *topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     if (controller->view() != topLevelSplitter->activeTerminalDisplay()) {
         return;
     }
@@ -702,28 +753,82 @@ void TabbedViewContainer::updateTitle(ViewProperties *item)
     setTabText(index, tabText);
 }
 
-void TabbedViewContainer::updateColor(ViewProperties *item)
+void TabbedViewContainer::updateColors(ViewProperties *item)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     const int index = indexOfSplitter(topLevelSplitter);
 
-    Q_EMIT setColor(index, item->color());
+    Q_EMIT setColor(index, effectiveTabColor(topLevelSplitter));
+    Q_EMIT setActivityColor(index, effectiveTabActivityColor(topLevelSplitter));
 }
 
-void TabbedViewContainer::updateActivityColor(ViewProperties *item)
+QColor TabbedViewContainer::effectiveTabColor(ViewSplitter *splitter) const
 {
-    auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
-    const int index = indexOfSplitter(topLevelSplitter);
+    if (splitter == nullptr) {
+        return QColor();
+    }
 
-    Q_EMIT setActivityColor(index, item->activityColor());
+    const auto displays = splitter->findChildren<TerminalDisplay *>();
+    QColor chosen;
+    bool hasChosen = false;
+    bool mixed = false;
+
+    for (TerminalDisplay *display : displays) {
+        auto *controller = display != nullptr ? display->sessionController() : nullptr;
+        auto session = controller != nullptr ? controller->session() : QPointer<Session>{};
+        const QColor color = session != nullptr ? session->color() : QColor();
+
+        if (!hasChosen) {
+            chosen = color;
+            hasChosen = true;
+            continue;
+        }
+
+        if (chosen != color) {
+            mixed = true;
+            break;
+        }
+    }
+
+    return mixed ? QColor() : chosen;
+}
+
+QColor TabbedViewContainer::effectiveTabActivityColor(ViewSplitter *splitter) const
+{
+    if (splitter == nullptr) {
+        return QColor();
+    }
+
+    const auto displays = splitter->findChildren<TerminalDisplay *>();
+    QColor chosen;
+    bool hasChosen = false;
+    bool mixed = false;
+
+    for (TerminalDisplay *display : displays) {
+        auto *controller = display != nullptr ? display->sessionController() : nullptr;
+        auto session = controller != nullptr ? controller->session() : QPointer<Session>{};
+        const QColor color = session != nullptr ? session->activityColor() : QColor();
+
+        if (!hasChosen) {
+            chosen = color;
+            hasChosen = true;
+            continue;
+        }
+
+        if (chosen != color) {
+            mixed = true;
+            break;
+        }
+    }
+
+    return mixed ? QColor() : chosen;
 }
 
 void TabbedViewContainer::updateIcon(ViewProperties *item)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     const int index = indexOfSplitter(topLevelSplitter);
     const auto &state = _tabIconState[topLevelSplitter];
 
@@ -774,11 +879,10 @@ void TabbedViewContainer::updateActivity(ViewProperties *item)
     if (!controller || !controller->view()) {
         return;
     }
-    auto *parentSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget());
-    if (!parentSplitter) {
+    auto *topLevelSplitter = topLevelSplitterForDisplay(controller->view());
+    if (!topLevelSplitter) {
         return;
     }
-    auto *topLevelSplitter = parentSplitter->getToplevelSplitter();
 
     const int index = indexOfSplitter(topLevelSplitter);
     if (index != currentIndex()) {
@@ -789,7 +893,7 @@ void TabbedViewContainer::updateActivity(ViewProperties *item)
 void TabbedViewContainer::updateNotification(ViewProperties *item, Session::Notification notification, bool enabled)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     const int index = indexOfSplitter(topLevelSplitter);
     auto &state = _tabIconState[topLevelSplitter];
 
@@ -805,7 +909,7 @@ void TabbedViewContainer::updateNotification(ViewProperties *item, Session::Noti
 void TabbedViewContainer::updateSpecialState(ViewProperties *item)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
 
     auto &state = _tabIconState[topLevelSplitter];
     state.readOnly = true;
@@ -825,7 +929,7 @@ void TabbedViewContainer::updateSpecialState(ViewProperties *item)
 void TabbedViewContainer::updateProgress(ViewProperties *item)
 {
     auto controller = qobject_cast<SessionController *>(item);
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     const int index = indexOfSplitter(topLevelSplitter);
 
     Q_EMIT setProgress(index, item->progress());
@@ -833,7 +937,7 @@ void TabbedViewContainer::updateProgress(ViewProperties *item)
 
 void TabbedViewContainer::currentSessionControllerChanged(SessionController *controller)
 {
-    auto topLevelSplitter = qobject_cast<ViewSplitter *>(controller->view()->parentWidget())->getToplevelSplitter();
+    auto topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     const int index = indexOfSplitter(topLevelSplitter);
 
     if (index == currentIndex()) {
@@ -843,10 +947,144 @@ void TabbedViewContainer::currentSessionControllerChanged(SessionController *con
     }
 
     updateTitle(qobject_cast<ViewProperties *>(controller));
-    updateColor(qobject_cast<ViewProperties *>(controller));
-    updateActivityColor(qobject_cast<ViewProperties *>(controller));
+    updateColors(qobject_cast<ViewProperties *>(controller));
     updateActivity(qobject_cast<ViewProperties *>(controller));
     updateSpecialState(qobject_cast<ViewProperties *>(controller));
+    updateActiveContainerBadge();
+}
+
+void TabbedViewContainer::updateActiveContainerBadge()
+{
+    auto *splitter = activeViewSplitter();
+    if (splitter == nullptr) {
+        return;
+    }
+
+    const auto displays = splitter->findChildren<TerminalDisplay *>();
+    for (TerminalDisplay *display : displays) {
+        updateContainerBadgeForDisplay(display);
+    }
+
+    const auto knownDisplays = _containerBadgeWidgets.keys();
+    for (TerminalDisplay *display : knownDisplays) {
+        if (!displays.contains(display)) {
+            removeContainerBadge(display);
+        }
+    }
+}
+
+void TabbedViewContainer::ensureContainerBadge(TerminalDisplay *display)
+{
+    if (display == nullptr || _containerBadgeWidgets.contains(display)) {
+        return;
+    }
+
+    auto *parentWidget = ViewSplitter::containerWidgetForDisplay(display);
+    if (parentWidget == nullptr) {
+        parentWidget = display;
+    }
+    auto *badgeWidget = new QWidget(parentWidget);
+    auto *badgeColor = new QLabel(badgeWidget);
+    auto *badgeText = new QLabel(badgeWidget);
+    auto *badgeLayout = new QHBoxLayout(badgeWidget);
+    badgeLayout->setContentsMargins(8, 0, 6, 0);
+    badgeLayout->setSpacing(6);
+
+    badgeColor->setFixedSize(10, 10);
+    badgeColor->setAlignment(Qt::AlignCenter);
+    badgeColor->setStyleSheet(QStringLiteral("border: 1px solid palette(mid); border-radius: 5px;"));
+    badgeText->setTextFormat(Qt::PlainText);
+    badgeText->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    badgeLayout->addWidget(badgeColor);
+    badgeLayout->addWidget(badgeText);
+
+    badgeWidget->setStyleSheet(containerBadgeBackgroundStyle(badgeWidget));
+    badgeWidget->setVisible(false);
+
+    _containerBadgeWidgets.insert(display, badgeWidget);
+    _containerBadgeColors.insert(display, badgeColor);
+    _containerBadgeTexts.insert(display, badgeText);
+
+    if (auto *layout = qobject_cast<QBoxLayout *>(parentWidget->layout())) {
+        layout->addWidget(badgeWidget);
+    }
+
+    connect(display, &QObject::destroyed, this, [this, display]() {
+        removeContainerBadge(display);
+    });
+}
+
+void TabbedViewContainer::removeContainerBadge(TerminalDisplay *display)
+{
+    if (display == nullptr) {
+        return;
+    }
+
+    disconnect(display, &QObject::destroyed, this, nullptr);
+
+    if (auto *badgeWidget = _containerBadgeWidgets.take(display)) {
+        badgeWidget->deleteLater();
+    }
+
+    _containerBadgeColors.remove(display);
+    _containerBadgeTexts.remove(display);
+}
+
+void TabbedViewContainer::updateContainerBadgeForDisplay(TerminalDisplay *display)
+{
+    if (display == nullptr) {
+        return;
+    }
+
+    ensureContainerBadge(display);
+
+    auto *badgeWidget = _containerBadgeWidgets.value(display, nullptr);
+    auto *badgeColor = _containerBadgeColors.value(display, nullptr);
+    auto *badgeText = _containerBadgeTexts.value(display, nullptr);
+    if (badgeWidget == nullptr || badgeColor == nullptr || badgeText == nullptr) {
+        return;
+    }
+
+    const auto controller = display->sessionController();
+    const auto session = controller != nullptr ? controller->session() : QPointer<Session>{};
+    if (session.isNull()) {
+        badgeWidget->setVisible(false);
+        return;
+    }
+
+    const ContainerInfo container = session->containerContext();
+    QString containerName;
+    QString containerType;
+    QString containerKey;
+    if (container.isValid()) {
+        containerName = container.displayName.isEmpty() ? container.name : container.displayName;
+        containerType = container.detector != nullptr ? container.detector->displayName() : i18n("Container");
+        containerKey = ContainerRegistry::keyFromContainerInfo(container);
+    } else {
+        const auto pending = ContainerSessionState::pendingContainerInfo(session);
+        if (pending.isActive()) {
+            containerName = pending.name;
+            containerType = pending.type;
+            containerKey = pending.key;
+            if (containerType.isEmpty()) {
+                containerType = i18n("Container");
+            }
+        }
+    }
+
+    if (containerName.isEmpty()) {
+        badgeWidget->setVisible(false);
+        return;
+    }
+
+    badgeText->setText(i18n("%1: %2", containerType, containerName));
+    const QString colorKey = !containerKey.isEmpty() ? containerKey : containerName;
+    badgeColor->setStyleSheet(containerBadgeColorStyle(ContainerSessionState::colorForContainerKey(colorKey)));
+    const int h = qMax(22, badgeWidget->sizeHint().height() + 4);
+    badgeWidget->setStyleSheet(containerBadgeBackgroundStyle(badgeWidget));
+    badgeWidget->setFixedHeight(h);
+
+    badgeWidget->setVisible(true);
 }
 
 void TabbedViewContainer::closeTerminalTab(int idx)

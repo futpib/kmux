@@ -12,12 +12,16 @@
 
 // Qt
 #include <QCloseEvent>
+#include <QColor>
+#include <QDateTime>
 #include <QFile>
 #include <QFileSystemWatcher>
+#include <QGuiApplication>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QScreen>
+#include <QStyleHints>
 #include <QTimer>
 #include <QWindow>
 #if HAVE_DBUS
@@ -61,6 +65,7 @@
 
 #include "containers/ContainerList.h"
 #include "containers/ContainerRegistry.h"
+#include "containers/ContainerSessionState.h"
 
 #include "session/Session.h"
 #include "session/SessionController.h"
@@ -183,6 +188,30 @@ QString dumpAllConfigs()
     reportGroup(QStringLiteral("DEFAULT"), KSharedConfig::openConfig()->group(QStringLiteral("MainWindow")));
     reportGroup(QStringLiteral("STATE"), KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow")));
     return out.join(QLatin1Char(' '));
+}
+
+QString containerSuffixForSession(const QPointer<Session> &session)
+{
+    if (session.isNull()) {
+        return {};
+    }
+
+    QString containerName;
+    const ContainerInfo container = session->containerContext();
+    if (container.isValid()) {
+        containerName = container.displayName.isEmpty() ? container.name : container.displayName;
+    } else {
+        const auto pending = ContainerSessionState::pendingContainerInfo(session);
+        if (!pending.key.isEmpty()) {
+            containerName = pending.name;
+        }
+    }
+
+    if (containerName.isEmpty()) {
+        return {};
+    }
+
+    return QStringLiteral(" [%1]").arg(containerName);
 }
 }
 
@@ -474,6 +503,15 @@ void MainWindow::updateWindowCaption()
         }
     }
 
+    const QString containerSuffix = containerSuffixForSession(_pluggedController->session());
+    if (!containerSuffix.isEmpty()) {
+        if (caption.trimmed().isEmpty()) {
+            caption = containerSuffix.trimmed();
+        } else {
+            caption.append(containerSuffix);
+        }
+    }
+
     setCaption(caption);
 }
 
@@ -595,7 +633,7 @@ void MainWindow::setupActions()
 
     menuAction = collection->addAction(QStringLiteral("manage-profiles"));
     menuAction->setText(i18nc("@action:inmenu", "Manage Profiles..."));
-    menuAction->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
+    menuAction->setIcon(QIcon::fromTheme(QStringLiteral("settings-configure"), QIcon::fromTheme(QStringLiteral("configure"))));
     connect(menuAction, &QAction::triggered, this, &Konsole::MainWindow::showManageProfilesDialog);
 
     // Set up an shortcut-only action for activating menu bar.
@@ -799,6 +837,11 @@ void MainWindow::rebuildNewTabMenu()
     if (_containerList) {
         _containerList->addContainerSections(menu);
     }
+
+    if (QAction *manageProfiles = actionCollection()->action(QStringLiteral("manage-profiles"))) {
+        menu->addSeparator();
+        menu->addAction(manageProfiles);
+    }
 }
 
 QString MainWindow::activeSessionDir() const
@@ -857,13 +900,13 @@ void MainWindow::cloneTab()
 {
     Q_ASSERT(_pluggedController);
 
-    Session *session = _pluggedController->session();
+    Session *sourceSession = _pluggedController->session();
 
-    if (TmuxControllerRegistry::instance()->controllerForSession(session)) {
+    if (TmuxControllerRegistry::instance()->controllerForSession(sourceSession)) {
         return;
     }
 
-    Profile::Ptr profile = SessionManager::instance()->sessionProfile(session);
+    Profile::Ptr profile = SessionManager::instance()->sessionProfile(sourceSession);
     if (profile) {
         createSession(profile, activeSessionDir());
     } else {
@@ -1178,6 +1221,20 @@ void MainWindow::newInContainer(const ContainerInfo &container)
         // that container, an invalid one (host selected) clears any
         // auto-applied default from the profile.
         session->setContainerContext(container);
+
+        const QString key = ContainerRegistry::keyFromContainerInfo(container);
+        ContainerSessionState::setPendingContainerInfo(session,
+                                                       key,
+                                                       container.detector ? container.detector->displayName() : QString(),
+                                                       container.displayName.isEmpty() ? container.name : container.displayName);
+
+        if (!session->isTabColorSetByUser() && defaultProfile && !defaultProfile->tabColor().isValid()) {
+            if (!key.isEmpty()) {
+                session->setColor(ContainerSessionState::colorForContainerKey(key));
+            } else {
+                session->setColor(QColor());
+            }
+        }
     }
 }
 
@@ -1279,6 +1336,13 @@ void MainWindow::applyKonsoleSettings()
 
     _viewManager->activeContainer()->setNavigationBehavior(KonsoleSettings::newTabBehavior());
 
+    if (KonsoleSettings::syncProfileWithSystemTheme()) {
+        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &MainWindow::applyThemeProfile, Qt::UniqueConnection);
+        applyThemeProfile();
+    } else {
+        disconnect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &MainWindow::applyThemeProfile);
+    }
+
     // Save the toolbar/menu/dockwidget states and the window geometry in
     // the state config (~/.local/state/kmuxstaterc) rather than the default
     // config file, so window/toolbar state lives next to other transient
@@ -1311,6 +1375,21 @@ void MainWindow::applyKonsoleSettings()
 
     updateWindowCaption();
     updateProgress();
+}
+
+void MainWindow::applyThemeProfile()
+{
+    if (!KonsoleSettings::syncProfileWithSystemTheme()) {
+        return;
+    }
+
+    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+    Profile::Ptr profile = (scheme == Qt::ColorScheme::Dark) ? ProfileManager::instance()->darkProfile() : ProfileManager::instance()->lightProfile();
+
+    const auto sessions = SessionManager::instance()->sessions();
+    for (Session *session : sessions) {
+        SessionManager::instance()->setSessionProfile(session, profile);
+    }
 }
 
 void MainWindow::activateMenuBar()
