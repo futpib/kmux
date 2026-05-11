@@ -26,7 +26,7 @@ jobs:
           upstream_branch: master
           pr_title: 'Sync upstream KDE/konsole master'
           pr_labels: upstream-sync
-          git_remote_pull_params: '--allow-unrelated-histories --no-commit --strategy=recursive -X theirs'
+          git_remote_pull_params: '--allow-unrelated-histories --no-commit --strategy=recursive'
 
       - if: success() && steps.sync.outputs.pr_number != ''
         env:
