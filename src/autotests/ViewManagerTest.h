@@ -20,6 +20,7 @@ private Q_SLOTS:
     void initTestCase();
     void testSaveLayout();
     void testLoadLayout();
+    void testContainerMenuLaunchKeepsPendingColor();
 
 private:
     QTemporaryDir *m_testDir;

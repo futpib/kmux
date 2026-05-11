@@ -7,7 +7,6 @@ ecm_qt_declare_logging_category(
     IDENTIFIER SshManagerPluginDebug
     CATEGORY_NAME org.kde.konsole.plugin.sshmanager
     DESCRIPTION "Konsole plugin (SSH Manager)"
-    DEFAULT_SEVERITY Warning
     EXPORT KONSOLE
 )
 

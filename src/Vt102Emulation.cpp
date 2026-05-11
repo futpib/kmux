@@ -36,6 +36,10 @@
 
 // win32-input-mode
 #include "WinKeys.h"
+
+// Kitty keyboard protocol
+#include "KittyKeyMap.h"
+
 #ifdef HAVE_XKBCOMMON
 #include <xkbcommon/xkbcommon.h>
 #endif
@@ -145,6 +149,11 @@ void Vt102Emulation::clearHistory()
     Emulation::clearHistory();
 }
 
+void Vt102Emulation::setKittyKeyboardEnabled(bool enabled)
+{
+    _kittyKeyboardEnabled = enabled;
+}
+
 void Vt102Emulation::reset(bool softReset, bool preservePrompt)
 {
     Q_EMIT updateDroppedLines(_currentScreen->getLines());
@@ -162,6 +171,10 @@ void Vt102Emulation::reset(bool softReset, bool preservePrompt)
     } else {
         resetModes();
     }
+
+    // Clear kitty keyboard flag stacks for both screens
+    _kittyKeyboardFlagsStack[0].clear();
+    _kittyKeyboardFlagsStack[1].clear();
 
     resetCharset(0);
     _screen[0]->reset(softReset, preservePrompt);
@@ -546,8 +559,9 @@ void Vt102Emulation::param(const uint cc)
 
 void Vt102Emulation::csi_dispatch(const uint cc)
 {
-    if (_ignore || (params.hasSubParams && cc != 'm')) // Be conservative for now
+    if (_ignore || (params.hasSubParams && cc != 'm' && cc != 'u')) // Be conservative for now
         return;
+
     if ((tokenBufferPos == 0 || (tokenBuffer[0] != '?' && tokenBuffer[0] != '!' && tokenBuffer[0] != '=' && tokenBuffer[0] != '>')) && cc < 256
         && (charClass[cc] & CPN) == CPN && _nIntermediate == 0) {
         processToken(token_csi_pn(cc), params.value[0], params.value[1]);
@@ -569,11 +583,14 @@ void Vt102Emulation::csi_dispatch(const uint cc)
             if (tokenBufferPos != 0 && tokenBuffer[0] == '?') {
                 processToken(token_csi_pr(cc, params.value[i]), i, 0);
             } else if (tokenBufferPos != 0 && tokenBuffer[0] == '<') {
-                processToken(token_csi_pl(cc), 0, 0);
+                processToken(token_csi_pl(cc), params.value[0], params.value[1]);
+                break;
             } else if (tokenBufferPos != 0 && tokenBuffer[0] == '=') {
-                processToken(token_csi_pq(cc), 0, 0);
+                processToken(token_csi_pq(cc), params.value[0], params.value[1]);
+                break;
             } else if (tokenBufferPos != 0 && tokenBuffer[0] == '>') {
-                processToken(token_csi_pg(cc), 0, 0);
+                processToken(token_csi_pg(cc), params.value[0], params.value[1]);
+                break;
             } else if (cc == 'm' && !params.sub[i].count && params.count - i >= 4 && (params.value[i] == 38 || params.value[i] == 48 || params.value[i] == 58)
                        && params.value[i + 1] == 2) {
                 // ESC[ ... 48;2;<red>;<green>;<blue> ... m -or- ESC[ ... 38;2;<red>;<green>;<blue> ... m
@@ -630,6 +647,11 @@ void Vt102Emulation::osc_put(const uint cc)
         if ((uint)tokenStateChange[tokenState] == tokenBuffer[tokenBufferPos - 1]) {
             tokenState++;
             tokenPos = tokenBufferPos;
+            if ((uint)tokenState == strlen(tokenStateChange) - 1
+                && QString::fromUcs4(&tokenBuffer[0], tokenBufferPos).startsWith(QLatin1String("1337;FilePart="))) {
+                // State machine shortcut
+                tokenState = -2;
+            }
             if ((uint)tokenState == strlen(tokenStateChange)) {
                 tokenState = -2;
                 tokenData.clear();
@@ -655,7 +677,10 @@ void Vt102Emulation::osc_end(const uint cc)
     // do not.
     if (tokenBuffer[0] == XTERM_EXTENDED::URL_LINK) {
         // printf '\e]8;;https://example.com\e\\This is a link\e]8;;\e\\\n'
-        Q_EMIT toggleUrlExtractionRequest();
+        if (auto extractor = _currentScreen->urlExtractor()) {
+            // OSC 8 is per-screen; do not broadcast to all screens.
+            extractor->toggleUrlInput();
+        }
     }
 
     processSessionAttributeRequest(tokenBufferPos, cc);
@@ -1783,11 +1808,26 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
             iTermReportCellSize();
             return;
         }
-        if (!value.startsWith(QLatin1String("File="))) {
+        if (value.startsWith(QLatin1String("MultipartFile="))) {
+            savedValue = value;
+            tokenData.clear();
+        }
+        if (!value.startsWith(QLatin1String("File=")) && !value.startsWith(QLatin1String("FileEnd"))) {
             return;
         }
-        int pos = value.indexOf(QLatin1Char(':'));
-        QStringList params = value.mid(5, pos - 5).split(QLatin1Char(';'));
+        if (value.startsWith(QLatin1String("FileEnd"))) {
+            value = savedValue;
+        }
+        int pos;
+        int start;
+        if (value.startsWith(QLatin1String("File="))) {
+            pos = value.indexOf(QLatin1Char(':'));
+            start = 5;
+        } else {
+            pos = value.length();
+            start = 14;
+        }
+        QStringList params = value.mid(start, pos - start).split(QLatin1Char(';'));
         bool keepAspect = true;
         int scaledWidth = 0;
         int scaledHeight = 0;
@@ -2467,6 +2507,12 @@ void Vt102Emulation::processToken(int token, int p, int q)
     case token_csi_pg('c'      ) :  reportSecondaryAttributes(          ); break; //VT100
     case token_csi_pg('q'      ) :  reportVersion(          ); break;
 
+    // Kitty keyboard protocol — final char 'u' with prefix
+    case token_csi_pr('u',   0 ) :  handleKittyKeyboardQuery(                          ); break;
+    case token_csi_pg('u'      ) :  handleKittyKeyboardPush(p                          ); break;
+    case token_csi_pl('u'      ) :  handleKittyKeyboardPop(p ? p : 1                   ); break;
+    case token_csi_pq('u'      ) :  handleKittyKeyboardSet(p, q ? q : 1                ); break;
+
     //FIXME: when changing between vt52 and ansi mode evtl do some resetting.
     case token_vt52('A'      ) : _currentScreen->cursorUp             (         1); break; //VT52
     case token_vt52('B'      ) : _currentScreen->cursorDown           (         1); break; //VT52
@@ -3087,9 +3133,10 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
 
         bool is_key_down = (event->type() == QEvent::KeyPress);
 
-        // X11 keycodes are offset by 8 from evdev and Wayland scancodes.
-        const xkb_keycode_t keycode = event->nativeScanCode() +
-            (QGuiApplication::platformName() == QLatin1String("xcb") ? 8 : 0);
+        // Qt's nativeScanCode() returns an XKB-compatible keycode
+        // (evdev + 8) on all Linux platforms, including X11 and Wayland,
+        // so we do not need to add 8 on our side.
+        const xkb_keycode_t keycode = event->nativeScanCode();
 
         /* To correctly determine the Virtual Key Code (which represents a physical key,
          * e.g. VK_1 regardless of whether '1' or '!' is produced), we need the base keysym.
@@ -3294,6 +3341,14 @@ void Vt102Emulation::sendKeyEvent(QKeyEvent *event)
         return;
     }
 #endif
+
+    // Kitty keyboard protocol — must be checked before the KeyPress-only gate
+    // because flag 2 (report event types) needs release/repeat events too.
+    if (_kittyKeyboardEnabled && currentKittyKeyboardFlags() != 0 && !isReadOnly) {
+        if (handleKittyKeyEvent(event)) {
+            return;
+        }
+    }
 
     if (event->type() != QEvent::KeyPress) return;
 
@@ -3542,6 +3597,10 @@ void Vt102Emulation::resetModes()
     // MODE_Mouse1007 (Alternate Scrolling) is not reset here, to maintain
     // the profile alternate scrolling property after reset() is called, which
     // makes more sense; also this matches XTerm behavior.
+
+    // Clear kitty keyboard flag stacks for both screens
+    _kittyKeyboardFlagsStack[0].clear();
+    _kittyKeyboardFlagsStack[1].clear();
 
     resetMode(MODE_132Columns);
     saveMode(MODE_132Columns);
@@ -4154,6 +4213,426 @@ int Vt102Emulation::getFreeGraphicsImageId()
         }
         i++;
     }
+}
+
+/* ------------------------------------------------------------------------- */
+/*                                                                           */
+/*                     Kitty Keyboard Protocol                               */
+/*                                                                           */
+/* ------------------------------------------------------------------------- */
+
+int Vt102Emulation::currentScreenIndex() const
+{
+    return (_currentScreen == _screen[1]) ? 1 : 0;
+}
+
+int Vt102Emulation::currentKittyKeyboardFlags() const
+{
+    const auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
+    return stack.isEmpty() ? 0 : stack.last();
+}
+
+void Vt102Emulation::handleKittyKeyboardQuery()
+{
+    // Respond with CSI ? flags u
+    int flags = currentKittyKeyboardFlags();
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf), "\033[?%du", flags);
+    sendString(QByteArray(buf, len));
+}
+
+void Vt102Emulation::handleKittyKeyboardPush(int flags)
+{
+    auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
+    stack.append(flags);
+}
+
+void Vt102Emulation::handleKittyKeyboardPop(int count)
+{
+    auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
+    for (int i = 0; i < count && !stack.isEmpty(); ++i) {
+        stack.removeLast();
+    }
+}
+
+void Vt102Emulation::handleKittyKeyboardSet(int flags, int mode)
+{
+    auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
+    if (stack.isEmpty()) {
+        stack.append(0);
+    }
+
+    switch (mode) {
+    case 1: // replace
+        stack.last() = flags;
+        break;
+    case 2: // OR
+        stack.last() |= flags;
+        break;
+    case 3: // AND-NOT
+        stack.last() &= ~flags;
+        break;
+    default:
+        stack.last() = flags;
+        break;
+    }
+}
+
+bool Vt102Emulation::handleKittyKeyEvent(QKeyEvent *event)
+{
+    const int flags = currentKittyKeyboardFlags();
+    if (flags == 0) {
+        return false;
+    }
+
+    // Synthetic events from sendText() have key()==0 — fall through to legacy
+    if (event->key() == 0) {
+        return false;
+    }
+
+    // Determine event type: 1=press, 2=repeat, 3=release
+    int eventType = 1;
+    if (event->type() == QEvent::KeyRelease) {
+        eventType = 3;
+    } else if (event->isAutoRepeat()) {
+        eventType = 2;
+    }
+
+    // Flag 2 (report event types): if not set, only handle press events
+    const bool reportEventTypes = (flags & 2) != 0;
+    if (!reportEventTypes && eventType != 1) {
+        return false;
+    }
+
+    // Look up the key in the mapping
+    KittyKeyInfo info = qtKeyToKittyKey(event->key());
+
+    // Modifier-only keys: only reported when flag 8 (report all keys) is active
+    if (info.type != KittyKeyType::Unknown && info.isModifier) {
+        if (!(flags & 8)) {
+            return false;
+        }
+    }
+
+    // Determine the key code
+    int keyCode = 0;
+    bool isFunctionalKey = false;
+
+    if (info.type == KittyKeyType::Legacy || info.type == KittyKeyType::CSI_u) {
+        keyCode = info.keyCode;
+        isFunctionalKey = true;
+    } else if (info.type == KittyKeyType::Plain) {
+        // Should not happen — Plain keys use their codepoint
+        keyCode = info.keyCode;
+    } else {
+        // Unknown key — derive keycode from Qt key value or text
+        int qtKey = event->key();
+        if (qtKey >= Qt::Key_A && qtKey <= Qt::Key_Z) {
+            keyCode = 'a' + (qtKey - Qt::Key_A);
+        } else if (qtKey >= Qt::Key_0 && qtKey <= Qt::Key_9) {
+            keyCode = '0' + (qtKey - Qt::Key_0);
+        } else if (qtKey == Qt::Key_Space) {
+            keyCode = ' ';
+        } else if (qtKey == Qt::Key_BracketLeft) {
+            keyCode = '[';
+        } else if (qtKey == Qt::Key_Backslash) {
+            keyCode = '\\';
+        } else if (qtKey == Qt::Key_BracketRight) {
+            keyCode = ']';
+        } else if (qtKey == Qt::Key_AsciiCircum) {
+            keyCode = '^';
+        } else if (qtKey == Qt::Key_Underscore) {
+            keyCode = '_';
+        } else if (qtKey == Qt::Key_QuoteLeft) {
+            keyCode = '`';
+        } else if (qtKey == Qt::Key_Exclam) {
+            keyCode = '!';
+        } else if (qtKey == Qt::Key_At) {
+            keyCode = '@';
+        } else if (qtKey == Qt::Key_NumberSign) {
+            keyCode = '#';
+        } else if (qtKey == Qt::Key_Dollar) {
+            keyCode = '$';
+        } else if (qtKey == Qt::Key_Percent) {
+            keyCode = '%';
+        } else if (qtKey == Qt::Key_AsciiTilde) {
+            keyCode = '~';
+        } else if (qtKey == Qt::Key_Ampersand) {
+            keyCode = '&';
+        } else if (qtKey == Qt::Key_Asterisk) {
+            keyCode = '*';
+        } else if (qtKey == Qt::Key_ParenLeft) {
+            keyCode = '(';
+        } else if (qtKey == Qt::Key_ParenRight) {
+            keyCode = ')';
+        } else if (qtKey == Qt::Key_Minus) {
+            keyCode = '-';
+        } else if (qtKey == Qt::Key_Equal) {
+            keyCode = '=';
+        } else if (qtKey == Qt::Key_Plus) {
+            keyCode = '+';
+        } else if (qtKey == Qt::Key_BraceLeft) {
+            keyCode = '{';
+        } else if (qtKey == Qt::Key_BraceRight) {
+            keyCode = '}';
+        } else if (qtKey == Qt::Key_Bar) {
+            keyCode = '|';
+        } else if (qtKey == Qt::Key_Semicolon) {
+            keyCode = ';';
+        } else if (qtKey == Qt::Key_Colon) {
+            keyCode = ':';
+        } else if (qtKey == Qt::Key_Apostrophe) {
+            keyCode = '\'';
+        } else if (qtKey == Qt::Key_QuoteDbl) {
+            keyCode = '"';
+        } else if (qtKey == Qt::Key_Comma) {
+            keyCode = ',';
+        } else if (qtKey == Qt::Key_Period) {
+            keyCode = '.';
+        } else if (qtKey == Qt::Key_Less) {
+            keyCode = '<';
+        } else if (qtKey == Qt::Key_Greater) {
+            keyCode = '>';
+        } else if (qtKey == Qt::Key_Slash) {
+            keyCode = '/';
+        } else if (qtKey == Qt::Key_Question) {
+            keyCode = '?';
+        } else if (!event->text().isEmpty()) {
+            // Fallback: use text codepoint for remaining keys
+            uint cp = event->text().at(0).unicode();
+            if (cp >= 0x20) {
+                keyCode = cp;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        if (keyCode != 0) {
+            if (!(flags & 8)) {
+                // Without flag 8, text-producing keys fall through to legacy
+                // unless they have non-shift modifiers (Ctrl, Alt, etc.)
+                // Shift alone is already represented in the text character.
+                Qt::KeyboardModifiers mods = event->modifiers();
+                mods &= ~Qt::ShiftModifier;
+                if (mods == Qt::NoModifier) {
+                    // With flag 1 (disambiguate) + flag 2 (event types),
+                    // release/repeat events must still be reported via CSI u
+                    if ((flags & 3) == 3 && event->type() != QEvent::KeyPress) {
+                        // continue to CSI u encoding for non-press events
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    // For CSI_u keys (Escape, Enter, Tab, Backspace) with flag 1 (disambiguate):
+    // When no modifiers, send legacy byte *unless* flag 8 is set
+    if (info.type == KittyKeyType::CSI_u && !info.isModifier && eventType == 1) {
+        Qt::KeyboardModifiers mods = event->modifiers();
+
+        // For Backspace/Enter/Tab/Escape: check if we should use legacy encoding
+        if (keyCode == 27 || keyCode == 13 || keyCode == 9 || keyCode == 127) {
+            bool hasMods = false;
+#ifdef HAVE_XKBCOMMON
+            bool capsLock = xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_EFFECTIVE);
+            bool numLock = xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_NUM, XKB_STATE_MODS_EFFECTIVE);
+            int modBits = kittyModifierBits(mods, capsLock, numLock);
+#else
+            int modBits = kittyModifierBits(mods, false, false);
+#endif
+            hasMods = (modBits != 1);
+
+            if (!hasMods && !(flags & 8)) {
+                // No modifiers — send legacy byte
+                return false;
+            }
+        }
+    }
+
+    // Calculate modifier bits
+    Qt::KeyboardModifiers mods = event->modifiers();
+#ifdef HAVE_XKBCOMMON
+    bool capsLock = xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_EFFECTIVE);
+    bool numLock = xkb_state_mod_name_is_active(_xkbData.state_us, XKB_MOD_NAME_NUM, XKB_STATE_MODS_EFFECTIVE);
+#else
+    bool capsLock = false;
+    bool numLock = false;
+#endif
+    int modBits = kittyModifierBits(mods, capsLock, numLock);
+
+    // Build the escape sequence
+    char buf[128];
+    int len = 0;
+
+    // For modifier keys, use left/right specific codepoints based on native scan code
+    if (info.isModifier && info.type == KittyKeyType::CSI_u) {
+#ifdef HAVE_XKBCOMMON
+        if (event->nativeScanCode()) {
+            const xkb_keycode_t xkbKeycode = event->nativeScanCode() + (QGuiApplication::platformName() == QLatin1String("xcb") ? 8 : 0);
+            xkb_keysym_t keysym = xkb_state_key_get_one_sym(_xkbData.state_us, xkbKeycode);
+            switch (keysym) {
+            case XKB_KEY_Shift_L:
+                keyCode = 57441;
+                break;
+            case XKB_KEY_Shift_R:
+                keyCode = 57447;
+                break;
+            case XKB_KEY_Control_L:
+                keyCode = 57442;
+                break;
+            case XKB_KEY_Control_R:
+                keyCode = 57448;
+                break;
+            case XKB_KEY_Alt_L:
+                keyCode = 57443;
+                break;
+            case XKB_KEY_Alt_R:
+                keyCode = 57449;
+                break;
+            case XKB_KEY_Meta_L:
+                keyCode = 57444;
+                break;
+            case XKB_KEY_Meta_R:
+                keyCode = 57450;
+                break;
+            case XKB_KEY_Hyper_L:
+                keyCode = 57445;
+                break;
+            case XKB_KEY_Hyper_R:
+                keyCode = 57451;
+                break;
+            default:
+                break;
+            }
+        }
+#endif
+    }
+
+    // Determine shifted and base key for alternate key reporting (flag 4)
+    int shiftedKey = 0;
+    int baseKey = 0;
+#ifdef HAVE_XKBCOMMON
+    if ((flags & 4) && !info.isModifier && isFunctionalKey == false && event->nativeScanCode()) {
+        const xkb_keycode_t xkbKeycode = event->nativeScanCode() + (QGuiApplication::platformName() == QLatin1String("xcb") ? 8 : 0);
+        xkb_keysym_t baseSym = xkb_state_key_get_one_sym(_xkbData.state_us, xkbKeycode);
+        uint32_t baseChar = xkb_keysym_to_utf32(baseSym);
+        if (baseChar > 0 && baseChar != (uint32_t)keyCode) {
+            baseKey = baseChar;
+        }
+        // The shifted key is the character actually produced when shift is active
+        if ((mods & Qt::ShiftModifier) && !event->text().isEmpty()) {
+            uint shiftedCp = event->text().at(0).unicode();
+            if (shiftedCp >= 0x20 && shiftedCp != (uint)keyCode) {
+                shiftedKey = shiftedCp;
+            }
+        }
+    }
+#endif
+
+    // Text-as-codepoints reporting (flag 16)
+    QByteArray textField;
+    if ((flags & 16) && !event->text().isEmpty() && !info.isModifier) {
+        bool first = true;
+        for (int i = 0; i < event->text().length(); ++i) {
+            uint cp = event->text().at(i).unicode();
+            // Skip control characters except Tab(9), Enter(13), LF(10)
+            if (cp < 0x20 && cp != 9 && cp != 13 && cp != 10) {
+                continue;
+            }
+            if (!first) {
+                textField.append(':');
+            }
+            textField.append(QByteArray::number(cp));
+            first = false;
+        }
+    }
+
+    // Now encode the sequence based on key type
+    if (info.type == KittyKeyType::Legacy) {
+        // Legacy keys keep their traditional encoding format
+        if (info.legacySuffix != 0) {
+            // Letter-type legacy keys: CSI 1;mods[:event] X
+            if (modBits == 1 && eventType == 1) {
+                // No modifiers, press event — use basic form
+                if (info.legacySuffix == 'P' || info.legacySuffix == 'Q' || info.legacySuffix == 'R' || info.legacySuffix == 'S') {
+                    // F1-F4: SS3 encoding when no modifiers
+                    len = snprintf(buf, sizeof(buf), "\033O%c", info.legacySuffix);
+                } else {
+                    len = snprintf(buf, sizeof(buf), "\033[%c", info.legacySuffix);
+                }
+            } else if (eventType == 1) {
+                len = snprintf(buf, sizeof(buf), "\033[1;%d%c", modBits, info.legacySuffix);
+            } else {
+                len = snprintf(buf, sizeof(buf), "\033[1;%d:%d%c", modBits, eventType, info.legacySuffix);
+            }
+        } else {
+            // Tilde-type legacy keys: CSI N;mods[:event] ~
+            if (modBits == 1 && eventType == 1) {
+                len = snprintf(buf, sizeof(buf), "\033[%d~", info.legacyNumber);
+            } else if (eventType == 1) {
+                len = snprintf(buf, sizeof(buf), "\033[%d;%d~", info.legacyNumber, modBits);
+            } else {
+                len = snprintf(buf, sizeof(buf), "\033[%d;%d:%d~", info.legacyNumber, modBits, eventType);
+            }
+        }
+        sendString(QByteArray(buf, len));
+    } else {
+        // CSI_u and plain keys: CSI keycode[:shifted[:base]] ; mods[:event] [; text] u
+        // Use lowercase codepoint for plain text keys when flag 8 is active
+        if (!isFunctionalKey && (flags & 8) && keyCode >= 'A' && keyCode <= 'Z') {
+            keyCode = keyCode + 32; // lowercase
+        } else if (!isFunctionalKey && keyCode >= 'A' && keyCode <= 'Z') {
+            keyCode = keyCode + 32; // lowercase for CSI u
+        }
+
+        // Build keycode field: keycode[:shifted[:base]]
+        QByteArray keycodeField = QByteArray::number(keyCode);
+        if (shiftedKey > 0 || baseKey > 0) {
+            keycodeField.append(':');
+            if (shiftedKey > 0) {
+                keycodeField.append(QByteArray::number(shiftedKey));
+            }
+            if (baseKey > 0) {
+                keycodeField.append(':');
+                keycodeField.append(QByteArray::number(baseKey));
+            }
+        }
+
+        // Build modifier field: mods[:event]
+        bool needMods = (modBits != 1) || (eventType != 1) || !textField.isEmpty();
+        QByteArray modField;
+        if (needMods) {
+            modField = QByteArray::number(modBits);
+            if (eventType != 1) {
+                modField.append(':');
+                modField.append(QByteArray::number(eventType));
+            }
+        }
+
+        // Assemble: ESC [ keycode [; mods [; text]] u
+        QByteArray seq;
+        seq.append("\033[");
+        seq.append(keycodeField);
+        if (needMods) {
+            seq.append(';');
+            seq.append(modField);
+        }
+        if (!textField.isEmpty()) {
+            if (!needMods) {
+                seq.append(';'); // empty modifier field
+            }
+            seq.append(';');
+            seq.append(textField);
+        }
+        seq.append('u');
+        sendString(seq);
+    }
+
+    return true;
 }
 
 #include "moc_Vt102Emulation.cpp"

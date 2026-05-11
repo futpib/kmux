@@ -42,6 +42,7 @@
 #include "profile/ProfileManager.h"
 
 #include "containers/ContainerRegistry.h"
+#include "containers/ContainerSessionState.h"
 
 #include "session/Session.h"
 #include "session/SessionController.h"
@@ -483,6 +484,7 @@ void ViewManager::switchToView(int index, Qt::FocusReason reason)
 
 void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisplay, Qt::FocusReason reason)
 {
+<<<<<<< HEAD
     if (!terminalDisplay) {
         return;
     }
@@ -490,6 +492,9 @@ void ViewManager::switchToTerminalDisplay(Konsole::TerminalDisplay *terminalDisp
     if (!splitter) {
         return;
     }
+=======
+    auto splitter = ViewSplitter::parentSplitterForDisplay(terminalDisplay);
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     auto toplevelSplitter = splitter->getToplevelSplitter();
 
     // Focus the TerminalDisplay first. QTabWidget keeps non-current
@@ -886,8 +891,7 @@ Session *ViewManager::createSession(const Profile::Ptr &profile, const QString &
     session->addEnvironmentEntry(QStringLiteral("KONSOLE_DBUS_WINDOW=/Windows/%1").arg(managerId()));
 
     // Determine container context for the new session.
-    // Priority: 1) Inherit from active session (if enabled)
-    //           2) "Always start in container" profile setting
+    // Priority: inherit from active session (if enabled)
     if (profile && profile->inheritContainerContext() && _pluggedController) {
         Session *activeSession = _pluggedController->session();
         if (activeSession && activeSession->isInContainer()) {
@@ -895,15 +899,7 @@ Session *ViewManager::createSession(const Profile::Ptr &profile, const QString &
         }
     }
 
-    if (!session->isInContainer()) {
-        const QString configuredContainer = profile ? profile->containerName() : QString();
-        if (!configuredContainer.isEmpty() && ContainerRegistry::instance()->isEnabled()) {
-            const ContainerInfo container = ContainerRegistry::instance()->containerInfoFromKey(configuredContainer);
-            if (container.isValid()) {
-                session->setContainerContext(container);
-            }
-        }
-    }
+    updateAutoContainerTabColor(session);
 
     return session;
 }
@@ -946,7 +942,7 @@ void ViewManager::sessionFinished(Session *session)
     }
 
     // Before deleting the view, let's unmaximize if it's maximized.
-    auto *splitter = qobject_cast<ViewSplitter *>(view->parentWidget());
+    auto *splitter = ViewSplitter::parentSplitterForDisplay(view);
     if (splitter == nullptr) {
         return;
     }
@@ -1187,6 +1183,11 @@ SessionController *ViewManager::createController(Session *session, TerminalDispl
     connect(session, &Konsole::Session::destroyed, controller, &Konsole::SessionController::deleteLater);
     connect(session, &Konsole::Session::primaryScreenInUse, controller, &Konsole::SessionController::setupPrimaryScreenSpecificActions);
     connect(session, &Konsole::Session::selectionChanged, controller, &Konsole::SessionController::selectionChanged);
+    connect(session,
+            &Konsole::Session::containerContextChanged,
+            this,
+            &Konsole::ViewManager::handleSessionContainerContextChanged,
+            Qt::UniqueConnection);
     connect(view, &Konsole::TerminalDisplay::destroyed, controller, &Konsole::SessionController::deleteLater);
     connect(controller, &Konsole::SessionController::viewDragAndDropped, this, &Konsole::ViewManager::forgetController);
     connect(controller, &Konsole::SessionController::requestSplitViewLeftRight, this, &Konsole::ViewManager::splitLeftRight);
@@ -1203,6 +1204,53 @@ SessionController *ViewManager::createController(Session *session, TerminalDispl
     }
 
     return controller;
+}
+
+void ViewManager::handleSessionContainerContextChanged(const ContainerInfo &container)
+{
+    Q_UNUSED(container)
+    auto *session = qobject_cast<Session *>(sender());
+    if (session == nullptr) {
+        return;
+    }
+
+    if (session->isInContainer()) {
+        ContainerSessionState::clearPendingContainerInfo(session);
+    }
+
+    updateAutoContainerTabColor(session);
+}
+
+void ViewManager::updateAutoContainerTabColor(Session *session)
+{
+    if (session == nullptr || session->isTabColorSetByUser()) {
+        return;
+    }
+
+    const Profile::Ptr profile = SessionManager::instance()->sessionProfile(session);
+    if (!profile || profile->tabColor().isValid()) {
+        return;
+    }
+
+    if (!session->isInContainer()) {
+        const auto pending = ContainerSessionState::pendingContainerInfo(session);
+        if (pending.isActive()) {
+            session->setColor(colorForContainerKey(pending.key));
+            return;
+        }
+        session->setColor(QColor());
+        return;
+    }
+
+    const QString key = ContainerRegistry::keyFromContainerInfo(session->containerContext());
+    if (!key.isEmpty()) {
+        session->setColor(colorForContainerKey(key));
+    }
+}
+
+QColor ViewManager::colorForContainerKey(const QString &containerKey)
+{
+    return ContainerSessionState::colorForContainerKey(containerKey);
 }
 
 void ViewManager::forgetController(SessionController *controller)
@@ -1300,7 +1348,7 @@ TerminalDisplay *ViewManager::findTerminalDisplay(int viewId)
 
 void ViewManager::setCurrentView(TerminalDisplay *view)
 {
-    auto parentSplitter = qobject_cast<ViewSplitter *>(view->parentWidget());
+    auto parentSplitter = ViewSplitter::parentSplitterForDisplay(view);
     _viewContainer->setCurrentWidget(parentSplitter->getToplevelSplitter());
     // Scriptable/DBus API: treat as shortcut-equivalent user intent so tmux's
     // active pane tracks external clients calling setCurrentView().
@@ -1538,7 +1586,7 @@ QJsonObject saveSessionsRecurse(QSplitter *splitter)
     for (int i = 0; i < splitter->count(); i++) {
         auto *widget = splitter->widget(i);
         auto *maybeSplitter = qobject_cast<QSplitter *>(widget);
-        auto *maybeTerminalDisplay = qobject_cast<TerminalDisplay *>(widget);
+        auto *maybeTerminalDisplay = ViewSplitter::terminalDisplayForWidget(widget);
 
         if (maybeSplitter != nullptr) {
             internalWidgets.append(saveSessionsRecurse(maybeSplitter));
@@ -1618,7 +1666,7 @@ ViewSplitter *restoreSessionsSplitterRecurse(const QJsonObject &jsonSplitter, Vi
             Session *session = useSessionId ? SessionManager::instance()->idToSession(sessionIterator->toInt()) : SessionManager::instance()->createSession();
 
             auto newView = manager->createView(session);
-            currentSplitter->addWidget(newView);
+            currentSplitter->addTerminalDisplay(newView, -1);
 
             int columns = newView->columns();
             int lines = newView->lines();
@@ -1720,7 +1768,9 @@ void ViewManager::restoreSessions(const KConfigGroup &group)
     }
 
     if (display != nullptr) {
-        activeContainer()->setCurrentWidget(display);
+        if (auto *splitter = ViewSplitter::parentSplitterForDisplay(display); splitter != nullptr) {
+            activeContainer()->setCurrentWidget(splitter->getToplevelSplitter());
+        }
         display->setFocus(Qt::OtherFocusReason);
     }
 
@@ -1780,7 +1830,7 @@ void ViewManager::setCurrentSession(int sessionId)
         // user-intent switches, so echo to tmux via the user-initiated reason.
         display->setFocus(Qt::ShortcutFocusReason);
 
-        auto *splitter = qobject_cast<ViewSplitter *>(display->parent());
+        auto *splitter = ViewSplitter::parentSplitterForDisplay(display);
         if (splitter != nullptr) {
             _viewContainer->setCurrentWidget(splitter->getToplevelSplitter());
         }
@@ -1942,8 +1992,8 @@ bool ViewManager::createSplitWithExisting(int targetSplitterId, QStringList widg
 
         if (auto s = qobject_cast<ViewSplitter *>(w))
             forbiddenSplitters.append(s->id());
-        else
-            forbiddenViews.append(qobject_cast<TerminalDisplay *>(w)->id());
+        else if (auto *terminal = ViewSplitter::terminalDisplayForWidget(w))
+            forbiddenViews.append(terminal->id());
     }
 
     for (auto &info : widgetInfos) {

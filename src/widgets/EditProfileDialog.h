@@ -242,7 +242,9 @@ private Q_SLOTS:
     void toggleWordModeAttr(bool mode);
     void toggleWordModeAscii(bool mode);
     void toggleWordModeBrahmic(bool mode);
+    void toggleWordModeCoding(bool mode);
     void toggleIgnoreWcWidth(bool ignore);
+    void toggleFontHinting(bool enableHinting);
 
     // badge page
     void toggleBadgeEnabled(bool enable);
@@ -252,6 +254,8 @@ private Q_SLOTS:
     void badgeColorChanged(const QColor &color);
     void badgeTextOnlyChanged(bool textOnly);
     void badgeTransparencyChanged(int transparency);
+
+    void toggleKittyKeyboard(bool);
 
 private:
     Q_DISABLE_COPY(EditProfileDialog)

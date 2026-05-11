@@ -34,6 +34,7 @@ private Q_SLOTS:
 
     void testBufferedUpdates();
 
+<<<<<<< HEAD
     void testTmuxControlModePassthrough();
     void testTmuxControlModeUtf8();
     void testTmuxControlModeUtf8ViaReceiveData();
@@ -43,6 +44,17 @@ private Q_SLOTS:
     void testTmuxControlModeUtf8ChunkBoundary();
     void testTmuxControlModeUtf8OutputBoundary();
     void testTmuxControlModeRawBytePassthrough();
+=======
+    void testKittyKeyboardPushPopQuery();
+    void testKittyKeyboardSet();
+    void testKittyKeyboardReset();
+    void testKittyKeyboardDisambiguate();
+    void testKittyKeyboardEventTypes();
+    void testKittyKeyboardReportAllKeys();
+    void testKittyKeyboardLegacyKeys();
+    void testKittyKeyboardCtrlLetters();
+    void testKittyKeyboardTextKeys();
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
 
 private:
     static void sendAndCompare(TestEmulation *em, const char *input, size_t inputLen, const QString &expectedPrint, const QByteArray &expectedSent);

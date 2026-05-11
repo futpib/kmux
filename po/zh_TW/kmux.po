@@ -16,7 +16,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: konsole\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-04-04 00:49+0000\n"
+"POT-Creation-Date: 2026-05-11 00:47+0000\n"
 "PO-Revision-Date: 2026-04-08 23:50+0900\n"
 "Last-Translator: Kisaragi Hiu <mail@kisaragi-hiu.com>\n"
 "Language-Team: Traditional Chinese <zh-l10n@lists.slat.org>\n"
@@ -684,7 +684,7 @@ msgid ""
 "Container support is not available when Konsole is running inside Flatpak."
 msgstr "Konsole 作為 Flatpak 執行時無法使用容器功能。"
 
-#: containers/DistroboxDetector.cpp:72
+#: containers/DistroboxDetector.cpp:124
 #, kde-format
 msgid "Distrobox"
 msgstr "Distrobox"
@@ -699,7 +699,7 @@ msgstr "Kapsule"
 msgid " [default]"
 msgstr " [預設]"
 
-#: containers/ToolboxDetector.cpp:29
+#: containers/ToolboxDetector.cpp:89
 #, kde-format
 msgid "Toolbox"
 msgstr "Toolbox"
@@ -1214,66 +1214,66 @@ msgctxt "@info:credit"
 msgid "Thanks to many others.\n"
 msgstr "感謝其他許多人。\n"
 
-#: MainWindow.cpp:391
+#: MainWindow.cpp:433
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&New Tab"
 msgstr "新增分頁(&N)"
 
-#: MainWindow.cpp:401
+#: MainWindow.cpp:443
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Clone Tab"
 msgstr "複製分頁(&C)"
 
-#: MainWindow.cpp:408
+#: MainWindow.cpp:450
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "New &Window"
 msgstr "新增視窗(&W)"
 
-#: MainWindow.cpp:415
+#: MainWindow.cpp:457
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Close Window"
 msgstr "關閉視窗"
 
-#: MainWindow.cpp:420
+#: MainWindow.cpp:462
 #, kde-format
 msgctxt "@title:menu"
 msgid "&Bookmarks"
 msgstr "書籤(&B)"
 
-#: MainWindow.cpp:447
+#: MainWindow.cpp:489
 #, kde-format
 msgid "&Window Color Scheme"
 msgstr "視窗配色(&W)"
 
-#: MainWindow.cpp:459
+#: MainWindow.cpp:501
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Manage Profiles..."
 msgstr "管理設定檔..."
 
-#: MainWindow.cpp:465
+#: MainWindow.cpp:507
 #, kde-format
 msgctxt "@item"
 msgid "Activate Menu"
 msgstr "啟動選單"
 
-#: MainWindow.cpp:471
+#: MainWindow.cpp:513
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Save Tab Layout..."
 msgstr "儲存分頁佈局……"
 
-#: MainWindow.cpp:480
+#: MainWindow.cpp:522
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load Tab Layout..."
 msgstr "載入分頁佈局……"
 
-#: MainWindow.cpp:827 MainWindow.cpp:844
+#: MainWindow.cpp:874 MainWindow.cpp:891
 #, kde-format
 msgctxt "@info"
 msgid "There is a process running in this window. Do you still want to quit?"
@@ -1281,61 +1281,61 @@ msgid_plural ""
 "There are %1 processes running in this window. Do you still want to quit?"
 msgstr[0] "此視窗中目前有 %1 個行程執行中。您確定要離開嗎？"
 
-#: MainWindow.cpp:833 MainWindow.cpp:850 MainWindow.cpp:864
+#: MainWindow.cpp:880 MainWindow.cpp:897 MainWindow.cpp:911
 #, kde-format
 msgctxt "@title"
 msgid "Confirm Close"
 msgstr "確認關閉"
 
-#: MainWindow.cpp:834 MainWindow.cpp:851 MainWindow.cpp:865
+#: MainWindow.cpp:881 MainWindow.cpp:898 MainWindow.cpp:912
 #, kde-format
 msgctxt "@action:button"
 msgid "Close &Window"
 msgstr "關閉視窗(&W)"
 
-#: MainWindow.cpp:852 MainWindow.cpp:866
+#: MainWindow.cpp:899 MainWindow.cpp:913
 #, kde-format
 msgctxt "@action:button"
 msgid "Close Current &Tab"
 msgstr "關閉目前的分頁(&T)"
 
-#: MainWindow.cpp:861
+#: MainWindow.cpp:908
 #, kde-format
 msgctxt "@info"
 msgid "There are %1 open terminals in this window. Do you still want to quit?"
 msgstr "此視窗中目前有 %1 個開啟的終端機。您確定要離開嗎？"
 
-#: MainWindow.cpp:1001 Part.cpp:317
+#: MainWindow.cpp:1062 Part.cpp:317
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Profiles"
 msgstr "設定檔"
 
-#: MainWindow.cpp:1019
+#: MainWindow.cpp:1080
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "General"
 msgstr "一般"
 
-#: MainWindow.cpp:1031
+#: MainWindow.cpp:1092
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Memory"
 msgstr "記憶體"
 
-#: MainWindow.cpp:1037
+#: MainWindow.cpp:1098
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Tab Bar / Splitters"
 msgstr "分頁列/界線"
 
-#: MainWindow.cpp:1042
+#: MainWindow.cpp:1103
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Temporary Files"
 msgstr "暫存檔"
 
-#: MainWindow.cpp:1047
+#: MainWindow.cpp:1108
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Thumbnails"
@@ -1905,7 +1905,7 @@ msgstr "便於列印模式 (黑色文字，不列印背景)(&F)"
 msgid "&Scale output"
 msgstr "調整輸出(&S)"
 
-#: profile/Profile.cpp:282
+#: profile/Profile.cpp:285
 #, kde-format
 msgctxt "Name of the built-in profile"
 msgid "Built-in"
@@ -1916,30 +1916,30 @@ msgstr "內建"
 msgid "Default profile"
 msgstr "預設設定檔"
 
-#: profile/ProfileManager.cpp:280
+#: profile/ProfileManager.cpp:349
 #, kde-format
 msgctxt "New profile name, %1 is a number"
 msgid "Profile %1"
 msgstr "設定檔 %1"
 
-#: profile/ProfileManager.cpp:294
+#: profile/ProfileManager.cpp:363
 #, kde-format
 msgid "Konsole does not have permission to save this profile to %1"
 msgstr "Konsole 沒有權限儲存這個設定檔到 %1"
 
-#: profile/ProfileModel.cpp:55
+#: profile/ProfileModel.cpp:57
 #, kde-format
 msgctxt "@title:column Profile name"
 msgid "Name"
 msgstr "名稱"
 
-#: profile/ProfileModel.cpp:57
+#: profile/ProfileModel.cpp:59
 #, kde-format
 msgctxt "@title:column Profile keyboard shortcut"
 msgid "Shortcut"
 msgstr "捷徑"
 
-#: profile/ProfileModel.cpp:80
+#: profile/ProfileModel.cpp:82
 #, kde-format
 msgctxt ""
 "@label:textbox added to the name of the built-in profile, to point out it's "
@@ -1947,19 +1947,32 @@ msgctxt ""
 msgid " [Read-only]"
 msgstr " [唯讀]"
 
-#: profile/ProfileModel.cpp:84
+#: profile/ProfileModel.cpp:86
 #, kde-format
 msgctxt "@label:textbox added to the name of the current default profile"
 msgid " [Default]"
 msgstr " [預設]"
 
-#: profile/ProfileModel.cpp:99
+#: profile/ProfileModel.cpp:91
+#, kde-format
+msgctxt "@label:textbox added to profile name when used for light system theme"
+msgid " [Light]"
+msgstr ""
+
+#: profile/ProfileModel.cpp:94
+#, fuzzy, kde-format
+#| msgid "Darken"
+msgctxt "@label:textbox added to profile name when used for dark system theme"
+msgid " [Dark]"
+msgstr "調暗"
+
+#: profile/ProfileModel.cpp:110
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Built-in profile is always available"
 msgstr "內建設定檔一律可用"
 
-#: profile/ProfileModel.cpp:111
+#: profile/ProfileModel.cpp:122
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Double click to change shortcut"
@@ -2145,10 +2158,10 @@ msgstr "無法啟動程式 %1，參數為 %2。"
 msgid "Silence in '%1' (Session '%2')"
 msgstr "分頁 %1 目前靜默中（於工作階段 %2）"
 
-#: session/Session.cpp:818 session/Session.cpp:2326
-#: session/SessionController.cpp:376 session/SessionController.cpp:1922
-#: terminalDisplay/TerminalBell.cpp:44 Vt102Emulation.cpp:1255
-#: Vt102Emulation.cpp:1510
+#: session/Session.cpp:818 session/Session.cpp:2345
+#: session/SessionController.cpp:381 session/SessionController.cpp:1927
+#: terminalDisplay/TerminalBell.cpp:44 Vt102Emulation.cpp:1280
+#: Vt102Emulation.cpp:1535
 #, kde-format
 msgid "Show session"
 msgstr "顯示工作階段"
@@ -2169,17 +2182,17 @@ msgstr "程式 %1 當掉了。"
 msgid "Program '%1' exited with status %2."
 msgstr "程式 %1 以 %2 狀態結束。"
 
-#: session/Session.cpp:1701
+#: session/Session.cpp:1713
 #, kde-format
 msgid "ZModem Progress"
 msgstr "ZModem 進度"
 
-#: session/Session.cpp:2325
+#: session/Session.cpp:2344
 #, kde-format
 msgid "Activity in '%1' (Session '%2')"
 msgstr "分頁 %1 目前活躍中（於工作階段 %2）"
 
-#: session/Session.cpp:2596
+#: session/Session.cpp:2615
 #, kde-format
 msgid "Security sensitive DBus API is disabled in the settings."
 msgstr "安全性敏感的 DBus API 已在設定中被停用。"
@@ -2189,345 +2202,345 @@ msgstr "安全性敏感的 DBus API 已在設定中被停用。"
 msgid "Konsole"
 msgstr "Konsole"
 
-#: session/SessionController.cpp:375
+#: session/SessionController.cpp:380
 #, kde-format
 msgid "The process '%1' has finished running in session '%2'"
 msgstr "程序 %1 已在工作階段 %2 中完成執行"
 
-#: session/SessionController.cpp:458
+#: session/SessionController.cpp:463
 #, kde-format
 msgid "Konsole does not know how to open the bookmark: "
 msgstr "Konsole 不知道如何開啟此書籤："
 
-#: session/SessionController.cpp:536
+#: session/SessionController.cpp:541
 #, kde-format
 msgid "Search for '%1' with"
 msgstr "搜尋 %1 於"
 
-#: session/SessionController.cpp:552
+#: session/SessionController.cpp:557
 #, kde-format
 msgid "Configure Web Shortcuts..."
 msgstr "設定網頁捷徑..."
 
-#: session/SessionController.cpp:663
+#: session/SessionController.cpp:668
 #, kde-format
 msgid "&Close Session"
 msgstr "關閉工作階段(&C)"
 
-#: session/SessionController.cpp:670
+#: session/SessionController.cpp:675
 #, kde-format
 msgid "Open File Manager"
 msgstr "開啟檔案管理員"
 
-#: session/SessionController.cpp:685
+#: session/SessionController.cpp:690
 #, kde-format
 msgid "Copy"
 msgstr "複製"
 
-#: session/SessionController.cpp:693
+#: session/SessionController.cpp:698
 #, kde-format
 msgid "Split View Left-Right"
 msgstr "左右分割檢視"
 
-#: session/SessionController.cpp:698
+#: session/SessionController.cpp:703
 #, kde-format
 msgid "Split View Top-Bottom"
 msgstr "上下分割檢視"
 
-#: session/SessionController.cpp:702
+#: session/SessionController.cpp:707
 #, kde-format
 msgid "Copy except prompts"
 msgstr "複製除了提示字元以外的內容"
 
-#: session/SessionController.cpp:708
+#: session/SessionController.cpp:713
 #, kde-format
 msgid "Copy user input"
 msgstr "複製使用者輸入"
 
-#: session/SessionController.cpp:714
+#: session/SessionController.cpp:719
 #, kde-format
 msgid "Copy command output"
 msgstr "複製命令輸入"
 
-#: session/SessionController.cpp:729
+#: session/SessionController.cpp:734
 #, kde-format
 msgid "Paste Selection"
 msgstr "貼上選擇區"
 
-#: session/SessionController.cpp:736
+#: session/SessionController.cpp:741
 #, kde-format
 msgid "Web Search"
 msgstr "網頁搜尋"
 
-#: session/SessionController.cpp:742
+#: session/SessionController.cpp:747
 #, kde-format
 msgid "&Select All"
 msgstr "全部選取(&S)"
 
-#: session/SessionController.cpp:746
+#: session/SessionController.cpp:751
 #, kde-format
 msgid "Select &Mode"
 msgstr "選取模式(&M)"
 
-#: session/SessionController.cpp:751
+#: session/SessionController.cpp:756
 #, kde-format
 msgid "Select &Line"
 msgstr "選擇行(&L)"
 
-#: session/SessionController.cpp:754
+#: session/SessionController.cpp:759
 #, kde-format
 msgid "Save Output &As..."
 msgstr "儲存輸出為(&A)..."
 
-#: session/SessionController.cpp:760
+#: session/SessionController.cpp:765
 #, kde-format
 msgid "Auto Save Output As..."
 msgstr "自動儲存輸出為…"
 
-#: session/SessionController.cpp:764
+#: session/SessionController.cpp:769
 #, kde-format
 msgid "Stop Auto Save"
 msgstr "停止自動儲存"
 
-#: session/SessionController.cpp:768
+#: session/SessionController.cpp:773
 #, kde-format
 msgid "&Print Screen..."
 msgstr "列印螢幕(&P)..."
 
-#: session/SessionController.cpp:772
+#: session/SessionController.cpp:777
 #, kde-format
 msgid "Adjust Scrollback..."
 msgstr "調整回捲歷史..."
 
-#: session/SessionController.cpp:776
+#: session/SessionController.cpp:781
 #, kde-format
 msgid "Clear Scrollback"
 msgstr "清除回捲歷史"
 
-#: session/SessionController.cpp:780
+#: session/SessionController.cpp:785
 #, kde-format
 msgid "Clear Scrollback and Reset"
 msgstr "清除回捲歷史並重設"
 
-#: session/SessionController.cpp:791
+#: session/SessionController.cpp:796
 #, kde-format
 msgid "Next Profile"
 msgstr "下一個設定檔"
 
-#: session/SessionController.cpp:796
+#: session/SessionController.cpp:801
 #, kde-format
 msgid "Previous Profile"
 msgstr "上一個設定檔"
 
-#: session/SessionController.cpp:799
+#: session/SessionController.cpp:804
 #, kde-format
 msgid "Switch Profile"
 msgstr "切換設定檔"
 
-#: session/SessionController.cpp:824
+#: session/SessionController.cpp:829
 #, kde-format
 msgid "Set &Encoding"
 msgstr "設定編碼(&E)..."
 
-#: session/SessionController.cpp:844
+#: session/SessionController.cpp:849
 #, kde-format
 msgctxt "@item:inmenu Allows terminal applications to request mouse tracking"
 msgid "Allow Mouse Tracking"
 msgstr "允許追蹤滑鼠"
 
-#: session/SessionController.cpp:853
+#: session/SessionController.cpp:858
 #, kde-format
 msgctxt "@item:inmenu A read only (locked) session"
 msgid "Read-Only"
 msgstr "唯讀"
 
-#: session/SessionController.cpp:864
+#: session/SessionController.cpp:869
 #, kde-format
 msgid "&Configure or Rename Tab..."
 msgstr "重新命名分頁(&C)..."
 
-#: session/SessionController.cpp:870
+#: session/SessionController.cpp:875
 #, kde-format
 msgid "&All Tabs in Current Window"
 msgstr "目前視窗中的所有分頁"
 
-#: session/SessionController.cpp:877
+#: session/SessionController.cpp:882
 #, kde-format
 msgid "&Select Tabs..."
 msgstr "選取分頁(&S)..."
 
-#: session/SessionController.cpp:883
+#: session/SessionController.cpp:888
 #, kde-format
 msgctxt "@action:inmenu Do not select any tabs"
 msgid "&None"
 msgstr "無(&N)"
 
-#: session/SessionController.cpp:891
+#: session/SessionController.cpp:896
 #, kde-format
 msgid "Copy Input To"
 msgstr "複製輸入到"
 
-#: session/SessionController.cpp:899
+#: session/SessionController.cpp:904
 #, kde-format
 msgid "&ZModem Upload..."
 msgstr "ZModem 上傳(&Z)..."
 
-#: session/SessionController.cpp:904
+#: session/SessionController.cpp:909
 #, kde-format
 msgid "One-Shot Monitors"
 msgstr "單次監控"
 
-#: session/SessionController.cpp:909
+#: session/SessionController.cpp:914
 #, kde-format
 msgid "Monitor for &Prompt"
 msgstr "監視提示字元(&P)"
 
-#: session/SessionController.cpp:916
+#: session/SessionController.cpp:921
 #, kde-format
 msgid "Monitor for &Activity"
 msgstr "監視有回應視窗(&A)"
 
-#: session/SessionController.cpp:922
+#: session/SessionController.cpp:927
 #, kde-format
 msgid "Monitor for &Silence"
 msgstr "監視靜默的分頁(&S)"
 
-#: session/SessionController.cpp:928
+#: session/SessionController.cpp:933
 #, kde-format
 msgid "Monitor for Process Finishing"
 msgstr "監視完成中的程序"
 
-#: session/SessionController.cpp:935
+#: session/SessionController.cpp:940
 #, kde-format
 msgid "Enlarge Font"
 msgstr "增大字型"
 
-#: session/SessionController.cpp:943
+#: session/SessionController.cpp:948
 #, kde-format
 msgid "Shrink Font"
 msgstr "縮小字型"
 
-#: session/SessionController.cpp:948
+#: session/SessionController.cpp:953
 #, kde-format
 msgid "Reset Font Size"
 msgstr "重設字型大小"
 
-#: session/SessionController.cpp:954
+#: session/SessionController.cpp:959
 #, kde-format
 msgid "Send Signal"
 msgstr "送出訊號"
 
-#: session/SessionController.cpp:958
+#: session/SessionController.cpp:963
 #, kde-format
 msgid "&Suspend Task"
 msgstr "暫停工作(&S)"
 
-#: session/SessionController.cpp:963
+#: session/SessionController.cpp:968
 #, kde-format
 msgid "&Continue Task"
 msgstr "繼續工作(&C)"
 
-#: session/SessionController.cpp:968
+#: session/SessionController.cpp:973
 #, kde-format
 msgid "&Hangup"
 msgstr "掛斷(&H)"
 
-#: session/SessionController.cpp:973
+#: session/SessionController.cpp:978
 #, kde-format
 msgid "&Interrupt Task"
 msgstr "中斷工作(&I)"
 
-#: session/SessionController.cpp:978
+#: session/SessionController.cpp:983
 #, kde-format
 msgid "&Terminate Task"
 msgstr "結束工作(&T)"
 
-#: session/SessionController.cpp:983
+#: session/SessionController.cpp:988
 #, kde-format
 msgid "&Kill Task"
 msgstr "砍掉工作(&K)"
 
-#: session/SessionController.cpp:988
+#: session/SessionController.cpp:993
 #, kde-format
 msgid "User Signal &1"
 msgstr "使用者訊號 1(&1)"
 
-#: session/SessionController.cpp:993
+#: session/SessionController.cpp:998
 #, kde-format
 msgid "User Signal &2"
 msgstr "使用者訊號 2(&2)"
 
-#: session/SessionController.cpp:1011
+#: session/SessionController.cpp:1016
 #, kde-format
 msgid "Create New Profile..."
 msgstr "新增設定檔"
 
-#: session/SessionController.cpp:1013
+#: session/SessionController.cpp:1018
 #, kde-format
 msgid "Edit Current Profile..."
 msgstr "編輯目前的設定檔..."
 
-#: session/SessionController.cpp:1153
+#: session/SessionController.cpp:1158
 #, kde-format
 msgid ""
 "A program is currently running in this session.  Are you sure you want to "
 "close it?"
 msgstr "有程式正在此工作階段中執行。您確定要將它關閉嗎？"
 
-#: session/SessionController.cpp:1157
+#: session/SessionController.cpp:1162
 #, kde-format
 msgid ""
 "The program '%1' is currently running in this session.  Are you sure you "
 "want to close it?"
 msgstr "程式 %1 正在此工作階段中執行。您確定要將它關閉嗎？"
 
-#: session/SessionController.cpp:1164 session/SessionController.cpp:1199
+#: session/SessionController.cpp:1169 session/SessionController.cpp:1204
 #, kde-format
 msgid "Confirm Close"
 msgstr "確認關閉"
 
-#: session/SessionController.cpp:1165
+#: session/SessionController.cpp:1170
 #, kde-format
 msgctxt "@action:button"
 msgid "Close Program"
 msgstr "關閉程式"
 
-#: session/SessionController.cpp:1188
+#: session/SessionController.cpp:1193
 #, kde-format
 msgid ""
 "A program in this session would not die.  Are you sure you want to kill it "
 "by force?"
 msgstr "有程式正在此工作階段中執行。您確定要將它強制關閉嗎？"
 
-#: session/SessionController.cpp:1192
+#: session/SessionController.cpp:1197
 #, kde-format
 msgid ""
 "The program '%1' in this session would not die.  Are you sure you want to "
 "kill it by force?"
 msgstr "工作階段中的程式 '%1' 並沒有退出。您確定要將它強制關閉嗎？"
 
-#: session/SessionController.cpp:1200
+#: session/SessionController.cpp:1205
 #, kde-format
 msgctxt "@action:button"
 msgid "Kill Program"
 msgstr "砍除程式"
 
-#: session/SessionController.cpp:1921
+#: session/SessionController.cpp:1926
 #, kde-format
 msgid "The shell prompt is displayed in session '%1'"
 msgstr "shell 提示字元會顯示在工作階段「%1」"
 
-#: session/SessionController.cpp:2151
+#: session/SessionController.cpp:2156
 #, kde-format
 msgid "Open Current Folder With"
 msgstr "以…開啟目前資料夾"
 
-#: session/SessionController.cpp:2221
+#: session/SessionController.cpp:2226
 #, kde-format
 msgid "Save ZModem Download to..."
 msgstr "儲存 ZModem 下載檔到..."
 
-#: session/SessionController.cpp:2231
+#: session/SessionController.cpp:2236
 #, kde-format
 msgid ""
 "<p>A ZModem file transfer attempt has been detected, but no suitable ZModem "
@@ -2537,13 +2550,13 @@ msgstr ""
 "<p>偵測到要使用 ZModem 做檔案傳輸，但是此系統上找不到適合的 ZModem 軟體。</"
 "p><p>您可能需要安裝 rzsz 或 lrzsz 等軟體包。</p>"
 
-#: session/SessionController.cpp:2241
+#: session/SessionController.cpp:2246
 #, kde-format
 msgid ""
 "<p>The current session already has a ZModem file transfer in progress.</p>"
 msgstr "<p>目前的工作階段已經有一個 ZModem 檔案傳輸在進行中。</p>"
 
-#: session/SessionController.cpp:2254
+#: session/SessionController.cpp:2259
 #, kde-format
 msgid ""
 "<p>No suitable ZModem software was found on this system.</p><p>You may wish "
@@ -2552,7 +2565,7 @@ msgstr ""
 "<p>此系統上找不到適合的 ZModem 軟體。</p><p>您可能需要安裝 rzsz 或 lrzsz 等軟"
 "體包。</p>"
 
-#: session/SessionController.cpp:2259
+#: session/SessionController.cpp:2264
 #, kde-format
 msgid "Select Files for ZModem Upload"
 msgstr "選擇要用 ZModem 上傳的檔案"
@@ -2620,53 +2633,59 @@ msgstr "聆聽 ZModem 終端機控制字元"
 msgid "Show progress in taskbar"
 msgstr "在工作列中顯示進度"
 
-#. i18n: ectx: property (text), widget (QLabel, label_3)
+#. i18n: ectx: property (text), widget (QCheckBox, kcfg_SyncProfileWithSystemTheme)
 #: settings/GeneralSettings.ui:112
+#, kde-format
+msgid "Automatically switch profile based on system theme"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QLabel, label_3)
+#: settings/GeneralSettings.ui:119
 #, kde-format
 msgid "Notifications:"
 msgstr "通知："
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchReverseSearch)
 #. i18n: ectx: tooltip, entry (SearchReverseSearch), group (SearchSettings)
-#: settings/GeneralSettings.ui:125 settings/konsole.kcfg:99
+#: settings/GeneralSettings.ui:132 settings/konsole.kcfg:99
 #, kde-format
 msgid "Sets whether search should start from the bottom"
 msgstr "設定是否要從底端開始搜尋"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchReverseSearch)
 #. i18n: ectx: label, entry (SearchReverseSearch), group (SearchSettings)
-#: settings/GeneralSettings.ui:128 settings/konsole.kcfg:98
+#: settings/GeneralSettings.ui:135 settings/konsole.kcfg:98
 #, kde-format
 msgid "Search backwards"
 msgstr "向後尋找"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchCaseSensitive)
 #. i18n: ectx: tooltip, entry (SearchCaseSensitive), group (SearchSettings)
-#: settings/GeneralSettings.ui:141 settings/konsole.kcfg:85
+#: settings/GeneralSettings.ui:148 settings/konsole.kcfg:85
 #, kde-format
 msgid "Sets whether the search is case sensitive"
 msgstr "設定搜尋時是否要區分大小寫"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchCaseSensitive)
-#: settings/GeneralSettings.ui:144
+#: settings/GeneralSettings.ui:151
 #, kde-format
 msgid "Case sensitive"
 msgstr "區分大小寫"
 
 #. i18n: ectx: property (text), widget (QLabel, label)
-#: settings/GeneralSettings.ui:151
+#: settings/GeneralSettings.ui:158
 #, kde-format
 msgid "Process and window:"
 msgstr "行程及視窗："
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchHighlightMatches)
-#: settings/GeneralSettings.ui:167
+#: settings/GeneralSettings.ui:174
 #, kde-format
 msgid "Highlight all matches"
 msgstr "標示所有符合項目"
 
 #. i18n: ectx: property (text), widget (QLabel, label_2)
-#: settings/GeneralSettings.ui:174
+#: settings/GeneralSettings.ui:181
 #, kde-format
 msgctxt "@item:intext Search options"
 msgid "Search:"
@@ -2674,67 +2693,67 @@ msgstr "搜尋："
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchNoWrap)
 #. i18n: ectx: tooltip, entry (SearchNoWrap), group (SearchSettings)
-#: settings/GeneralSettings.ui:203 settings/konsole.kcfg:104
+#: settings/GeneralSettings.ui:210 settings/konsole.kcfg:104
 #, kde-format
 msgid "Sets whether search should stop instead of wrapping"
 msgstr "設定搜尋是否應該停止，而非從另一頭繼續"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchNoWrap)
-#: settings/GeneralSettings.ui:206
+#: settings/GeneralSettings.ui:213
 #, kde-format
 msgid "No wrap"
 msgstr "不從另一頭繼續"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_AllowMenuAccelerators)
 #. i18n: ectx: label, entry (AllowMenuAccelerators), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:219 settings/konsole.kcfg:22
+#: settings/GeneralSettings.ui:226 settings/konsole.kcfg:22
 #, kde-format
 msgid "Enable menu accelerators"
 msgstr "開啟選單加速器"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_FocusFollowsMouse)
 #. i18n: ectx: label, entry (FocusFollowsMouse), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:226 settings/konsole.kcfg:13
+#: settings/GeneralSettings.ui:233 settings/konsole.kcfg:13
 #, kde-format
 msgid "Focus terminals when the mouse pointer is moved over them"
 msgstr "當滑鼠游標經過時，聚焦至該終端機視窗"
 
 #. i18n: ectx: property (toolTip), widget (QPushButton, enableAllMessagesButton)
-#: settings/GeneralSettings.ui:244
+#: settings/GeneralSettings.ui:251
 #, kde-format
 msgid "All dialogs will be shown again"
 msgstr "所有通知對話框都會重新再顯示"
 
 #. i18n: ectx: property (text), widget (QPushButton, enableAllMessagesButton)
-#: settings/GeneralSettings.ui:247
+#: settings/GeneralSettings.ui:254
 #, kde-format
 msgid "Enable all \"Don't Ask Again\" messages"
 msgstr "打開所有「不要再問我」的訊息"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_ShowWindowTitleOnTitleBar)
 #. i18n: ectx: label, entry (ShowWindowTitleOnTitleBar), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:275 settings/konsole.kcfg:17
+#: settings/GeneralSettings.ui:282 settings/konsole.kcfg:17
 #, kde-format
 msgid "Show window title on the titlebar"
 msgstr "在標題列顯示視窗標題"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_EnableSecuritySensitiveDBusAPI)
 #. i18n: ectx: label, entry (EnableSecuritySensitiveDBusAPI), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:282 settings/konsole.kcfg:47
+#: settings/GeneralSettings.ui:289 settings/konsole.kcfg:47
 #, kde-format
 msgid "Enable the security sensitive parts of the DBus API"
 msgstr "啟用 DBus API 當中安全性敏感的部分"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_RemoveWindowTitleBarAndFrame)
 #. i18n: ectx: label, entry (RemoveWindowTitleBarAndFrame), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:289 settings/konsole.kcfg:9
+#: settings/GeneralSettings.ui:296 settings/konsole.kcfg:9
 #, kde-format
 msgid "Remove window titlebar and frame"
 msgstr "移除視窗標題列與邊框"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchRegExpression)
 #. i18n: ectx: label, entry (SearchRegExpression), group (SearchSettings)
-#: settings/GeneralSettings.ui:302 settings/konsole.kcfg:89
+#: settings/GeneralSettings.ui:309 settings/konsole.kcfg:89
 #, kde-format
 msgid "Match using regular expressions"
 msgstr "使用正則表達式尋找符合項目"
@@ -2968,6 +2987,24 @@ msgstr "對於回捲歷史檔案，使用指定的資料夾位置"
 msgid "For scrollback files, use this folder"
 msgstr "對於回捲歷史檔案，使用這個資料夾"
 
+#. i18n: ectx: label, entry (SyncProfileWithSystemTheme), group (LightDarkTheme)
+#: settings/konsole.kcfg:238
+#, kde-format
+msgid "Sync profile with system theme"
+msgstr ""
+
+#. i18n: ectx: label, entry (LightThemeProfile), group (LightDarkTheme)
+#: settings/konsole.kcfg:242
+#, kde-format
+msgid "Profile to use for light system theme"
+msgstr ""
+
+#. i18n: ectx: label, entry (DarkThemeProfile), group (LightDarkTheme)
+#: settings/konsole.kcfg:246
+#, kde-format
+msgid "Profile to use for dark system theme"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_EnableMemoryMonitoring)
 #: settings/MemorySettings.ui:17
 #, kde-format
@@ -3066,6 +3103,34 @@ msgstr "將所選取的設定檔設為新增終端機工作階段時的預設設
 #: settings/ProfileSettings.ui:93
 #, kde-format
 msgid "&Set as Default"
+msgstr "設為預設(&S)"
+
+#. i18n: ectx: property (toolTip), widget (QPushButton, setLightProfileButton)
+#: settings/ProfileSettings.ui:103
+#, fuzzy, kde-format
+#| msgid "Set the selected profile as the default for new terminal sessions"
+msgid "Set the selected profile as the light theme profile"
+msgstr "將所選取的設定檔設為新增終端機工作階段時的預設設定檔"
+
+#. i18n: ectx: property (text), widget (QPushButton, setLightProfileButton)
+#: settings/ProfileSettings.ui:106
+#, fuzzy, kde-format
+#| msgid "&Set as Default"
+msgid "&Set as Light"
+msgstr "設為預設(&S)"
+
+#. i18n: ectx: property (toolTip), widget (QPushButton, setDarkProfileButton)
+#: settings/ProfileSettings.ui:116
+#, fuzzy, kde-format
+#| msgid "Set the selected profile as the default for new terminal sessions"
+msgid "Set the selected profile as the dark theme profile"
+msgstr "將所選取的設定檔設為新增終端機工作階段時的預設設定檔"
+
+#. i18n: ectx: property (text), widget (QPushButton, setDarkProfileButton)
+#: settings/ProfileSettings.ui:119
+#, fuzzy, kde-format
+#| msgid "&Set as Default"
+msgid "&Set as Dark"
 msgstr "設為預設(&S)"
 
 #. i18n: ectx: attribute (title), widget (QWidget, appearanceTab)
@@ -3499,61 +3564,61 @@ msgstr "變更目錄為(&D)"
 msgid "&Paste Location"
 msgstr "貼上位置(&P)"
 
-#: ViewManager.cpp:124
+#: ViewManager.cpp:125
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View"
 msgstr "分割檢視"
 
-#: ViewManager.cpp:131
+#: ViewManager.cpp:132
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Left/Right"
 msgstr "左右分割檢視"
 
-#: ViewManager.cpp:139
+#: ViewManager.cpp:140
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Top/Bottom"
 msgstr "上下分割檢視"
 
-#: ViewManager.cpp:147
+#: ViewManager.cpp:148
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Automatically"
 msgstr "自動分割檢視"
 
-#: ViewManager.cpp:157
+#: ViewManager.cpp:158
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Left/Right from next tab"
 msgstr "從下一個分頁左右分割檢視"
 
-#: ViewManager.cpp:165
+#: ViewManager.cpp:166
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Top/Bottom from next tab"
 msgstr "從下一個分頁上下分割檢視"
 
-#: ViewManager.cpp:173
+#: ViewManager.cpp:174
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Automatically from next tab"
 msgstr "從下一個分頁自動分割檢視"
 
-#: ViewManager.cpp:183
+#: ViewManager.cpp:184
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 2x2 terminals"
 msgstr "新增四分割的分頁"
 
-#: ViewManager.cpp:192
+#: ViewManager.cpp:193
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 2x1 terminals"
 msgstr "新增上二下一的分頁"
 
-#: ViewManager.cpp:201
+#: ViewManager.cpp:202
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 1x2 terminals"
@@ -3561,7 +3626,7 @@ msgstr "新增上一下二版面的分頁"
 
 # This makes the split view bigger.
 # --Kisaragi
-#: ViewManager.cpp:209
+#: ViewManager.cpp:210
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Expand View"
@@ -3569,185 +3634,185 @@ msgstr "展開檢視"
 
 # This makes the split view smaller.
 # --Kisaragi
-#: ViewManager.cpp:217
+#: ViewManager.cpp:218
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Shrink View"
 msgstr "縮回檢視"
 
-#: ViewManager.cpp:227
+#: ViewManager.cpp:228
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Detach Current &View"
 msgstr "在獨立視窗顯示目前檢視(&V)"
 
-#: ViewManager.cpp:239
+#: ViewManager.cpp:240
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Detach Current &Tab"
 msgstr "在獨立視窗顯示目前分頁(&T)"
 
-#: ViewManager.cpp:244
+#: ViewManager.cpp:245
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Next Tab"
 msgstr "下一個分頁"
 
-#: ViewManager.cpp:252
+#: ViewManager.cpp:253
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Previous Tab"
 msgstr "上一個分頁"
 
-#: ViewManager.cpp:260
+#: ViewManager.cpp:261
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Above Terminal"
 msgstr "將焦點移至上方終端機"
 
-#: ViewManager.cpp:267
+#: ViewManager.cpp:268
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Below Terminal"
 msgstr "將焦點移至下方終端機"
 
-#: ViewManager.cpp:274
+#: ViewManager.cpp:275
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Left Terminal"
 msgstr "將焦點移至左方終端機"
 
-#: ViewManager.cpp:280
+#: ViewManager.cpp:281
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Right Terminal"
 msgstr "將焦點移至右方終端機"
 
-#: ViewManager.cpp:286
+#: ViewManager.cpp:287
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Next Terminal"
 msgstr "將焦點移至下一個終端機"
 
-#: ViewManager.cpp:292
+#: ViewManager.cpp:293
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Previous Terminal"
 msgstr "將焦點移至上一個終端機"
 
-#: ViewManager.cpp:298
+#: ViewManager.cpp:299
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Switch to Last Tab"
 msgstr "切換到最後一個分頁"
 
-#: ViewManager.cpp:303
+#: ViewManager.cpp:304
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Last Used Tabs"
 msgstr "上次使用分頁"
 
-#: ViewManager.cpp:308
+#: ViewManager.cpp:309
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle Between Two Tabs"
 msgstr "在兩個分頁中切換"
 
-#: ViewManager.cpp:313
+#: ViewManager.cpp:314
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Last Used Tabs (Reverse)"
 msgstr "上次使用分頁 (倒序)"
 
-#: ViewManager.cpp:318
+#: ViewManager.cpp:319
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle maximize current view"
 msgstr "切換最大化目前檢視"
 
-#: ViewManager.cpp:319
+#: ViewManager.cpp:320
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Toggle maximize current view"
 msgstr "切換最大化目前檢視"
-
-#: ViewManager.cpp:327
-#, kde-format
-msgctxt "@action Shortcut entry"
-msgid "Toggle zoom-maximize current view"
-msgstr "切換縮放最大化目前檢視"
 
 #: ViewManager.cpp:328
 #, kde-format
+msgctxt "@action Shortcut entry"
+msgid "Toggle zoom-maximize current view"
+msgstr "切換縮放最大化目前檢視"
+
+#: ViewManager.cpp:329
+#, kde-format
 msgctxt "@action:inmenu"
 msgid "Toggle zoom-maximize current view"
 msgstr "切換縮放最大化目前檢視"
 
-#: ViewManager.cpp:336
+#: ViewManager.cpp:337
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Move tab to the right"
 msgstr "將分頁右移"
 
-#: ViewManager.cpp:343
+#: ViewManager.cpp:344
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Move tab to the left"
 msgstr "將分頁左移"
 
-#: ViewManager.cpp:350
+#: ViewManager.cpp:351
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Setup semantic integration (bash)"
 msgstr "設定語意整合 (bash)"
 
-#: ViewManager.cpp:356
+#: ViewManager.cpp:357
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle semantic hints display"
 msgstr "切換語意提示顯示"
 
-#: ViewManager.cpp:362
+#: ViewManager.cpp:363
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle line numbers display"
 msgstr "切換行數顯示"
 
-#: ViewManager.cpp:369
+#: ViewManager.cpp:370
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Equal size to all views"
 msgstr "所有檢視區域大小相等"
 
-#: ViewManager.cpp:379
+#: ViewManager.cpp:380
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Switch to Tab %1"
 msgstr "切換到分頁 %1"
 
-#: ViewManager.cpp:602
+#: ViewManager.cpp:603
 #, kde-format
 msgid "Semantic hints "
 msgstr "語意提示"
 
-#: ViewManager.cpp:618
+#: ViewManager.cpp:619
 #, kde-format
 msgid "Line numbers "
 msgstr "行數"
 
-#: ViewManager.cpp:1239
+#: ViewManager.cpp:1283
 #, kde-format
 msgctxt "@title:window"
 msgid "Save Tab Layout"
 msgstr "儲存分頁佈局"
 
-#: ViewManager.cpp:1241 ViewManager.cpp:1362
+#: ViewManager.cpp:1285 ViewManager.cpp:1406
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Konsole View Layout (*.json)"
 msgstr "Konsole 檢視佈局 (*.json)"
 
-#: ViewManager.cpp:1257
+#: ViewManager.cpp:1301
 #, kde-format
 msgctxt "@label:textbox"
 msgid ""
@@ -3757,7 +3822,7 @@ msgstr ""
 "儲存佈局時發生問題。\n"
 "%1"
 
-#: ViewManager.cpp:1349
+#: ViewManager.cpp:1393
 #, kde-format
 msgctxt "@label:textbox"
 msgid ""
@@ -3767,13 +3832,13 @@ msgstr ""
 "載入佈局時發生問題。\n"
 "%1"
 
-#: ViewManager.cpp:1360
+#: ViewManager.cpp:1404
 #, kde-format
 msgctxt "@title:window"
 msgid "Load Tab Layout"
 msgstr "載入分頁佈局"
 
-#: Vt102Emulation.cpp:3281
+#: Vt102Emulation.cpp:3336
 #, kde-format
 msgid ""
 "No keyboard translator available.  The information needed to convert key "
@@ -3857,52 +3922,66 @@ msgstr "允許使用 Ctrl+S 暫停輸出"
 msgid "Flow control"
 msgstr "流量控制"
 
+#. i18n: ectx: property (toolTip), widget (QCheckBox, enableKittyKeyboardButton)
+#: widgets/EditProfileAdvancedPage.ui:212
+#, kde-format
+msgid ""
+"Allow terminal programs to use the Kitty keyboard protocol for enhanced "
+"keyboard input"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, enableKittyKeyboardButton)
+#: widgets/EditProfileAdvancedPage.ui:215
+#, kde-format
+msgid "Kitty keyboard protocol"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QLabel, label_14)
-#: widgets/EditProfileAdvancedPage.ui:222
+#: widgets/EditProfileAdvancedPage.ui:238
 #, kde-format
 msgid "&Default character encoding:"
 msgstr "預設字元編碼(&D)："
 
 #. i18n: ectx: property (text), widget (QLabel, peekPrimaryLabel)
-#: widgets/EditProfileAdvancedPage.ui:242
+#: widgets/EditProfileAdvancedPage.ui:258
 #, kde-format
 msgid "Shortcut for peeking the primary screen:"
 msgstr "快速瀏覽主螢幕的快捷鍵："
 
 #. i18n: ectx: property (text), widget (QLabel, autoSaveIntervalLabel)
-#: widgets/EditProfileAdvancedPage.ui:255
+#: widgets/EditProfileAdvancedPage.ui:271
 #, kde-format
 msgid "Set interval between autosaves:"
 msgstr "設定自動儲存之間的間隔："
 
 #. i18n: ectx: property (suffix), widget (QSpinBox, autoSaveIntervalWidget)
-#: widgets/EditProfileAdvancedPage.ui:262
+#: widgets/EditProfileAdvancedPage.ui:278
 #, kde-format
 msgid " ms"
 msgstr " 毫秒"
 
 #. i18n: ectx: property (text), widget (QLabel, label_linenums)
-#: widgets/EditProfileAdvancedPage.ui:275
+#: widgets/EditProfileAdvancedPage.ui:291
 #, kde-format
 msgid "Line Numbers:"
 msgstr "行號："
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsNever)
-#: widgets/EditProfileAdvancedPage.ui:285
+#: widgets/EditProfileAdvancedPage.ui:301
 #, kde-format
 msgctxt "Never"
 msgid "&Never"
 msgstr "永不(&N)"
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsURL)
-#: widgets/EditProfileAdvancedPage.ui:295
+#: widgets/EditProfileAdvancedPage.ui:311
 #, kde-format
 msgctxt "When showing URL hints"
 msgid "When &URL hints show"
 msgstr "顯示 &URL 提示時"
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsAlways)
-#: widgets/EditProfileAdvancedPage.ui:305
+#: widgets/EditProfileAdvancedPage.ui:321
 #, kde-format
 msgctxt "Always"
 msgid "A&lways"
@@ -4232,7 +4311,7 @@ msgstr "兩行間的間距，單位為像素"
 #. i18n: ectx: property (suffix), widget (QSpinBox, badgeFontSizeSpinner)
 #: widgets/EditProfileAppearancePage.ui:660
 #: widgets/EditProfileAppearancePage.ui:712
-#: widgets/EditProfileAppearancePage.ui:1207
+#: widgets/EditProfileAppearancePage.ui:1239
 #, kde-format
 msgctxt "(pixels) visual size unit"
 msgid " px"
@@ -4330,26 +4409,55 @@ msgstr "一起繪製 ASCII 字元的字詞"
 msgid "ASCII characters "
 msgstr "ASCII 字元"
 
-#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeBrahmic)
+#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeCoding)
 #: widgets/EditProfileAppearancePage.ui:935
+#, kde-format
+msgid ""
+"Render words made of characters that usually appear in coding ligatures "
+"together."
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, wordModeCoding)
+#: widgets/EditProfileAppearancePage.ui:938
+#, fuzzy, kde-format
+#| msgid "Word characters:"
+msgid "Coding ligatures characters"
+msgstr "單字字元："
+
+#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeBrahmic)
+#: widgets/EditProfileAppearancePage.ui:951
 #, kde-format
 msgid "Render words of Brahmic scripts characters together"
 msgstr "一起繪製印度系文字字元的字詞"
 
 #. i18n: ectx: property (text), widget (QCheckBox, wordModeBrahmic)
-#: widgets/EditProfileAppearancePage.ui:938
+#: widgets/EditProfileAppearancePage.ui:954
 #, kde-format
 msgid "Brahmic scripts characters"
 msgstr "印度系文字字元"
 
+#. i18n: ectx: property (toolTip), widget (QCheckBox, fontHinting)
+#: widgets/EditProfileAppearancePage.ui:967
+#, kde-format
+msgid ""
+"Apply hinting to glyphs when rendering, which may improve the legibility of "
+"certain fonts with some displays"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, fontHinting)
+#: widgets/EditProfileAppearancePage.ui:970
+#, kde-format
+msgid "Font hinting"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QLabel, label_17)
-#: widgets/EditProfileAppearancePage.ui:951
+#: widgets/EditProfileAppearancePage.ui:983
 #, kde-format
 msgid "Emoji Font:"
 msgstr "表情符號字型："
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableBidiRenderingButton)
-#: widgets/EditProfileAppearancePage.ui:977
+#: widgets/EditProfileAppearancePage.ui:1009
 #, kde-format
 msgid ""
 "Enable Bi-Directional display on terminals (valid for Arabic, Farsi or "
@@ -4357,90 +4465,90 @@ msgid ""
 msgstr "在終端機中開啟雙向顯示（只有在阿拉伯語、波斯語與希伯來語系中有效）"
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableBidiRenderingButton)
-#: widgets/EditProfileAppearancePage.ui:980
+#: widgets/EditProfileAppearancePage.ui:1012
 #, kde-format
 msgid "Bi-Directional text rendering"
 msgstr "雙向文字繪製"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, bidiLineLTR)
-#: widgets/EditProfileAppearancePage.ui:993
+#: widgets/EditProfileAppearancePage.ui:1025
 #, kde-format
 msgid "Lines are always LTR, rather than determined by first strong character"
 msgstr "線條一律為左到右，而非由第一個強調字元決定"
 
 #. i18n: ectx: property (text), widget (QCheckBox, bidiLineLTR)
-#: widgets/EditProfileAppearancePage.ui:996
+#: widgets/EditProfileAppearancePage.ui:1028
 #, kde-format
 msgid "force LTR line direction"
 msgstr "強制左到右線條方向"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableBidiTableDirOverrideButton)
-#: widgets/EditProfileAppearancePage.ui:1009
+#: widgets/EditProfileAppearancePage.ui:1041
 #, kde-format
 msgid "Treat table drawing characters as strong LTR."
 msgstr "將表格繪製字元視為強左到右。"
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableBidiTableDirOverrideButton)
-#: widgets/EditProfileAppearancePage.ui:1012
+#: widgets/EditProfileAppearancePage.ui:1044
 #, kde-format
 msgid "Table characters BiDi mode override"
 msgstr "表格字元 BiDi 模式覆寫"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, ignoreWcWidth)
-#: widgets/EditProfileAppearancePage.ui:1025
+#: widgets/EditProfileAppearancePage.ui:1057
 #, kde-format
 msgid "Ignore wcwidth of problematic characters"
 msgstr "忽略易造成問題的字元的 wcwidth"
 
 #. i18n: ectx: property (text), widget (QCheckBox, ignoreWcWidth)
-#: widgets/EditProfileAppearancePage.ui:1028
+#: widgets/EditProfileAppearancePage.ui:1060
 #, kde-format
 msgid "Override wcwidth"
 msgstr "覆寫 wcwidth"
 
 #. i18n: ectx: property (toolTip), widget (QWidget, badgeTab)
-#: widgets/EditProfileAppearancePage.ui:1049
+#: widgets/EditProfileAppearancePage.ui:1081
 #, kde-format
 msgid "<html><head/><body><p>Badge overlay options</p></body></html>"
 msgstr "<html><head/><body><p>徽章覆蓋選項</p></body></html>"
 
 #. i18n: ectx: attribute (title), widget (QWidget, badgeTab)
 #. i18n: ectx: property (text), widget (QCheckBox, badgeEnabled)
-#: widgets/EditProfileAppearancePage.ui:1052
-#: widgets/EditProfileAppearancePage.ui:1082
+#: widgets/EditProfileAppearancePage.ui:1084
+#: widgets/EditProfileAppearancePage.ui:1114
 #, kde-format
 msgid "Badge Overlay"
 msgstr "徽章覆蓋"
 
 #. i18n: ectx: property (text), widget (QLabel, badgeOverlayLabel)
-#: widgets/EditProfileAppearancePage.ui:1062
+#: widgets/EditProfileAppearancePage.ui:1094
 #, kde-format
 msgid "Badge Overlay Options"
 msgstr "徽章覆蓋選項"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, badgeEnabled)
-#: widgets/EditProfileAppearancePage.ui:1079
+#: widgets/EditProfileAppearancePage.ui:1111
 #, kde-format
 msgid "Enable badge overlay rendering"
 msgstr "啟用徽章覆蓋繪製"
 
 #. i18n: ectx: property (toolTip), widget (QLabel, badge_label_1)
 #. i18n: ectx: property (toolTip), widget (QLineEdit, badgeTextEdit)
-#: widgets/EditProfileAppearancePage.ui:1089
-#: widgets/EditProfileAppearancePage.ui:1110
+#: widgets/EditProfileAppearancePage.ui:1121
+#: widgets/EditProfileAppearancePage.ui:1142
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Default text of badge."
 msgstr "預設徽章文字。"
 
 #. i18n: ectx: property (text), widget (QLabel, badge_label_1)
-#: widgets/EditProfileAppearancePage.ui:1092
+#: widgets/EditProfileAppearancePage.ui:1124
 #, kde-format
 msgid "Badge text:"
 msgstr "徽章文字："
 
 #. i18n: ectx: property (text), widget (QLabel, badgeVariablesHelpLabel)
-#: widgets/EditProfileAppearancePage.ui:1118
+#: widgets/EditProfileAppearancePage.ui:1150
 #, kde-format
 msgid ""
 "<html><head/><body><p><small><b>Available variables:</b> \\(session.title), "
@@ -4453,7 +4561,7 @@ msgstr ""
 "\\(session.process), \\(env.VARIABLE_NAME)</small></p></body></html>"
 
 #. i18n: ectx: property (text), widget (QLabel, badgeEscapeSequenceHelpLabel)
-#: widgets/EditProfileAppearancePage.ui:1138
+#: widgets/EditProfileAppearancePage.ui:1170
 #, kde-format
 msgid ""
 "<html><head/><body><p><small><b>Badge configuration:</b><br/>Use profile "
@@ -4465,63 +4573,63 @@ msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QLabel, badge_label_2)
 #. i18n: ectx: property (toolTip), widget (QLineEdit, badgeFontEdit)
-#: widgets/EditProfileAppearancePage.ui:1158
-#: widgets/EditProfileAppearancePage.ui:1179
+#: widgets/EditProfileAppearancePage.ui:1190
+#: widgets/EditProfileAppearancePage.ui:1211
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Badge font family."
 msgstr "徽章字型家族。"
 
 #. i18n: ectx: property (text), widget (QLabel, badge_label_2)
-#: widgets/EditProfileAppearancePage.ui:1161
+#: widgets/EditProfileAppearancePage.ui:1193
 #, kde-format
 msgid "Badge font family:"
 msgstr "徽章字型家族："
 
 #. i18n: ectx: property (text), widget (QLabel, badgeFontSizeLabel)
-#: widgets/EditProfileAppearancePage.ui:1194
+#: widgets/EditProfileAppearancePage.ui:1226
 #, kde-format
 msgid "Badge font size:"
 msgstr "徽章字型大小："
 
 #. i18n: ectx: property (text), widget (QLabel, badgeColorLabel)
-#: widgets/EditProfileAppearancePage.ui:1224
+#: widgets/EditProfileAppearancePage.ui:1256
 #, kde-format
 msgid "Badge color:"
 msgstr "徽章色彩："
 
 #. i18n: ectx: property (toolTip), widget (KColorButton, badgeColorSelectButton)
-#: widgets/EditProfileAppearancePage.ui:1237
+#: widgets/EditProfileAppearancePage.ui:1269
 #, kde-format
 msgid "Select the color used to draw the badge"
 msgstr "選擇要用於繪製徽章的顏色"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, badgeTextOnlyCheckBox)
-#: widgets/EditProfileAppearancePage.ui:1251
+#: widgets/EditProfileAppearancePage.ui:1283
 #, kde-format
 msgid "Display badge as text only without background rectangle"
 msgstr "僅用文字顯示徽章，不顯示背景的矩形"
 
 #. i18n: ectx: property (text), widget (QCheckBox, badgeTextOnlyCheckBox)
-#: widgets/EditProfileAppearancePage.ui:1254
+#: widgets/EditProfileAppearancePage.ui:1286
 #, kde-format
 msgid "Text only (no background)"
 msgstr "僅文字（無背景）"
 
 #. i18n: ectx: property (text), widget (QLabel, badgeTransparencyLabel)
-#: widgets/EditProfileAppearancePage.ui:1268
+#: widgets/EditProfileAppearancePage.ui:1300
 #, kde-format
 msgid "Transparency:"
 msgstr "透明度："
 
 #. i18n: ectx: property (toolTip), widget (QSlider, badgeTransparencySlider)
-#: widgets/EditProfileAppearancePage.ui:1295
+#: widgets/EditProfileAppearancePage.ui:1327
 #, kde-format
 msgid "Set badge transparency (0 = fully transparent, 255 = opaque)"
 msgstr "設定徽章透明度（0 為完全透明，255 為完全不透明）"
 
 #. i18n: ectx: property (text), widget (QLabel, badgeTransparencyValueLabel)
-#: widgets/EditProfileAppearancePage.ui:1302
+#: widgets/EditProfileAppearancePage.ui:1334
 #, kde-format
 msgid "180"
 msgstr "180"
@@ -4699,20 +4807,20 @@ msgstr "選擇起始目錄"
 msgid "Get New..."
 msgstr "取得更多…"
 
-#: widgets/EditProfileDialog.cpp:1445
+#: widgets/EditProfileDialog.cpp:1452
 #, kde-kuit-format
 msgctxt "@info"
 msgid "Scheme <resource>%1</resource> failed to load."
 msgstr "配色 <resource>%1</resource> 無法載入。"
 
-#: widgets/EditProfileDialog.cpp:1627
+#: widgets/EditProfileDialog.cpp:1634
 #, kde-format
 msgid ""
 "This color scheme uses a transparent background which does not appear to be "
 "supported on your desktop"
 msgstr "此配色中含有透明背景，您的桌面似乎不支援。"
 
-#: widgets/EditProfileDialog.cpp:1633
+#: widgets/EditProfileDialog.cpp:1640
 #, kde-format
 msgid ""
 "Konsole was started before desktop effects were enabled. You need to restart "
@@ -4721,12 +4829,12 @@ msgstr ""
 "在啟用桌面效果前 Konsole 就已經開啟，您需要重新啟動 Konsole 才能看到透明背"
 "景。"
 
-#: widgets/EditProfileDialog.cpp:2034
+#: widgets/EditProfileDialog.cpp:2041
 #, kde-format
 msgid "Default for file type"
 msgstr "檔案類型的預設"
 
-#: widgets/EditProfileDialog.cpp:2060
+#: widgets/EditProfileDialog.cpp:2067
 #, kde-format
 msgid ""
 "The format is e.g. 'editorExec PATH:LINE:COLUMN'\n"
@@ -4753,7 +4861,7 @@ msgstr ""
 "指令未包含「路徑」或「行」的情況，將自動忽略本設定\n"
 "並以預設的文字編輯器開啟。"
 
-#: widgets/EditProfileDialog.cpp:2073
+#: widgets/EditProfileDialog.cpp:2080
 #, kde-format
 msgid "Text Editor Custom Command"
 msgstr "文字編輯器自訂命令"
@@ -5203,8 +5311,9 @@ msgstr "被認為是檔案、連結或電子郵件地址的文字，在滑鼠點
 
 #. i18n: ectx: property (text), widget (QCheckBox, openLinksByDirectClickButton)
 #: widgets/EditProfileMousePage.ui:338
-#, kde-format
-msgid "Open files/links by direct click"
+#, fuzzy, kde-format
+#| msgid "Open files/links by direct click"
+msgid "Open underlined files/links by direct click"
 msgstr "直接點選檔案/連結來開啟它們"
 
 #. i18n: ectx: property (text), widget (QCheckBox, allowLinkEscapeSequenceButton)
@@ -5803,41 +5912,52 @@ msgctxt "@info:tooltip"
 msgid "Restore terminal"
 msgstr "復原終端機"
 
-#: widgets/ViewContainer.cpp:60
+#: widgets/ViewContainer.cpp:86
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Open a new tab"
 msgstr "開啟新分頁"
 
-#: widgets/ViewContainer.cpp:65
+#: widgets/ViewContainer.cpp:91
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Search Tabs"
 msgstr "搜尋分頁"
 
-#: widgets/ViewContainer.cpp:70
+#: widgets/ViewContainer.cpp:96
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Close this tab"
 msgstr "關閉本分頁"
 
-#: widgets/ViewContainer.cpp:106
+#: widgets/ViewContainer.cpp:132
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Detach Tab"
 msgstr "在獨立視窗顯示分頁(&D)"
 
-#: widgets/ViewContainer.cpp:112
+#: widgets/ViewContainer.cpp:138
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Configure or Rename Tab..."
 msgstr "設定或重新命名分頁(&C)…"
 
-#: widgets/ViewContainer.cpp:117
+#: widgets/ViewContainer.cpp:143
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Close Tab"
 msgstr "關閉分頁"
+
+#: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
+#, fuzzy, kde-format
+#| msgid "&Continue Task"
+msgid "Container"
+msgstr "繼續工作(&C)"
+
+#: widgets/ViewContainer.cpp:987
+#, kde-format
+msgid "%1: %2"
+msgstr ""
 
 #~ msgid "Distrobox: %1"
 #~ msgstr "Distrobox：%1"

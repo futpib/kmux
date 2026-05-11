@@ -463,14 +463,20 @@ void Vt102EmulationTest::testBufferedUpdates()
     QCOMPARE(outputChangedSpy.count(), 2);
 }
 
+<<<<<<< HEAD
 void Vt102EmulationTest::testTmuxControlModePassthrough()
 {
     // Verify that entering tmux control mode (DCS 1000p) works
     // and that lines are delivered via tmuxControlModeLineReceived
+=======
+void Vt102EmulationTest::testKittyKeyboardPushPopQuery()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy startedSpy(&em, &Vt102Emulation::tmuxControlModeStarted);
     QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
 
@@ -495,10 +501,58 @@ void Vt102EmulationTest::testTmuxControlModeUtf8()
     // Verify that Unicode codepoints (from the post-UTF-8-decode path)
     // are re-encoded as UTF-8 when buffered in the tmux line buffer.
     // receiveChars() receives Unicode codepoints, not raw bytes.
+=======
+    // Initially, flags should be 0
+    // Query: CSI ? u  → should respond CSI ? 0 u
+    const char query[] = "\033[?u";
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
+
+    // Push flags=1 (disambiguate): CSI > 1 u
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Query again — should be 1
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?1u"));
+
+    // Push flags=3: CSI > 3 u
+    const char push3[] = "\033[>3u";
+    em.receiveData(push3, sizeof(push3) - 1);
+
+    // Query — should be 3 (top of stack)
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?3u"));
+
+    // Pop 1 entry: CSI < 1 u
+    const char pop1[] = "\033[<1u";
+    em.receiveData(pop1, sizeof(pop1) - 1);
+
+    // Query — should be back to 1
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?1u"));
+
+    // Pop 1 more entry
+    em.receiveData(pop1, sizeof(pop1) - 1);
+
+    // Query — should be 0 (empty stack)
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
+
+    // Pop from empty stack — should be harmless
+    em.receiveData(pop1, sizeof(pop1) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardSet()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
 
     const uint ESC = 0x1B;
@@ -525,10 +579,40 @@ void Vt102EmulationTest::testTmuxControlModeUtf8ViaReceiveData()
     // UTF-8 decodes them before passing to receiveChars(). The put()
     // function must re-encode Unicode codepoints back to UTF-8 for
     // the tmux line buffer.
+=======
+    const char query[] = "\033[?u";
+
+    // Push initial flags=0
+    const char push0[] = "\033[>0u";
+    em.receiveData(push0, sizeof(push0) - 1);
+
+    // Set flags=5, mode=1 (replace): CSI = 5 ; 1 u
+    const char set_replace[] = "\033[=5;1u";
+    em.receiveData(set_replace, sizeof(set_replace) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?5u"));
+
+    // Set flags=2, mode=2 (OR): CSI = 2 ; 2 u → 5 | 2 = 7
+    const char set_or[] = "\033[=2;2u";
+    em.receiveData(set_or, sizeof(set_or) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?7u"));
+
+    // Set flags=4, mode=3 (AND-NOT): CSI = 4 ; 3 u → 7 & ~4 = 3
+    const char set_andnot[] = "\033[=4;3u";
+    em.receiveData(set_andnot, sizeof(set_andnot) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?3u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardReset()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
 
     // Enter tmux control mode via receiveData (DCS 1000p)
@@ -551,10 +635,30 @@ void Vt102EmulationTest::testTmuxControlModeEscInData()
 {
     // Verify that ESC bytes within tmux control mode data do NOT
     // break out of DCS passthrough. Only ESC \ (ST) should terminate it.
+=======
+    const char query[] = "\033[?u";
+
+    // Push some flags
+    const char push5[] = "\033[>5u";
+    em.receiveData(push5, sizeof(push5) - 1);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?5u"));
+
+    // Reset should clear stacks
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
+    em.receiveData(query, sizeof(query) - 1);
+    QCOMPARE(em.lastSent, QByteArray("\033[?0u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardDisambiguate()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
     QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
 
@@ -605,10 +709,26 @@ void Vt102EmulationTest::testTmuxControlModeC1InData()
     // Verify that 8-bit C1 control codes (0x90, 0x9B, 0x9D, etc.)
     // do NOT break out of DCS passthrough in tmux control mode.
     // Uses receiveData() to test the real byte-level path.
+=======
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Escape key with Ctrl modifier should use CSI u encoding
+    QKeyEvent escCtrl(QEvent::KeyPress, Qt::Key_Escape, Qt::ControlModifier, QStringLiteral("\x1b"));
+    em.sendKeyEvent(&escCtrl);
+    // Should send CSI 27;5u (modifier 5 = 1 + ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[27;5u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardEventTypes()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
     QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
 
@@ -636,10 +756,26 @@ void Vt102EmulationTest::testTmuxControlModeC1InData()
 void Vt102EmulationTest::testTmuxControlModeST()
 {
     // Verify that ESC \ (ST) correctly terminates tmux control mode
+=======
+    // Push flags=3 (disambiguate + report event types)
+    const char push3[] = "\033[>3u";
+    em.receiveData(push3, sizeof(push3) - 1);
+
+    // Key release event for 'a'
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+    em.sendKeyEvent(&release);
+    // Should include event type 3 (release): CSI 97;1:3u
+    QCOMPARE(em.lastSent, QByteArray("\033[97;1:3u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardReportAllKeys()
+{
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
     TestEmulation em;
     em.reset();
     em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
     QSignalSpy endedSpy(&em, &Vt102Emulation::tmuxControlModeEnded);
 
     const uint ESC = 0x1B;
@@ -665,10 +801,97 @@ void Vt102EmulationTest::testTmuxControlModeUtf8ChunkBoundary()
 
     // Test splitting at every byte position
     for (int split = 1; split < fullLine.size(); split++) {
+=======
+    // Push flags=9 (disambiguate + report all keys as escape codes)
+    const char push9[] = "\033[>9u";
+    em.receiveData(push9, sizeof(push9) - 1);
+
+    // Plain 'a' key should be reported
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+    em.sendKeyEvent(&press);
+    // Should send CSI 97 u (keycode=97='a', no mods)
+    QCOMPARE(em.lastSent, QByteArray("\033[97u"));
+
+    // Escape key (no modifiers) with flag 8 should use CSI u
+    QKeyEvent escPress(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier, QStringLiteral("\x1b"));
+    em.sendKeyEvent(&escPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[27u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardLegacyKeys()
+{
+    TestEmulation em;
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
+
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Up arrow with no modifiers — should use legacy encoding
+    QKeyEvent upPress(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    em.sendKeyEvent(&upPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[A"));
+
+    // Up arrow with Ctrl — should use legacy encoding with modifiers
+    QKeyEvent upCtrl(QEvent::KeyPress, Qt::Key_Up, Qt::ControlModifier);
+    em.sendKeyEvent(&upCtrl);
+    QCOMPARE(em.lastSent, QByteArray("\033[1;5A"));
+
+    // F5 with no modifiers — legacy tilde encoding
+    QKeyEvent f5Press(QEvent::KeyPress, Qt::Key_F5, Qt::NoModifier);
+    em.sendKeyEvent(&f5Press);
+    QCOMPARE(em.lastSent, QByteArray("\033[15~"));
+
+    // F1 with no modifiers — SS3 encoding
+    QKeyEvent f1Press(QEvent::KeyPress, Qt::Key_F1, Qt::NoModifier);
+    em.sendKeyEvent(&f1Press);
+    QCOMPARE(em.lastSent, QByteArray("\033OP"));
+
+    // F1 with Shift — CSI 1;2 P
+    QKeyEvent f1Shift(QEvent::KeyPress, Qt::Key_F1, Qt::ShiftModifier);
+    em.sendKeyEvent(&f1Shift);
+    QCOMPARE(em.lastSent, QByteArray("\033[1;2P"));
+
+    // Delete key — CSI 3 ~
+    QKeyEvent delPress(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+    em.sendKeyEvent(&delPress);
+    QCOMPARE(em.lastSent, QByteArray("\033[3~"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardCtrlLetters()
+{
+    TestEmulation em;
+    em.reset();
+    em.setCodec(TestEmulation::Utf8Codec);
+
+    // Push flags=1 (disambiguate)
+    const char push1[] = "\033[>1u";
+    em.receiveData(push1, sizeof(push1) - 1);
+
+    // Ctrl+C: key=Qt::Key_C, modifiers=ControlModifier, text="\x03"
+    QKeyEvent ctrlC(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, QStringLiteral("\x03"));
+    em.sendKeyEvent(&ctrlC);
+    // Should send CSI 99;5u (keycode=99='c', modifier=5=1+ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[99;5u"));
+
+    // Ctrl+D: key=Qt::Key_D, modifiers=ControlModifier, text="\x04"
+    QKeyEvent ctrlD(QEvent::KeyPress, Qt::Key_D, Qt::ControlModifier, QStringLiteral("\x04"));
+    em.sendKeyEvent(&ctrlD);
+    // Should send CSI 100;5u (keycode=100='d', modifier=5=1+ctrl:4)
+    QCOMPARE(em.lastSent, QByteArray("\033[100;5u"));
+}
+
+void Vt102EmulationTest::testKittyKeyboardTextKeys()
+{
+    // --- Flag 1 (disambiguate): text keys with non-shift modifiers use CSI u ---
+    {
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
         TestEmulation em;
         em.reset();
         em.setCodec(TestEmulation::Utf8Codec);
 
+<<<<<<< HEAD
         QSignalSpy lineSpy(&em, &Vt102Emulation::tmuxControlModeLineReceived);
 
         em.receiveData(dcs.constData(), dcs.size());
@@ -765,6 +988,81 @@ void Vt102EmulationTest::testTmuxControlModeRawBytePassthrough()
     QCOMPARE(received, expected);
 }
 
+=======
+        const char push1[] = "\033[>1u";
+        em.receiveData(push1, sizeof(push1) - 1);
+
+        // Ctrl+A → CSI 97;5u
+        QKeyEvent ctrlA(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier, QStringLiteral("\x01"));
+        em.sendKeyEvent(&ctrlA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;5u"));
+
+        // Alt+A → CSI 97;3u
+        QKeyEvent altA(QEvent::KeyPress, Qt::Key_A, Qt::AltModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&altA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;3u"));
+
+        // Ctrl+Shift+A → CSI 97;6u
+        QKeyEvent ctrlShiftA(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier | Qt::ShiftModifier, QStringLiteral("\x01"));
+        em.sendKeyEvent(&ctrlShiftA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;6u"));
+    }
+
+    // --- Flag 1 (disambiguate): text keys with only shift or no modifiers use legacy ---
+    {
+        TestEmulation em;
+        em.reset();
+        em.setCodec(TestEmulation::Utf8Codec);
+
+        const char push1[] = "\033[>1u";
+        em.receiveData(push1, sizeof(push1) - 1);
+
+        // Plain 'a' → falls through to legacy (no CSI u sent)
+        em.lastSent.clear();
+        QKeyEvent plainA(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&plainA);
+        QVERIFY2(!em.lastSent.contains("\033["), "plain 'a' with flag 1 should use legacy, not CSI u");
+
+        // Shift+A → falls through to legacy (shift consumed by uppercase)
+        em.lastSent.clear();
+        QKeyEvent shiftA(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier, QStringLiteral("A"));
+        em.sendKeyEvent(&shiftA);
+        QVERIFY2(!em.lastSent.contains("\033["), "Shift+A with flag 1 should use legacy, not CSI u");
+
+        // Space → falls through to legacy
+        em.lastSent.clear();
+        QKeyEvent space(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, QStringLiteral(" "));
+        em.sendKeyEvent(&space);
+        QVERIFY2(!em.lastSent.contains("\033["), "Space with flag 1 should use legacy, not CSI u");
+    }
+
+    // --- Flag 8 (report all keys): all text keys use CSI u ---
+    {
+        TestEmulation em;
+        em.reset();
+        em.setCodec(TestEmulation::Utf8Codec);
+
+        const char push8[] = "\033[>8u";
+        em.receiveData(push8, sizeof(push8) - 1);
+
+        // Plain 'a' → CSI 97 u
+        QKeyEvent plainA(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        em.sendKeyEvent(&plainA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97u"));
+
+        // Shift+A → CSI 97;2u
+        QKeyEvent shiftA(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier, QStringLiteral("A"));
+        em.sendKeyEvent(&shiftA);
+        QCOMPARE(em.lastSent, QByteArray("\033[97;2u"));
+
+        // Space → CSI 32 u
+        QKeyEvent space(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, QStringLiteral(" "));
+        em.sendKeyEvent(&space);
+        QCOMPARE(em.lastSent, QByteArray("\033[32u"));
+    }
+}
+
+>>>>>>> b1dba85d5d5ee45c8ee99f971d621963ad8c9112
 QTEST_GUILESS_MAIN(Vt102EmulationTest)
 
 #include "moc_Vt102EmulationTest.cpp"
