@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 # Run on the host ubuntu-latest runner and invoke docker ourselves so we can
 # pass -t / --privileged. GitHub Actions' `container:` key swallows those
