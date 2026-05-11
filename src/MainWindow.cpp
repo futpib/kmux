@@ -11,14 +11,14 @@
 #include <cstdio>
 
 // Qt
-#include <QCloseEvent>
-#include <QFile>
-#include <QFileSystemWatcher>
+#include <QDateTime>
+#include <QGuiApplication>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMouseEvent>
+#include <QColor>
 #include <QScreen>
-#include <QTimer>
+#include <QStyleHints>
 #include <QWindow>
 #if HAVE_DBUS
 #include <QDBusConnection>
@@ -61,6 +61,7 @@
 
 #include "containers/ContainerList.h"
 #include "containers/ContainerRegistry.h"
+#include "containers/ContainerSessionState.h"
 
 #include "session/Session.h"
 #include "session/SessionController.h"
@@ -89,101 +90,30 @@ using namespace Konsole;
 
 namespace
 {
-QString dumpToolbars(const QMainWindow *w)
+QString containerSuffixForSession(const QPointer<Session> &session)
 {
-    QStringList out;
-    const auto bars = w->findChildren<KToolBar *>();
-    for (const KToolBar *b : bars) {
-        out << QStringLiteral("%1=%2(visTo=%3,hidden=%4)")
-                   .arg(b->objectName(),
-                        b->isVisible() ? QStringLiteral("visible") : QStringLiteral("hidden"),
-                        b->isVisibleTo(w) ? QStringLiteral("Y") : QStringLiteral("N"),
-                        b->isHidden() ? QStringLiteral("Y") : QStringLiteral("N"));
+    if (session.isNull()) {
+        return {};
     }
-    return out.join(QLatin1Char(' '));
-}
 
-QString dumpToolbarHiddenInGroup(const KConfigGroup &mainGroup, const QString &barName)
-{
-    // KToolBar persists per-bar state both as a subgroup of the MainWindow
-    // group AND as a top-level "Toolbar <name>" group in the same file —
-    // depending on KMainWindow version, one or the other (or both) appears.
-    // Report whatever we find so we can spot inconsistencies.
-    QStringList out;
-    const QString sub = QStringLiteral("Toolbar ") + barName;
-    if (mainGroup.hasGroup(sub)) {
-        KConfigGroup g = mainGroup.group(sub);
-        out << QStringLiteral("sub:Hidden=%1").arg(g.readEntry("Hidden", QString::fromLatin1("<unset>")));
+    QString containerName;
+    const ContainerInfo container = session->containerContext();
+    if (container.isValid()) {
+        containerName = container.displayName.isEmpty() ? container.name : container.displayName;
     } else {
-        out << QStringLiteral("sub:<no-group>");
-    }
-    if (mainGroup.config()->hasGroup(sub)) {
-        KConfigGroup g = mainGroup.config()->group(sub);
-        out << QStringLiteral("top:Hidden=%1").arg(g.readEntry("Hidden", QString::fromLatin1("<unset>")));
-    } else {
-        out << QStringLiteral("top:<no-group>");
-    }
-    return out.join(QLatin1Char(','));
-}
-
-int readStateLenFromDisk(const QString &path)
-{
-    // Reparse from disk (bypassing KConfig cache) to see what's actually on disk right now.
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return -1;
-    }
-    const QByteArray contents = f.readAll();
-    int i = contents.indexOf("\nState=");
-    if (i < 0) {
-        return -2;
-    }
-    i += 7;
-    int end = contents.indexOf('\n', i);
-    if (end < 0) {
-        end = contents.size();
-    }
-    const QByteArray b64 = contents.mid(i, end - i);
-    return QByteArray::fromBase64(b64).size();
-}
-
-QString dumpToolbarGroups(const KConfig *config)
-{
-    // Per-toolbar config groups KToolBar writes to (e.g. "Toolbar mainToolBar").
-    QStringList out;
-    const auto groups = config->groupList();
-    for (const QString &g : groups) {
-        if (g.startsWith(QLatin1String("Toolbar "))) {
-            KConfigGroup cg = config->group(g);
-            out << QStringLiteral("[%1 Hidden=%2 IconText=%3 Index=%4]")
-                       .arg(g, cg.readEntry("Hidden", QString()), cg.readEntry("IconText", QString()), cg.readEntry("Index", QString()));
+        const auto pending = ContainerSessionState::pendingContainerInfo(session);
+        if (!pending.key.isEmpty()) {
+            containerName = pending.name;
         }
     }
-    return out.isEmpty() ? QStringLiteral("<none>") : out.join(QLatin1Char(' '));
+
+    if (containerName.isEmpty()) {
+        return {};
+    }
+
+    return QStringLiteral(" [%1]").arg(containerName);
 }
 
-// Walk both candidate config files and report what each says about the
-// toolbar persistence story. Use this anywhere we want a single log line
-// that explains "where the truth could be hiding" for sessionToolbar.
-QString dumpAllConfigs()
-{
-    QStringList out;
-    auto reportGroup = [&](const QString &label, const KConfigGroup &g) {
-        const int stateLen = g.readEntry("State", QByteArray()).size();
-        const QString hidden = dumpToolbarHiddenInGroup(g, QStringLiteral("sessionToolbar"));
-        out << QStringLiteral("%1[file=%2 group=%3 exists=%4 hasState=%5 stateLen=%6 sessionToolbar:%7 allBars=%8]")
-                   .arg(label,
-                        g.config()->name(),
-                        g.name(),
-                        g.exists() ? QStringLiteral("Y") : QStringLiteral("N"),
-                        g.hasKey("State") ? QStringLiteral("Y") : QStringLiteral("N"))
-                   .arg(stateLen)
-                   .arg(hidden, dumpToolbarGroups(g.config()));
-    };
-    reportGroup(QStringLiteral("DEFAULT"), KSharedConfig::openConfig()->group(QStringLiteral("MainWindow")));
-    reportGroup(QStringLiteral("STATE"), KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow")));
-    return out.join(QLatin1Char(' '));
-}
 }
 
 MainWindow::MainWindow()
@@ -460,17 +390,12 @@ void MainWindow::updateWindowCaption()
         !userTitle.isEmpty() ? caption = userTitle : caption = QStringLiteral(" ");
     }
 
-    if (const auto *bridge = findChild<TmuxProcessBridge *>()) {
-        const QStringList rshCommand = bridge->rshCommand();
-        if (!rshCommand.isEmpty()) {
-            QStringList atWords;
-            for (const QString &arg : rshCommand) {
-                if (arg.contains(QLatin1Char('@'))) {
-                    atWords << arg;
-                }
-            }
-            const QString rshSuffix = atWords.size() == 1 ? atWords.first() : rshCommand.join(QLatin1Char(' '));
-            caption = caption + QStringLiteral(" [") + rshSuffix + QStringLiteral("]");
+    const QString containerSuffix = containerSuffixForSession(_pluggedController->session());
+    if (!containerSuffix.isEmpty()) {
+        if (caption.trimmed().isEmpty()) {
+            caption = containerSuffix.trimmed();
+        } else {
+            caption.append(containerSuffix);
         }
     }
 
@@ -595,7 +520,7 @@ void MainWindow::setupActions()
 
     menuAction = collection->addAction(QStringLiteral("manage-profiles"));
     menuAction->setText(i18nc("@action:inmenu", "Manage Profiles..."));
-    menuAction->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
+    menuAction->setIcon(QIcon::fromTheme(QStringLiteral("settings-configure"), QIcon::fromTheme(QStringLiteral("configure"))));
     connect(menuAction, &QAction::triggered, this, &Konsole::MainWindow::showManageProfilesDialog);
 
     // Set up an shortcut-only action for activating menu bar.
@@ -799,6 +724,11 @@ void MainWindow::rebuildNewTabMenu()
     if (_containerList) {
         _containerList->addContainerSections(menu);
     }
+
+    if (QAction *manageProfiles = actionCollection()->action(QStringLiteral("manage-profiles"))) {
+        menu->addSeparator();
+        menu->addAction(manageProfiles);
+    }
 }
 
 QString MainWindow::activeSessionDir() const
@@ -857,13 +787,8 @@ void MainWindow::cloneTab()
 {
     Q_ASSERT(_pluggedController);
 
-    Session *session = _pluggedController->session();
-
-    if (TmuxControllerRegistry::instance()->controllerForSession(session)) {
-        return;
-    }
-
-    Profile::Ptr profile = SessionManager::instance()->sessionProfile(session);
+    Session *sourceSession = _pluggedController->session();
+    Profile::Ptr profile = SessionManager::instance()->sessionProfile(sourceSession);
     if (profile) {
         createSession(profile, activeSessionDir());
     } else {
@@ -1178,6 +1103,20 @@ void MainWindow::newInContainer(const ContainerInfo &container)
         // that container, an invalid one (host selected) clears any
         // auto-applied default from the profile.
         session->setContainerContext(container);
+
+        const QString key = ContainerRegistry::keyFromContainerInfo(container);
+        ContainerSessionState::setPendingContainerInfo(session,
+                                                       key,
+                                                       container.detector ? container.detector->displayName() : QString(),
+                                                       container.displayName.isEmpty() ? container.name : container.displayName);
+
+        if (!session->isTabColorSetByUser() && defaultProfile && !defaultProfile->tabColor().isValid()) {
+            if (!key.isEmpty()) {
+                session->setColor(ContainerSessionState::colorForContainerKey(key));
+            } else {
+                session->setColor(QColor());
+            }
+        }
     }
 }
 
@@ -1279,38 +1218,33 @@ void MainWindow::applyKonsoleSettings()
 
     _viewManager->activeContainer()->setNavigationBehavior(KonsoleSettings::newTabBehavior());
 
-    // Save the toolbar/menu/dockwidget states and the window geometry in
-    // the state config (~/.local/state/kmuxstaterc) rather than the default
-    // config file, so window/toolbar state lives next to other transient
-    // window state instead of kmuxrc.
-    KConfigGroup autoSaveGroup = KSharedConfig::openStateConfig()->group(QStringLiteral("MainWindow"));
-    qCDebug(KonsoleDebug) << "applyKonsoleSettings: BEFORE setAutoSaveSettings target file=" << autoSaveGroup.config()->name()
-                          << "group=" << autoSaveGroup.name() << "groupExists=" << autoSaveGroup.exists() << "hasState=" << autoSaveGroup.hasKey("State")
-                          << "stateLen=" << autoSaveGroup.readEntry("State", QByteArray()).size()
-                          << "currentAutoSaveFile=" << autoSaveConfigGroup().config()->name() << "currentAutoSaveGroup=" << autoSaveConfigGroup().name()
-                          << "toolbars=[" << dumpToolbars(this) << "] configs=[" << dumpAllConfigs() << "]";
-    setAutoSaveSettings(autoSaveGroup);
-    qCDebug(KonsoleDebug) << "applyKonsoleSettings: AFTER  setAutoSaveSettings toolbars=[" << dumpToolbars(this) << "]"
-                          << "autoSaveGroup=" << autoSaveConfigGroup().name() << "file=" << autoSaveConfigGroup().config()->name() << "configs=["
-                          << dumpAllConfigs() << "]";
-
-    if (!_stateFileWatcher) {
-        const QString path = autoSaveGroup.config()->name();
-        _stateFileWatcher = new QFileSystemWatcher(this);
-        _stateFileWatcher->addPath(path);
-        connect(_stateFileWatcher, &QFileSystemWatcher::fileChanged, this, [this, path](const QString &changedPath) {
-            qCDebug(KonsoleDebug) << "stateFile CHANGED path=" << changedPath << "onDiskStateLen=" << readStateLenFromDisk(path) << "toolbars=["
-                                  << dumpToolbars(this) << "]";
-            // Some editors/KConfig write atomically (rename over file), which removes the watch — re-add it.
-            if (!_stateFileWatcher->files().contains(path)) {
-                _stateFileWatcher->addPath(path);
-            }
-        });
-        qCDebug(KonsoleDebug) << "stateFile WATCH installed path=" << path << "onDiskStateLen=" << readStateLenFromDisk(path);
+    if (KonsoleSettings::syncProfileWithSystemTheme()) {
+        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &MainWindow::applyThemeProfile, Qt::UniqueConnection);
+        applyThemeProfile();
+    } else {
+        disconnect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &MainWindow::applyThemeProfile);
     }
+
+    // Save the toolbar/menu/dockwidget states and the window geometry
+    setAutoSaveSettings();
 
     updateWindowCaption();
     updateProgress();
+}
+
+void MainWindow::applyThemeProfile()
+{
+    if (!KonsoleSettings::syncProfileWithSystemTheme()) {
+        return;
+    }
+
+    const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+    Profile::Ptr profile = (scheme == Qt::ColorScheme::Dark) ? ProfileManager::instance()->darkProfile() : ProfileManager::instance()->lightProfile();
+
+    const auto sessions = SessionManager::instance()->sessions();
+    for (Session *session : sessions) {
+        SessionManager::instance()->setSessionProfile(session, profile);
+    }
 }
 
 void MainWindow::activateMenuBar()

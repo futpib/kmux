@@ -655,6 +655,11 @@ public Q_SLOTS:
     Q_SCRIPTABLE bool flowControlEnabled() const;
 
     /**
+     * Sets whether the Kitty keyboard protocol is available for this terminal session.
+     */
+    void setKittyKeyboardEnabled(bool enabled);
+
+    /**
      * @param text to send to the current foreground terminal program.
      * @param eol send this after @p text
      */
