@@ -65,6 +65,10 @@ class KONSOLEPRIVATE_EXPORT ViewSplitter : public QSplitter
 public:
     explicit ViewSplitter(QWidget *parent = nullptr);
 
+    static TerminalDisplay *terminalDisplayForWidget(QWidget *widget);
+    static QWidget *containerWidgetForDisplay(TerminalDisplay *display);
+    static ViewSplitter *parentSplitterForDisplay(TerminalDisplay *display);
+
     enum class AddBehavior {
         AddBefore,
         AddAfter,

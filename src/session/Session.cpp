@@ -1444,6 +1444,9 @@ QString Session::getDynamicTitle()
         } break;
         case 'n': {
             QString replacement = process->name(&ok);
+            if (!ok) {
+                replacement = QStringLiteral("-");
+            }
             title.replace(pos, 2, replacement);
             pos += replacement.size();
         } break;
@@ -1681,6 +1684,15 @@ void Session::setFlowControlEnabled(bool enabled)
         _shellProcess->setFlowControlEnabled(_flowControlEnabled);
     }
 }
+
+void Session::setKittyKeyboardEnabled(bool enabled)
+{
+    auto *vt102 = qobject_cast<Vt102Emulation *>(_emulation);
+    if (vt102) {
+        vt102->setKittyKeyboardEnabled(enabled);
+    }
+}
+
 bool Session::flowControlEnabled() const
 {
     if (_shellProcess != nullptr) {
@@ -1914,6 +1926,13 @@ void Session::updateContainerContext()
 
     // Detect container for current foreground process (polling-based, e.g., distrobox)
     auto newContext = ContainerRegistry::instance()->detectContainer(_foregroundPid);
+    if (_enteredViaContainerCommand && _containerContext.isValid() && !newContext.isValid()) {
+        // Sessions started directly via "new tab in container" can briefly expose
+        // host-side foreground processes where polling detection returns empty.
+        // Keep the selected container context until we get explicit confirmation
+        // (valid detection or OSC 777), instead of dropping the badge prematurely.
+        return;
+    }
     setContainerContext(newContext);
 }
 

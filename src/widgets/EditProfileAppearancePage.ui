@@ -924,6 +924,22 @@
         </widget>
        </item>
        <item row="34" column="1">
+        <widget class="QCheckBox" name="wordModeCoding">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="toolTip">
+          <string>Render words made of characters that usually appear in coding ligatures together.</string>
+         </property>
+         <property name="text">
+          <string>Coding ligatures characters</string>
+         </property>
+        </widget>
+       </item>
+       <item row="35" column="1">
         <widget class="QCheckBox" name="wordModeBrahmic">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -936,6 +952,22 @@
          </property>
          <property name="text">
           <string>Brahmic scripts characters</string>
+         </property>
+        </widget>
+       </item>
+       <item row="40" column="1">
+        <widget class="QCheckBox" name="fontHinting">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="toolTip">
+          <string>Apply hinting to glyphs when rendering, which may improve the legibility of certain fonts with some displays</string>
+         </property>
+         <property name="text">
+          <string>Font hinting</string>
          </property>
         </widget>
        </item>

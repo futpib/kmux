@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: konsole\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-04-04 00:49+0000\n"
+"POT-Creation-Date: 2026-05-11 00:47+0000\n"
 "PO-Revision-Date: 2008-12-29 15:34+0530\n"
 "Last-Translator: Runa Bhattacharjee <runab@redhat.com>\n"
 "Language-Team: Bengali INDIA <fedora-trans-bn_IN@redhat.com>\n"
@@ -762,7 +762,7 @@ msgid ""
 "Container support is not available when Konsole is running inside Flatpak."
 msgstr ""
 
-#: containers/DistroboxDetector.cpp:72
+#: containers/DistroboxDetector.cpp:124
 #, kde-format
 msgid "Distrobox"
 msgstr ""
@@ -778,7 +778,7 @@ msgstr ""
 msgid " [default]"
 msgstr "ডিফল্ট মান রূপে নির্ধারণ করুন"
 
-#: containers/ToolboxDetector.cpp:29
+#: containers/ToolboxDetector.cpp:89
 #, kde-format
 msgid "Toolbox"
 msgstr ""
@@ -1339,73 +1339,73 @@ msgctxt "@info:credit"
 msgid "Thanks to many others.\n"
 msgstr "অ্যানান্য অনেককে অসংখ্যা ধন্যবাদন।\n"
 
-#: MainWindow.cpp:391
+#: MainWindow.cpp:433
 #, fuzzy, kde-format
 #| msgid "New &Tab"
 msgctxt "@action:inmenu"
 msgid "&New Tab"
 msgstr "নতুন ট্যাব (&T)"
 
-#: MainWindow.cpp:401
+#: MainWindow.cpp:443
 #, fuzzy, kde-format
 #| msgid "&Close Tab"
 msgctxt "@action:inmenu"
 msgid "&Clone Tab"
 msgstr "ট্যাব বন্ধ করুন (&C)"
 
-#: MainWindow.cpp:408
+#: MainWindow.cpp:450
 #, fuzzy, kde-format
 #| msgid "New &Window"
 msgctxt "@action:inmenu"
 msgid "New &Window"
 msgstr "নতুন উইন্ডো (&W)"
 
-#: MainWindow.cpp:415
+#: MainWindow.cpp:457
 #, fuzzy, kde-format
 #| msgid "Konsole"
 msgctxt "@action:inmenu"
 msgid "Close Window"
 msgstr "Konsole"
 
-#: MainWindow.cpp:420
+#: MainWindow.cpp:462
 #, fuzzy, kde-format
 #| msgid "&Bookmarks"
 msgctxt "@title:menu"
 msgid "&Bookmarks"
 msgstr "বুকমার্ক (&B)"
 
-#: MainWindow.cpp:447
+#: MainWindow.cpp:489
 #, fuzzy, kde-format
 #| msgid "New Color Scheme"
 msgid "&Window Color Scheme"
 msgstr "নতুন রঙের বিন্যাস"
 
-#: MainWindow.cpp:459
+#: MainWindow.cpp:501
 #, fuzzy, kde-format
 #| msgid "Manage Profiles"
 msgctxt "@action:inmenu"
 msgid "Manage Profiles..."
 msgstr "প্রোফাইল ব্যবস্থাপনা"
 
-#: MainWindow.cpp:465
+#: MainWindow.cpp:507
 #, kde-format
 msgctxt "@item"
 msgid "Activate Menu"
 msgstr ""
 
-#: MainWindow.cpp:471
+#: MainWindow.cpp:513
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Save Tab Layout..."
 msgstr ""
 
-#: MainWindow.cpp:480
+#: MainWindow.cpp:522
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load Tab Layout..."
 msgstr ""
 
-#: MainWindow.cpp:827 MainWindow.cpp:844
+#: MainWindow.cpp:874 MainWindow.cpp:891
 #, fuzzy, kde-format
 #| msgid ""
 #| "You have multiple tabs in this window, are you sure you want to quit?"
@@ -1418,28 +1418,28 @@ msgstr[0] ""
 msgstr[1] ""
 "এই উইন্ডোর মধ্যে একাধিক ট্যাব উপস্থিত রয়েছে, আপনি কি নিশ্চিতরূপে প্রস্থান করতে ইচ্ছুক?"
 
-#: MainWindow.cpp:833 MainWindow.cpp:850 MainWindow.cpp:864
+#: MainWindow.cpp:880 MainWindow.cpp:897 MainWindow.cpp:911
 #, fuzzy, kde-format
 #| msgid "Confirm Close"
 msgctxt "@title"
 msgid "Confirm Close"
 msgstr "বন্ধ করার নিশ্চিতি"
 
-#: MainWindow.cpp:834 MainWindow.cpp:851 MainWindow.cpp:865
+#: MainWindow.cpp:881 MainWindow.cpp:898 MainWindow.cpp:912
 #, fuzzy, kde-format
 #| msgid "Konsole"
 msgctxt "@action:button"
 msgid "Close &Window"
 msgstr "Konsole"
 
-#: MainWindow.cpp:852 MainWindow.cpp:866
+#: MainWindow.cpp:899 MainWindow.cpp:913
 #, fuzzy, kde-format
 #| msgid "Close Current Tab"
 msgctxt "@action:button"
 msgid "Close Current &Tab"
 msgstr "বর্তমান ট্যাব বন্ধ করুন"
 
-#: MainWindow.cpp:861
+#: MainWindow.cpp:908
 #, fuzzy, kde-format
 #| msgid ""
 #| "You have multiple tabs in this window, are you sure you want to quit?"
@@ -1448,39 +1448,39 @@ msgid "There are %1 open terminals in this window. Do you still want to quit?"
 msgstr ""
 "এই উইন্ডোর মধ্যে একাধিক ট্যাব উপস্থিত রয়েছে, আপনি কি নিশ্চিতরূপে প্রস্থান করতে ইচ্ছুক?"
 
-#: MainWindow.cpp:1001 Part.cpp:317
+#: MainWindow.cpp:1062 Part.cpp:317
 #, fuzzy, kde-format
 #| msgid "New Profile"
 msgctxt "@title Preferences page name"
 msgid "Profiles"
 msgstr "নতুন প্রোফাইল"
 
-#: MainWindow.cpp:1019
+#: MainWindow.cpp:1080
 #, fuzzy, kde-format
 #| msgid "General"
 msgctxt "@title Preferences page name"
 msgid "General"
 msgstr "সাধারণ"
 
-#: MainWindow.cpp:1031
+#: MainWindow.cpp:1092
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Memory"
 msgstr ""
 
-#: MainWindow.cpp:1037
+#: MainWindow.cpp:1098
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Tab Bar / Splitters"
 msgstr ""
 
-#: MainWindow.cpp:1042
+#: MainWindow.cpp:1103
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Temporary Files"
 msgstr ""
 
-#: MainWindow.cpp:1047
+#: MainWindow.cpp:1108
 #, kde-format
 msgctxt "@title Preferences page name"
 msgid "Thumbnails"
@@ -2081,7 +2081,7 @@ msgstr ""
 msgid "&Scale output"
 msgstr ""
 
-#: profile/Profile.cpp:282
+#: profile/Profile.cpp:285
 #, kde-format
 msgctxt "Name of the built-in profile"
 msgid "Built-in"
@@ -2093,33 +2093,33 @@ msgstr ""
 msgid "Default profile"
 msgstr "প্রোফাইল মুছে ফেলুন"
 
-#: profile/ProfileManager.cpp:280
+#: profile/ProfileManager.cpp:349
 #, fuzzy, kde-format
 #| msgid "Edit Profile \"%1\""
 msgctxt "New profile name, %1 is a number"
 msgid "Profile %1"
 msgstr "প্রোফাইল \"%1\" সম্পাদনা করুন"
 
-#: profile/ProfileManager.cpp:294
+#: profile/ProfileManager.cpp:363
 #, kde-format
 msgid "Konsole does not have permission to save this profile to %1"
 msgstr ""
 
-#: profile/ProfileModel.cpp:55
+#: profile/ProfileModel.cpp:57
 #, fuzzy, kde-format
 #| msgid "Name"
 msgctxt "@title:column Profile name"
 msgid "Name"
 msgstr "নাম"
 
-#: profile/ProfileModel.cpp:57
+#: profile/ProfileModel.cpp:59
 #, fuzzy, kde-format
 #| msgid "Shortcut"
 msgctxt "@title:column Profile keyboard shortcut"
 msgid "Shortcut"
 msgstr "শর্ট-কাট"
 
-#: profile/ProfileModel.cpp:80
+#: profile/ProfileModel.cpp:82
 #, kde-format
 msgctxt ""
 "@label:textbox added to the name of the built-in profile, to point out it's "
@@ -2127,20 +2127,32 @@ msgctxt ""
 msgid " [Read-only]"
 msgstr ""
 
-#: profile/ProfileModel.cpp:84
+#: profile/ProfileModel.cpp:86
 #, fuzzy, kde-format
 #| msgid "Set as Default"
 msgctxt "@label:textbox added to the name of the current default profile"
 msgid " [Default]"
 msgstr "ডিফল্ট মান রূপে নির্ধারণ করুন"
 
-#: profile/ProfileModel.cpp:99
+#: profile/ProfileModel.cpp:91
+#, kde-format
+msgctxt "@label:textbox added to profile name when used for light system theme"
+msgid " [Light]"
+msgstr ""
+
+#: profile/ProfileModel.cpp:94
+#, kde-format
+msgctxt "@label:textbox added to profile name when used for dark system theme"
+msgid " [Dark]"
+msgstr ""
+
+#: profile/ProfileModel.cpp:110
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Built-in profile is always available"
 msgstr ""
 
-#: profile/ProfileModel.cpp:111
+#: profile/ProfileModel.cpp:122
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Double click to change shortcut"
@@ -2335,10 +2347,10 @@ msgstr "'%1' প্রোগ্রামটি, '%2' আর্গুমেন্
 msgid "Silence in '%1' (Session '%2')"
 msgstr "'%1' সেশানে নিরবতা"
 
-#: session/Session.cpp:818 session/Session.cpp:2326
-#: session/SessionController.cpp:376 session/SessionController.cpp:1922
-#: terminalDisplay/TerminalBell.cpp:44 Vt102Emulation.cpp:1255
-#: Vt102Emulation.cpp:1510
+#: session/Session.cpp:818 session/Session.cpp:2345
+#: session/SessionController.cpp:381 session/SessionController.cpp:1927
+#: terminalDisplay/TerminalBell.cpp:44 Vt102Emulation.cpp:1280
+#: Vt102Emulation.cpp:1535
 #, fuzzy, kde-format
 #| msgid "Konsole"
 msgid "Show session"
@@ -2361,18 +2373,18 @@ msgstr "প্রোগ্রাম '%1' বিপর্যস্ত হয়ে�
 msgid "Program '%1' exited with status %2."
 msgstr "প্রোগ্রাম '%1' প্রস্থানকালে, %2 অবস্থা উৎপন্ন হয়েছে।"
 
-#: session/Session.cpp:1701
+#: session/Session.cpp:1713
 #, kde-format
 msgid "ZModem Progress"
 msgstr "ZModem-র প্রগতি"
 
-#: session/Session.cpp:2325
+#: session/Session.cpp:2344
 #, fuzzy, kde-format
 #| msgid "Activity in session '%1'"
 msgid "Activity in '%1' (Session '%2')"
 msgstr "'%1'-এ কর্ম"
 
-#: session/Session.cpp:2596
+#: session/Session.cpp:2615
 #, kde-format
 msgid "Security sensitive DBus API is disabled in the settings."
 msgstr ""
@@ -2382,311 +2394,311 @@ msgstr ""
 msgid "Konsole"
 msgstr "Konsole"
 
-#: session/SessionController.cpp:375
+#: session/SessionController.cpp:380
 #, kde-format
 msgid "The process '%1' has finished running in session '%2'"
 msgstr ""
 
-#: session/SessionController.cpp:458
+#: session/SessionController.cpp:463
 #, kde-format
 msgid "Konsole does not know how to open the bookmark: "
 msgstr ""
 
-#: session/SessionController.cpp:536
+#: session/SessionController.cpp:541
 #, kde-format
 msgid "Search for '%1' with"
 msgstr ""
 
-#: session/SessionController.cpp:552
+#: session/SessionController.cpp:557
 #, fuzzy, kde-format
 #| msgid "Manage Profiles..."
 msgid "Configure Web Shortcuts..."
 msgstr "প্রোফাইল ব্যবস্থাপনা..."
 
-#: session/SessionController.cpp:663
+#: session/SessionController.cpp:668
 #, fuzzy, kde-format
 #| msgid "Konsole"
 msgid "&Close Session"
 msgstr "Konsole"
 
-#: session/SessionController.cpp:670
+#: session/SessionController.cpp:675
 #, kde-format
 msgid "Open File Manager"
 msgstr ""
 
-#: session/SessionController.cpp:685
+#: session/SessionController.cpp:690
 #, fuzzy, kde-format
 #| msgid "&Copy"
 msgid "Copy"
 msgstr "কপি করুন (&C)"
 
-#: session/SessionController.cpp:693
+#: session/SessionController.cpp:698
 #, kde-format
 msgid "Split View Left-Right"
 msgstr ""
 
-#: session/SessionController.cpp:698
+#: session/SessionController.cpp:703
 #, kde-format
 msgid "Split View Top-Bottom"
 msgstr ""
 
-#: session/SessionController.cpp:702
+#: session/SessionController.cpp:707
 #, kde-format
 msgid "Copy except prompts"
 msgstr ""
 
-#: session/SessionController.cpp:708
+#: session/SessionController.cpp:713
 #, fuzzy, kde-format
 #| msgid "Copy Input"
 msgid "Copy user input"
 msgstr "ইনপুট কপি করুন"
 
-#: session/SessionController.cpp:714
+#: session/SessionController.cpp:719
 #, fuzzy, kde-format
 #| msgid "Copy Input"
 msgid "Copy command output"
 msgstr "ইনপুট কপি করুন"
 
-#: session/SessionController.cpp:729
+#: session/SessionController.cpp:734
 #, kde-format
 msgid "Paste Selection"
 msgstr "নির্বাচিত অংশ পেস্ট করুন"
 
-#: session/SessionController.cpp:736
+#: session/SessionController.cpp:741
 #, kde-format
 msgid "Web Search"
 msgstr ""
 
-#: session/SessionController.cpp:742
+#: session/SessionController.cpp:747
 #, fuzzy, kde-format
 #| msgid "Select All"
 msgid "&Select All"
 msgstr "সমগ্র নির্বাচন"
 
-#: session/SessionController.cpp:746
+#: session/SessionController.cpp:751
 #, fuzzy, kde-format
 #| msgid "Select"
 msgid "Select &Mode"
 msgstr "নির্বাচন করুন"
 
-#: session/SessionController.cpp:751
+#: session/SessionController.cpp:756
 #, fuzzy, kde-format
 #| msgid "Select"
 msgid "Select &Line"
 msgstr "নির্বাচন করুন"
 
-#: session/SessionController.cpp:754
+#: session/SessionController.cpp:759
 #, fuzzy, kde-format
 #| msgid "Save Output..."
 msgid "Save Output &As..."
 msgstr "ফলাফল সংরক্ষণ করুন..."
 
-#: session/SessionController.cpp:760
+#: session/SessionController.cpp:765
 #, fuzzy, kde-format
 #| msgid "Save Output..."
 msgid "Auto Save Output As..."
 msgstr "ফলাফল সংরক্ষণ করুন..."
 
-#: session/SessionController.cpp:764
+#: session/SessionController.cpp:769
 #, kde-format
 msgid "Stop Auto Save"
 msgstr ""
 
-#: session/SessionController.cpp:768
+#: session/SessionController.cpp:773
 #, kde-format
 msgid "&Print Screen..."
 msgstr ""
 
-#: session/SessionController.cpp:772
+#: session/SessionController.cpp:777
 #, fuzzy, kde-format
 #| msgid "Manage Profiles..."
 msgid "Adjust Scrollback..."
 msgstr "প্রোফাইল ব্যবস্থাপনা..."
 
-#: session/SessionController.cpp:776
+#: session/SessionController.cpp:781
 #, fuzzy, kde-format
 #| msgid "Scrollback"
 msgid "Clear Scrollback"
 msgstr "স্ক্রোল-ব্যাক"
 
-#: session/SessionController.cpp:780
+#: session/SessionController.cpp:785
 #, fuzzy, kde-format
 #| msgid "Clear Scrollback"
 msgid "Clear Scrollback and Reset"
 msgstr "স্ক্রোল-ব্যাক মুছে ফেলুন"
 
-#: session/SessionController.cpp:791
+#: session/SessionController.cpp:796
 #, fuzzy, kde-format
 #| msgid "Edit Profile"
 msgid "Next Profile"
 msgstr "প্রোফাইল সম্পাদনা"
 
-#: session/SessionController.cpp:796
+#: session/SessionController.cpp:801
 #, fuzzy, kde-format
 #| msgid "Previous View"
 msgid "Previous Profile"
 msgstr "পূর্ববর্তী প্রদর্শন"
 
-#: session/SessionController.cpp:799
+#: session/SessionController.cpp:804
 #, fuzzy, kde-format
 #| msgid "Edit Profile"
 msgid "Switch Profile"
 msgstr "প্রোফাইল সম্পাদনা"
 
-#: session/SessionController.cpp:824
+#: session/SessionController.cpp:829
 #, fuzzy, kde-format
 #| msgid "Encoding"
 msgid "Set &Encoding"
 msgstr "এনকোডিং"
 
-#: session/SessionController.cpp:844
+#: session/SessionController.cpp:849
 #, kde-format
 msgctxt "@item:inmenu Allows terminal applications to request mouse tracking"
 msgid "Allow Mouse Tracking"
 msgstr ""
 
-#: session/SessionController.cpp:853
+#: session/SessionController.cpp:858
 #, kde-format
 msgctxt "@item:inmenu A read only (locked) session"
 msgid "Read-Only"
 msgstr ""
 
-#: session/SessionController.cpp:864
+#: session/SessionController.cpp:869
 #, fuzzy, kde-format
 #| msgid "&Rename Tab..."
 msgid "&Configure or Rename Tab..."
 msgstr "ট্যাবের নাম পরিবর্তন করুন...(&R)"
 
-#: session/SessionController.cpp:870
+#: session/SessionController.cpp:875
 #, kde-format
 msgid "&All Tabs in Current Window"
 msgstr ""
 
-#: session/SessionController.cpp:877
+#: session/SessionController.cpp:882
 #, fuzzy, kde-format
 #| msgid "&Rename Tab..."
 msgid "&Select Tabs..."
 msgstr "ট্যাবের নাম পরিবর্তন করুন...(&R)"
 
-#: session/SessionController.cpp:883
+#: session/SessionController.cpp:888
 #, kde-format
 msgctxt "@action:inmenu Do not select any tabs"
 msgid "&None"
 msgstr ""
 
-#: session/SessionController.cpp:891
+#: session/SessionController.cpp:896
 #, fuzzy, kde-format
 #| msgid "Copy Input"
 msgid "Copy Input To"
 msgstr "ইনপুট কপি করুন"
 
-#: session/SessionController.cpp:899
+#: session/SessionController.cpp:904
 #, kde-format
 msgid "&ZModem Upload..."
 msgstr ""
 
-#: session/SessionController.cpp:904
+#: session/SessionController.cpp:909
 #, kde-format
 msgid "One-Shot Monitors"
 msgstr ""
 
-#: session/SessionController.cpp:909
+#: session/SessionController.cpp:914
 #, fuzzy, kde-format
 #| msgid "Monitor for &Activity"
 msgid "Monitor for &Prompt"
 msgstr "কর্ম সঞ্চালন নিরীক্ষণ করুন (&A)"
 
-#: session/SessionController.cpp:916
+#: session/SessionController.cpp:921
 #, kde-format
 msgid "Monitor for &Activity"
 msgstr "কর্ম সঞ্চালন নিরীক্ষণ করুন (&A)"
 
-#: session/SessionController.cpp:922
+#: session/SessionController.cpp:927
 #, kde-format
 msgid "Monitor for &Silence"
 msgstr "নিষ্ক্রিয় অবস্থা নিরীক্ষণ করুন (&S)"
 
-#: session/SessionController.cpp:928
+#: session/SessionController.cpp:933
 #, fuzzy, kde-format
 #| msgid "Monitor for &Activity"
 msgid "Monitor for Process Finishing"
 msgstr "কর্ম সঞ্চালন নিরীক্ষণ করুন (&A)"
 
-#: session/SessionController.cpp:935
+#: session/SessionController.cpp:940
 #, kde-format
 msgid "Enlarge Font"
 msgstr ""
 
-#: session/SessionController.cpp:943
+#: session/SessionController.cpp:948
 #, kde-format
 msgid "Shrink Font"
 msgstr ""
 
-#: session/SessionController.cpp:948
+#: session/SessionController.cpp:953
 #, fuzzy, kde-format
 #| msgid "Increase Text Size"
 msgid "Reset Font Size"
 msgstr "হরফের মাপ বৃদ্ধি করুন"
 
-#: session/SessionController.cpp:954
+#: session/SessionController.cpp:959
 #, kde-format
 msgid "Send Signal"
 msgstr ""
 
-#: session/SessionController.cpp:958
+#: session/SessionController.cpp:963
 #, kde-format
 msgid "&Suspend Task"
 msgstr ""
 
-#: session/SessionController.cpp:963
+#: session/SessionController.cpp:968
 #, fuzzy, kde-format
 #| msgid "&Close Tab"
 msgid "&Continue Task"
 msgstr "ট্যাব বন্ধ করুন (&C)"
 
-#: session/SessionController.cpp:968
+#: session/SessionController.cpp:973
 #, kde-format
 msgid "&Hangup"
 msgstr ""
 
-#: session/SessionController.cpp:973
+#: session/SessionController.cpp:978
 #, kde-format
 msgid "&Interrupt Task"
 msgstr ""
 
-#: session/SessionController.cpp:978
+#: session/SessionController.cpp:983
 #, fuzzy, kde-format
 #| msgid "Terminal Features"
 msgid "&Terminate Task"
 msgstr "টার্মিন্যালের বৈশিষ্ট্য"
 
-#: session/SessionController.cpp:983
+#: session/SessionController.cpp:988
 #, kde-format
 msgid "&Kill Task"
 msgstr ""
 
-#: session/SessionController.cpp:988
+#: session/SessionController.cpp:993
 #, kde-format
 msgid "User Signal &1"
 msgstr ""
 
-#: session/SessionController.cpp:993
+#: session/SessionController.cpp:998
 #, kde-format
 msgid "User Signal &2"
 msgstr ""
 
-#: session/SessionController.cpp:1011
+#: session/SessionController.cpp:1016
 #, fuzzy, kde-format
 #| msgid "New Profile..."
 msgid "Create New Profile..."
 msgstr "নতুন প্রোফাইল..."
 
-#: session/SessionController.cpp:1013
+#: session/SessionController.cpp:1018
 #, kde-format
 msgid "Edit Current Profile..."
 msgstr "বর্তমান প্রোফাইল সম্পাদনা..."
 
-#: session/SessionController.cpp:1153
+#: session/SessionController.cpp:1158
 #, kde-format
 msgid ""
 "A program is currently running in this session.  Are you sure you want to "
@@ -2695,7 +2707,7 @@ msgstr ""
 "বর্তমান সেশানে একটি প্রোগ্রাম এই মুহূর্তে চলছে।  আপনি কি নিশ্চিতরূপে এটি বন্ধ করতে "
 "ইচ্ছুক?"
 
-#: session/SessionController.cpp:1157
+#: session/SessionController.cpp:1162
 #, kde-format
 msgid ""
 "The program '%1' is currently running in this session.  Are you sure you "
@@ -2704,19 +2716,19 @@ msgstr ""
 "বর্তমান সেশানে একটি '%1' প্রোগ্রাম এই মুহূর্তে চলছে।  আপনি কি নিশ্চিতরূপে এটি বন্ধ "
 "করতে ইচ্ছুক?"
 
-#: session/SessionController.cpp:1164 session/SessionController.cpp:1199
+#: session/SessionController.cpp:1169 session/SessionController.cpp:1204
 #, kde-format
 msgid "Confirm Close"
 msgstr "বন্ধ করার নিশ্চিতি"
 
-#: session/SessionController.cpp:1165
+#: session/SessionController.cpp:1170
 #, fuzzy, kde-format
 #| msgid "&Close Tab"
 msgctxt "@action:button"
 msgid "Close Program"
 msgstr "ট্যাব বন্ধ করুন (&C)"
 
-#: session/SessionController.cpp:1188
+#: session/SessionController.cpp:1193
 #, fuzzy, kde-format
 #| msgid ""
 #| "A program is currently running in this session.  Are you sure you want to "
@@ -2728,7 +2740,7 @@ msgstr ""
 "বর্তমান সেশানে একটি প্রোগ্রাম এই মুহূর্তে চলছে।  আপনি কি নিশ্চিতরূপে এটি বন্ধ করতে "
 "ইচ্ছুক?"
 
-#: session/SessionController.cpp:1192
+#: session/SessionController.cpp:1197
 #, fuzzy, kde-format
 #| msgid ""
 #| "The program '%1' is currently running in this session.  Are you sure you "
@@ -2740,28 +2752,28 @@ msgstr ""
 "বর্তমান সেশানে একটি '%1' প্রোগ্রাম এই মুহূর্তে চলছে।  আপনি কি নিশ্চিতরূপে এটি বন্ধ "
 "করতে ইচ্ছুক?"
 
-#: session/SessionController.cpp:1200
+#: session/SessionController.cpp:1205
 #, kde-format
 msgctxt "@action:button"
 msgid "Kill Program"
 msgstr ""
 
-#: session/SessionController.cpp:1921
+#: session/SessionController.cpp:1926
 #, kde-format
 msgid "The shell prompt is displayed in session '%1'"
 msgstr ""
 
-#: session/SessionController.cpp:2151
+#: session/SessionController.cpp:2156
 #, kde-format
 msgid "Open Current Folder With"
 msgstr ""
 
-#: session/SessionController.cpp:2221
+#: session/SessionController.cpp:2226
 #, kde-format
 msgid "Save ZModem Download to..."
 msgstr ""
 
-#: session/SessionController.cpp:2231
+#: session/SessionController.cpp:2236
 #, kde-format
 msgid ""
 "<p>A ZModem file transfer attempt has been detected, but no suitable ZModem "
@@ -2769,20 +2781,20 @@ msgid ""
 "or 'lrzsz' package.</p>"
 msgstr ""
 
-#: session/SessionController.cpp:2241
+#: session/SessionController.cpp:2246
 #, kde-format
 msgid ""
 "<p>The current session already has a ZModem file transfer in progress.</p>"
 msgstr ""
 
-#: session/SessionController.cpp:2254
+#: session/SessionController.cpp:2259
 #, kde-format
 msgid ""
 "<p>No suitable ZModem software was found on this system.</p><p>You may wish "
 "to install the 'rzsz' or 'lrzsz' package.</p>"
 msgstr ""
 
-#: session/SessionController.cpp:2259
+#: session/SessionController.cpp:2264
 #, kde-format
 msgid "Select Files for ZModem Upload"
 msgstr ""
@@ -2853,56 +2865,62 @@ msgstr ""
 msgid "Show progress in taskbar"
 msgstr ""
 
-#. i18n: ectx: property (text), widget (QLabel, label_3)
+#. i18n: ectx: property (text), widget (QCheckBox, kcfg_SyncProfileWithSystemTheme)
 #: settings/GeneralSettings.ui:112
+#, kde-format
+msgid "Automatically switch profile based on system theme"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QLabel, label_3)
+#: settings/GeneralSettings.ui:119
 #, kde-format
 msgid "Notifications:"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchReverseSearch)
 #. i18n: ectx: tooltip, entry (SearchReverseSearch), group (SearchSettings)
-#: settings/GeneralSettings.ui:125 settings/konsole.kcfg:99
+#: settings/GeneralSettings.ui:132 settings/konsole.kcfg:99
 #, kde-format
 msgid "Sets whether search should start from the bottom"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchReverseSearch)
 #. i18n: ectx: label, entry (SearchReverseSearch), group (SearchSettings)
-#: settings/GeneralSettings.ui:128 settings/konsole.kcfg:98
+#: settings/GeneralSettings.ui:135 settings/konsole.kcfg:98
 #, kde-format
 msgid "Search backwards"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchCaseSensitive)
 #. i18n: ectx: tooltip, entry (SearchCaseSensitive), group (SearchSettings)
-#: settings/GeneralSettings.ui:141 settings/konsole.kcfg:85
+#: settings/GeneralSettings.ui:148 settings/konsole.kcfg:85
 #, fuzzy, kde-format
 #| msgid "Sets whether the search is case sensitive"
 msgid "Sets whether the search is case sensitive"
 msgstr "হরফের ছাঁদ মেলানো হবে কি না নির্ধারণ করতে ব্যবহৃত হয়"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchCaseSensitive)
-#: settings/GeneralSettings.ui:144
+#: settings/GeneralSettings.ui:151
 #, fuzzy, kde-format
 #| msgid "Sets whether the search is case sensitive"
 msgid "Case sensitive"
 msgstr "হরফের ছাঁদ মেলানো হবে কি না নির্ধারণ করতে ব্যবহৃত হয়"
 
 #. i18n: ectx: property (text), widget (QLabel, label)
-#: settings/GeneralSettings.ui:151
+#: settings/GeneralSettings.ui:158
 #, kde-format
 msgid "Process and window:"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchHighlightMatches)
-#: settings/GeneralSettings.ui:167
+#: settings/GeneralSettings.ui:174
 #, fuzzy, kde-format
 #| msgid "Highlight all"
 msgid "Highlight all matches"
 msgstr "সকল উপস্থিতি উজ্জ্বল করা হবে"
 
 #. i18n: ectx: property (text), widget (QLabel, label_2)
-#: settings/GeneralSettings.ui:174
+#: settings/GeneralSettings.ui:181
 #, kde-format
 msgctxt "@item:intext Search options"
 msgid "Search:"
@@ -2910,68 +2928,68 @@ msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, kcfg_SearchNoWrap)
 #. i18n: ectx: tooltip, entry (SearchNoWrap), group (SearchSettings)
-#: settings/GeneralSettings.ui:203 settings/konsole.kcfg:104
+#: settings/GeneralSettings.ui:210 settings/konsole.kcfg:104
 #, fuzzy, kde-format
 #| msgid "Find the next match for the current search phrase"
 msgid "Sets whether search should stop instead of wrapping"
 msgstr "চিহ্নিত তথ্যের পরবর্তী উপস্থিতি অনুসন্ধান করুন"
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchNoWrap)
-#: settings/GeneralSettings.ui:206
+#: settings/GeneralSettings.ui:213
 #, kde-format
 msgid "No wrap"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_AllowMenuAccelerators)
 #. i18n: ectx: label, entry (AllowMenuAccelerators), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:219 settings/konsole.kcfg:22
+#: settings/GeneralSettings.ui:226 settings/konsole.kcfg:22
 #, kde-format
 msgid "Enable menu accelerators"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_FocusFollowsMouse)
 #. i18n: ectx: label, entry (FocusFollowsMouse), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:226 settings/konsole.kcfg:13
+#: settings/GeneralSettings.ui:233 settings/konsole.kcfg:13
 #, kde-format
 msgid "Focus terminals when the mouse pointer is moved over them"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QPushButton, enableAllMessagesButton)
-#: settings/GeneralSettings.ui:244
+#: settings/GeneralSettings.ui:251
 #, kde-format
 msgid "All dialogs will be shown again"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QPushButton, enableAllMessagesButton)
-#: settings/GeneralSettings.ui:247
+#: settings/GeneralSettings.ui:254
 #, kde-format
 msgid "Enable all \"Don't Ask Again\" messages"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_ShowWindowTitleOnTitleBar)
 #. i18n: ectx: label, entry (ShowWindowTitleOnTitleBar), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:275 settings/konsole.kcfg:17
+#: settings/GeneralSettings.ui:282 settings/konsole.kcfg:17
 #, kde-format
 msgid "Show window title on the titlebar"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_EnableSecuritySensitiveDBusAPI)
 #. i18n: ectx: label, entry (EnableSecuritySensitiveDBusAPI), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:282 settings/konsole.kcfg:47
+#: settings/GeneralSettings.ui:289 settings/konsole.kcfg:47
 #, kde-format
 msgid "Enable the security sensitive parts of the DBus API"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_RemoveWindowTitleBarAndFrame)
 #. i18n: ectx: label, entry (RemoveWindowTitleBarAndFrame), group (KonsoleWindow)
-#: settings/GeneralSettings.ui:289 settings/konsole.kcfg:9
+#: settings/GeneralSettings.ui:296 settings/konsole.kcfg:9
 #, kde-format
 msgid "Remove window titlebar and frame"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_SearchRegExpression)
 #. i18n: ectx: label, entry (SearchRegExpression), group (SearchSettings)
-#: settings/GeneralSettings.ui:302 settings/konsole.kcfg:89
+#: settings/GeneralSettings.ui:309 settings/konsole.kcfg:89
 #, fuzzy, kde-format
 #| msgid "Match regular expression"
 msgid "Match using regular expressions"
@@ -3210,6 +3228,24 @@ msgstr ""
 msgid "For scrollback files, use this folder"
 msgstr ""
 
+#. i18n: ectx: label, entry (SyncProfileWithSystemTheme), group (LightDarkTheme)
+#: settings/konsole.kcfg:238
+#, kde-format
+msgid "Sync profile with system theme"
+msgstr ""
+
+#. i18n: ectx: label, entry (LightThemeProfile), group (LightDarkTheme)
+#: settings/konsole.kcfg:242
+#, kde-format
+msgid "Profile to use for light system theme"
+msgstr ""
+
+#. i18n: ectx: label, entry (DarkThemeProfile), group (LightDarkTheme)
+#: settings/konsole.kcfg:246
+#, kde-format
+msgid "Profile to use for dark system theme"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QCheckBox, kcfg_EnableMemoryMonitoring)
 #: settings/MemorySettings.ui:17
 #, fuzzy, kde-format
@@ -3306,6 +3342,34 @@ msgstr "নির্বাচিত প্রোফাইলটি নতুন 
 #, fuzzy, kde-format
 #| msgid "Set as Default"
 msgid "&Set as Default"
+msgstr "ডিফল্ট মান রূপে নির্ধারণ করুন"
+
+#. i18n: ectx: property (toolTip), widget (QPushButton, setLightProfileButton)
+#: settings/ProfileSettings.ui:103
+#, fuzzy, kde-format
+#| msgid "Set the selected profile as the default for new terminal sessions"
+msgid "Set the selected profile as the light theme profile"
+msgstr "নির্বাচিত প্রোফাইলটি নতুন টার্মিন্যাল সেশানের জন্য ডিফল্টরূপে প্রয়োগ করা হবে"
+
+#. i18n: ectx: property (text), widget (QPushButton, setLightProfileButton)
+#: settings/ProfileSettings.ui:106
+#, fuzzy, kde-format
+#| msgid "Set as Default"
+msgid "&Set as Light"
+msgstr "ডিফল্ট মান রূপে নির্ধারণ করুন"
+
+#. i18n: ectx: property (toolTip), widget (QPushButton, setDarkProfileButton)
+#: settings/ProfileSettings.ui:116
+#, fuzzy, kde-format
+#| msgid "Set the selected profile as the default for new terminal sessions"
+msgid "Set the selected profile as the dark theme profile"
+msgstr "নির্বাচিত প্রোফাইলটি নতুন টার্মিন্যাল সেশানের জন্য ডিফল্টরূপে প্রয়োগ করা হবে"
+
+#. i18n: ectx: property (text), widget (QPushButton, setDarkProfileButton)
+#: settings/ProfileSettings.ui:119
+#, fuzzy, kde-format
+#| msgid "Set as Default"
+msgid "&Set as Dark"
 msgstr "ডিফল্ট মান রূপে নির্ধারণ করুন"
 
 #. i18n: ectx: attribute (title), widget (QWidget, appearanceTab)
@@ -3754,263 +3818,263 @@ msgstr ""
 msgid "&Paste Location"
 msgstr "নির্বাচিত অংশ পেস্ট করুন"
 
-#: ViewManager.cpp:124
+#: ViewManager.cpp:125
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View"
 msgstr ""
 
-#: ViewManager.cpp:131
+#: ViewManager.cpp:132
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Left/Right"
 msgstr ""
 
-#: ViewManager.cpp:139
+#: ViewManager.cpp:140
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Top/Bottom"
 msgstr ""
 
-#: ViewManager.cpp:147
+#: ViewManager.cpp:148
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Automatically"
 msgstr ""
 
-#: ViewManager.cpp:157
+#: ViewManager.cpp:158
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Left/Right from next tab"
 msgstr ""
 
-#: ViewManager.cpp:165
+#: ViewManager.cpp:166
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Top/Bottom from next tab"
 msgstr ""
 
-#: ViewManager.cpp:173
+#: ViewManager.cpp:174
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Split View Automatically from next tab"
 msgstr ""
 
-#: ViewManager.cpp:183
+#: ViewManager.cpp:184
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 2x2 terminals"
 msgstr ""
 
-#: ViewManager.cpp:192
+#: ViewManager.cpp:193
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 2x1 terminals"
 msgstr ""
 
-#: ViewManager.cpp:201
+#: ViewManager.cpp:202
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Load a new tab with layout 1x2 terminals"
 msgstr ""
 
-#: ViewManager.cpp:209
+#: ViewManager.cpp:210
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Expand View"
 msgstr ""
 
-#: ViewManager.cpp:217
+#: ViewManager.cpp:218
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Shrink View"
 msgstr ""
 
-#: ViewManager.cpp:227
+#: ViewManager.cpp:228
 #, fuzzy, kde-format
 #| msgid "Close Current Tab"
 msgctxt "@action:inmenu"
 msgid "Detach Current &View"
 msgstr "বর্তমান ট্যাব বন্ধ করুন"
 
-#: ViewManager.cpp:239
+#: ViewManager.cpp:240
 #, fuzzy, kde-format
 #| msgid "Close Current Tab"
 msgctxt "@action:inmenu"
 msgid "Detach Current &Tab"
 msgstr "বর্তমান ট্যাব বন্ধ করুন"
 
-#: ViewManager.cpp:244
+#: ViewManager.cpp:245
 #, fuzzy, kde-format
 #| msgid "New &Tab"
 msgctxt "@action Shortcut entry"
 msgid "Next Tab"
 msgstr "নতুন ট্যাব (&T)"
 
-#: ViewManager.cpp:252
+#: ViewManager.cpp:253
 #, fuzzy, kde-format
 #| msgid "Previous"
 msgctxt "@action Shortcut entry"
 msgid "Previous Tab"
 msgstr "পূর্ববর্তী"
 
-#: ViewManager.cpp:260
+#: ViewManager.cpp:261
 #, fuzzy, kde-format
 #| msgid "Above Terminal Displays"
 msgctxt "@action Shortcut entry"
 msgid "Focus Above Terminal"
 msgstr "টার্মিন্যালের প্রদর্শনের উপরেী"
 
-#: ViewManager.cpp:267
+#: ViewManager.cpp:268
 #, fuzzy, kde-format
 #| msgid "Below Terminal Displays"
 msgctxt "@action Shortcut entry"
 msgid "Focus Below Terminal"
 msgstr "টার্মিন্যালের প্রদর্শনের নীচে"
 
-#: ViewManager.cpp:274
+#: ViewManager.cpp:275
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Left Terminal"
 msgstr ""
 
-#: ViewManager.cpp:280
+#: ViewManager.cpp:281
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Focus Right Terminal"
 msgstr ""
 
-#: ViewManager.cpp:286
+#: ViewManager.cpp:287
 #, fuzzy, kde-format
 #| msgid "Above Terminal Displays"
 msgctxt "@action Shortcut entry"
 msgid "Focus Next Terminal"
 msgstr "টার্মিন্যালের প্রদর্শনের উপরেী"
 
-#: ViewManager.cpp:292
+#: ViewManager.cpp:293
 #, fuzzy, kde-format
 #| msgid "Below Terminal Displays"
 msgctxt "@action Shortcut entry"
 msgid "Focus Previous Terminal"
 msgstr "টার্মিন্যালের প্রদর্শনের নীচে"
 
-#: ViewManager.cpp:298
+#: ViewManager.cpp:299
 #, fuzzy, kde-format
 #| msgid "Switch to Tab %1"
 msgctxt "@action Shortcut entry"
 msgid "Switch to Last Tab"
 msgstr "%1 ট্যাবে পরিবর্তন করুন"
 
-#: ViewManager.cpp:303
+#: ViewManager.cpp:304
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Last Used Tabs"
 msgstr ""
 
-#: ViewManager.cpp:308
+#: ViewManager.cpp:309
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle Between Two Tabs"
 msgstr ""
 
-#: ViewManager.cpp:313
+#: ViewManager.cpp:314
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Last Used Tabs (Reverse)"
 msgstr ""
 
-#: ViewManager.cpp:318
+#: ViewManager.cpp:319
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle maximize current view"
 msgstr ""
 
-#: ViewManager.cpp:319
+#: ViewManager.cpp:320
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Toggle maximize current view"
-msgstr ""
-
-#: ViewManager.cpp:327
-#, kde-format
-msgctxt "@action Shortcut entry"
-msgid "Toggle zoom-maximize current view"
 msgstr ""
 
 #: ViewManager.cpp:328
 #, kde-format
+msgctxt "@action Shortcut entry"
+msgid "Toggle zoom-maximize current view"
+msgstr ""
+
+#: ViewManager.cpp:329
+#, kde-format
 msgctxt "@action:inmenu"
 msgid "Toggle zoom-maximize current view"
 msgstr ""
 
-#: ViewManager.cpp:336
+#: ViewManager.cpp:337
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Move tab to the right"
 msgstr ""
 
-#: ViewManager.cpp:343
+#: ViewManager.cpp:344
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Move tab to the left"
 msgstr ""
 
-#: ViewManager.cpp:350
+#: ViewManager.cpp:351
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Setup semantic integration (bash)"
 msgstr ""
 
-#: ViewManager.cpp:356
+#: ViewManager.cpp:357
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle semantic hints display"
 msgstr ""
 
-#: ViewManager.cpp:362
+#: ViewManager.cpp:363
 #, kde-format
 msgctxt "@action Shortcut entry"
 msgid "Toggle line numbers display"
 msgstr ""
 
-#: ViewManager.cpp:369
+#: ViewManager.cpp:370
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Equal size to all views"
 msgstr ""
 
-#: ViewManager.cpp:379
+#: ViewManager.cpp:380
 #, fuzzy, kde-format
 #| msgid "Switch to Tab %1"
 msgctxt "@action Shortcut entry"
 msgid "Switch to Tab %1"
 msgstr "%1 ট্যাবে পরিবর্তন করুন"
 
-#: ViewManager.cpp:602
+#: ViewManager.cpp:603
 #, fuzzy, kde-format
 #| msgid "Remote Connection"
 msgid "Semantic hints "
 msgstr "দূরবর্তী সংযোগ"
 
-#: ViewManager.cpp:618
+#: ViewManager.cpp:619
 #, fuzzy, kde-format
 #| msgid "Fixed number of lines: "
 msgid "Line numbers "
 msgstr "সুনিশ্চিত পংক্তি সংখ্যা: "
 
-#: ViewManager.cpp:1239
+#: ViewManager.cpp:1283
 #, kde-format
 msgctxt "@title:window"
 msgid "Save Tab Layout"
 msgstr ""
 
-#: ViewManager.cpp:1241 ViewManager.cpp:1362
+#: ViewManager.cpp:1285 ViewManager.cpp:1406
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Konsole View Layout (*.json)"
 msgstr ""
 
-#: ViewManager.cpp:1257
+#: ViewManager.cpp:1301
 #, fuzzy, kde-format
 #| msgid ""
 #| "A problem occurred when saving the output.\n"
@@ -4023,7 +4087,7 @@ msgstr ""
 "ফলাফল সংরক্ষণে সমস্যা।\n"
 "%1"
 
-#: ViewManager.cpp:1349
+#: ViewManager.cpp:1393
 #, fuzzy, kde-format
 #| msgid ""
 #| "A problem occurred when saving the output.\n"
@@ -4036,13 +4100,13 @@ msgstr ""
 "ফলাফল সংরক্ষণে সমস্যা।\n"
 "%1"
 
-#: ViewManager.cpp:1360
+#: ViewManager.cpp:1404
 #, kde-format
 msgctxt "@title:window"
 msgid "Load Tab Layout"
 msgstr ""
 
-#: Vt102Emulation.cpp:3281
+#: Vt102Emulation.cpp:3336
 #, kde-format
 msgid ""
 "No keyboard translator available.  The information needed to convert key "
@@ -4128,54 +4192,68 @@ msgstr ""
 msgid "Flow control"
 msgstr ""
 
+#. i18n: ectx: property (toolTip), widget (QCheckBox, enableKittyKeyboardButton)
+#: widgets/EditProfileAdvancedPage.ui:212
+#, kde-format
+msgid ""
+"Allow terminal programs to use the Kitty keyboard protocol for enhanced "
+"keyboard input"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, enableKittyKeyboardButton)
+#: widgets/EditProfileAdvancedPage.ui:215
+#, kde-format
+msgid "Kitty keyboard protocol"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QLabel, label_14)
-#: widgets/EditProfileAdvancedPage.ui:222
+#: widgets/EditProfileAdvancedPage.ui:238
 #, fuzzy, kde-format
 #| msgid "Default character encoding:"
 msgid "&Default character encoding:"
 msgstr "ডিফল্ট ক্যারেক্টার এনকোডিং:"
 
 #. i18n: ectx: property (text), widget (QLabel, peekPrimaryLabel)
-#: widgets/EditProfileAdvancedPage.ui:242
+#: widgets/EditProfileAdvancedPage.ui:258
 #, kde-format
 msgid "Shortcut for peeking the primary screen:"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, autoSaveIntervalLabel)
-#: widgets/EditProfileAdvancedPage.ui:255
+#: widgets/EditProfileAdvancedPage.ui:271
 #, kde-format
 msgid "Set interval between autosaves:"
 msgstr ""
 
 #. i18n: ectx: property (suffix), widget (QSpinBox, autoSaveIntervalWidget)
-#: widgets/EditProfileAdvancedPage.ui:262
+#: widgets/EditProfileAdvancedPage.ui:278
 #, kde-format
 msgid " ms"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, label_linenums)
-#: widgets/EditProfileAdvancedPage.ui:275
+#: widgets/EditProfileAdvancedPage.ui:291
 #, fuzzy, kde-format
 #| msgid "Fixed number of lines: "
 msgid "Line Numbers:"
 msgstr "সুনিশ্চিত পংক্তি সংখ্যা: "
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsNever)
-#: widgets/EditProfileAdvancedPage.ui:285
+#: widgets/EditProfileAdvancedPage.ui:301
 #, kde-format
 msgctxt "Never"
 msgid "&Never"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsURL)
-#: widgets/EditProfileAdvancedPage.ui:295
+#: widgets/EditProfileAdvancedPage.ui:311
 #, kde-format
 msgctxt "When showing URL hints"
 msgid "When &URL hints show"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QRadioButton, lineNumsAlways)
-#: widgets/EditProfileAdvancedPage.ui:305
+#: widgets/EditProfileAdvancedPage.ui:321
 #, kde-format
 msgctxt "Always"
 msgid "A&lways"
@@ -4526,7 +4604,7 @@ msgstr ""
 #. i18n: ectx: property (suffix), widget (QSpinBox, badgeFontSizeSpinner)
 #: widgets/EditProfileAppearancePage.ui:660
 #: widgets/EditProfileAppearancePage.ui:712
-#: widgets/EditProfileAppearancePage.ui:1207
+#: widgets/EditProfileAppearancePage.ui:1239
 #, kde-format
 msgctxt "(pixels) visual size unit"
 msgid " px"
@@ -4625,28 +4703,57 @@ msgstr ""
 msgid "ASCII characters "
 msgstr ""
 
-#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeBrahmic)
+#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeCoding)
 #: widgets/EditProfileAppearancePage.ui:935
+#, kde-format
+msgid ""
+"Render words made of characters that usually appear in coding ligatures "
+"together."
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, wordModeCoding)
+#: widgets/EditProfileAppearancePage.ui:938
+#, fuzzy, kde-format
+#| msgid "Set cursor color to match current character"
+msgid "Coding ligatures characters"
+msgstr "বর্তমান অক্ষরের রঙ অনুযায়ী কার্সারের রঙ নির্ধারণ করা হবে"
+
+#. i18n: ectx: property (toolTip), widget (QCheckBox, wordModeBrahmic)
+#: widgets/EditProfileAppearancePage.ui:951
 #, kde-format
 msgid "Render words of Brahmic scripts characters together"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, wordModeBrahmic)
-#: widgets/EditProfileAppearancePage.ui:938
+#: widgets/EditProfileAppearancePage.ui:954
 #, fuzzy, kde-format
 #| msgid "Set cursor color to match current character"
 msgid "Brahmic scripts characters"
 msgstr "বর্তমান অক্ষরের রঙ অনুযায়ী কার্সারের রঙ নির্ধারণ করা হবে"
 
+#. i18n: ectx: property (toolTip), widget (QCheckBox, fontHinting)
+#: widgets/EditProfileAppearancePage.ui:967
+#, kde-format
+msgid ""
+"Apply hinting to glyphs when rendering, which may improve the legibility of "
+"certain fonts with some displays"
+msgstr ""
+
+#. i18n: ectx: property (text), widget (QCheckBox, fontHinting)
+#: widgets/EditProfileAppearancePage.ui:970
+#, kde-format
+msgid "Font hinting"
+msgstr ""
+
 #. i18n: ectx: property (text), widget (QLabel, label_17)
-#: widgets/EditProfileAppearancePage.ui:951
+#: widgets/EditProfileAppearancePage.ui:983
 #, fuzzy, kde-format
 #| msgid "Font"
 msgid "Emoji Font:"
 msgstr "ফন্ট"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableBidiRenderingButton)
-#: widgets/EditProfileAppearancePage.ui:977
+#: widgets/EditProfileAppearancePage.ui:1009
 #, kde-format
 msgid ""
 "Enable Bi-Directional display on terminals (valid for Arabic, Farsi or "
@@ -4656,71 +4763,71 @@ msgstr ""
 "ক্ষেত্রে প্রযোজ্য)"
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableBidiRenderingButton)
-#: widgets/EditProfileAppearancePage.ui:980
+#: widgets/EditProfileAppearancePage.ui:1012
 #, fuzzy, kde-format
 #| msgid "Enable Bi-Directional text rendering"
 msgid "Bi-Directional text rendering"
 msgstr "টার্মিন্যালের মধ্যে উভয় দিশায় হরফ প্রদর্শন সক্রিয় করা হবে"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, bidiLineLTR)
-#: widgets/EditProfileAppearancePage.ui:993
+#: widgets/EditProfileAppearancePage.ui:1025
 #, kde-format
 msgid "Lines are always LTR, rather than determined by first strong character"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, bidiLineLTR)
-#: widgets/EditProfileAppearancePage.ui:996
+#: widgets/EditProfileAppearancePage.ui:1028
 #, kde-format
 msgid "force LTR line direction"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableBidiTableDirOverrideButton)
-#: widgets/EditProfileAppearancePage.ui:1009
+#: widgets/EditProfileAppearancePage.ui:1041
 #, kde-format
 msgid "Treat table drawing characters as strong LTR."
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableBidiTableDirOverrideButton)
-#: widgets/EditProfileAppearancePage.ui:1012
+#: widgets/EditProfileAppearancePage.ui:1044
 #, kde-format
 msgid "Table characters BiDi mode override"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, ignoreWcWidth)
-#: widgets/EditProfileAppearancePage.ui:1025
+#: widgets/EditProfileAppearancePage.ui:1057
 #, fuzzy, kde-format
 #| msgid "Set cursor color to match current character"
 msgid "Ignore wcwidth of problematic characters"
 msgstr "বর্তমান অক্ষরের রঙ অনুযায়ী কার্সারের রঙ নির্ধারণ করা হবে"
 
 #. i18n: ectx: property (text), widget (QCheckBox, ignoreWcWidth)
-#: widgets/EditProfileAppearancePage.ui:1028
+#: widgets/EditProfileAppearancePage.ui:1060
 #, kde-format
 msgid "Override wcwidth"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QWidget, badgeTab)
-#: widgets/EditProfileAppearancePage.ui:1049
+#: widgets/EditProfileAppearancePage.ui:1081
 #, kde-format
 msgid "<html><head/><body><p>Badge overlay options</p></body></html>"
 msgstr ""
 
 #. i18n: ectx: attribute (title), widget (QWidget, badgeTab)
 #. i18n: ectx: property (text), widget (QCheckBox, badgeEnabled)
-#: widgets/EditProfileAppearancePage.ui:1052
-#: widgets/EditProfileAppearancePage.ui:1082
+#: widgets/EditProfileAppearancePage.ui:1084
+#: widgets/EditProfileAppearancePage.ui:1114
 #, kde-format
 msgid "Badge Overlay"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeOverlayLabel)
-#: widgets/EditProfileAppearancePage.ui:1062
+#: widgets/EditProfileAppearancePage.ui:1094
 #, kde-format
 msgid "Badge Overlay Options"
 msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, badgeEnabled)
-#: widgets/EditProfileAppearancePage.ui:1079
+#: widgets/EditProfileAppearancePage.ui:1111
 #, fuzzy, kde-format
 #| msgid "Enable Bi-Directional text rendering"
 msgid "Enable badge overlay rendering"
@@ -4728,21 +4835,21 @@ msgstr "টার্মিন্যালের মধ্যে উভয় দি
 
 #. i18n: ectx: property (toolTip), widget (QLabel, badge_label_1)
 #. i18n: ectx: property (toolTip), widget (QLineEdit, badgeTextEdit)
-#: widgets/EditProfileAppearancePage.ui:1089
-#: widgets/EditProfileAppearancePage.ui:1110
+#: widgets/EditProfileAppearancePage.ui:1121
+#: widgets/EditProfileAppearancePage.ui:1142
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Default text of badge."
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badge_label_1)
-#: widgets/EditProfileAppearancePage.ui:1092
+#: widgets/EditProfileAppearancePage.ui:1124
 #, kde-format
 msgid "Badge text:"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeVariablesHelpLabel)
-#: widgets/EditProfileAppearancePage.ui:1118
+#: widgets/EditProfileAppearancePage.ui:1150
 #, kde-format
 msgid ""
 "<html><head/><body><p><small><b>Available variables:</b> \\(session.title), "
@@ -4752,7 +4859,7 @@ msgid ""
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeEscapeSequenceHelpLabel)
-#: widgets/EditProfileAppearancePage.ui:1138
+#: widgets/EditProfileAppearancePage.ui:1170
 #, kde-format
 msgid ""
 "<html><head/><body><p><small><b>Badge configuration:</b><br/>Use profile "
@@ -4762,67 +4869,67 @@ msgstr ""
 
 #. i18n: ectx: property (toolTip), widget (QLabel, badge_label_2)
 #. i18n: ectx: property (toolTip), widget (QLineEdit, badgeFontEdit)
-#: widgets/EditProfileAppearancePage.ui:1158
-#: widgets/EditProfileAppearancePage.ui:1179
+#: widgets/EditProfileAppearancePage.ui:1190
+#: widgets/EditProfileAppearancePage.ui:1211
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Badge font family."
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badge_label_2)
-#: widgets/EditProfileAppearancePage.ui:1161
+#: widgets/EditProfileAppearancePage.ui:1193
 #, kde-format
 msgid "Badge font family:"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeFontSizeLabel)
-#: widgets/EditProfileAppearancePage.ui:1194
+#: widgets/EditProfileAppearancePage.ui:1226
 #, kde-format
 msgid "Badge font size:"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeColorLabel)
-#: widgets/EditProfileAppearancePage.ui:1224
+#: widgets/EditProfileAppearancePage.ui:1256
 #, fuzzy, kde-format
 #| msgid "Background color:"
 msgid "Badge color:"
 msgstr "পটভূমির রং:"
 
 #. i18n: ectx: property (toolTip), widget (KColorButton, badgeColorSelectButton)
-#: widgets/EditProfileAppearancePage.ui:1237
+#: widgets/EditProfileAppearancePage.ui:1269
 #, fuzzy, kde-format
 #| msgid "Select the color used to draw the cursor"
 msgid "Select the color used to draw the badge"
 msgstr "কার্সার আঁকার জন্য ব্যবহৃত রঙ নির্বাচক করুন"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, badgeTextOnlyCheckBox)
-#: widgets/EditProfileAppearancePage.ui:1251
+#: widgets/EditProfileAppearancePage.ui:1283
 #, kde-format
 msgid "Display badge as text only without background rectangle"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, badgeTextOnlyCheckBox)
-#: widgets/EditProfileAppearancePage.ui:1254
+#: widgets/EditProfileAppearancePage.ui:1286
 #, fuzzy, kde-format
 #| msgid "Background"
 msgid "Text only (no background)"
 msgstr "পটভূমি"
 
 #. i18n: ectx: property (text), widget (QLabel, badgeTransparencyLabel)
-#: widgets/EditProfileAppearancePage.ui:1268
+#: widgets/EditProfileAppearancePage.ui:1300
 #, fuzzy, kde-format
 #| msgid "Background transparency:"
 msgid "Transparency:"
 msgstr "পটভূমির স্বচ্ছতা:"
 
 #. i18n: ectx: property (toolTip), widget (QSlider, badgeTransparencySlider)
-#: widgets/EditProfileAppearancePage.ui:1295
+#: widgets/EditProfileAppearancePage.ui:1327
 #, kde-format
 msgid "Set badge transparency (0 = fully transparent, 255 = opaque)"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QLabel, badgeTransparencyValueLabel)
-#: widgets/EditProfileAppearancePage.ui:1302
+#: widgets/EditProfileAppearancePage.ui:1334
 #, kde-format
 msgid "180"
 msgstr ""
@@ -5011,13 +5118,13 @@ msgstr "প্রারম্ভিক ডিরেক্টরি নির্�
 msgid "Get New..."
 msgstr "নতুন..."
 
-#: widgets/EditProfileDialog.cpp:1445
+#: widgets/EditProfileDialog.cpp:1452
 #, kde-kuit-format
 msgctxt "@info"
 msgid "Scheme <resource>%1</resource> failed to load."
 msgstr ""
 
-#: widgets/EditProfileDialog.cpp:1627
+#: widgets/EditProfileDialog.cpp:1634
 #, kde-format
 msgid ""
 "This color scheme uses a transparent background which does not appear to be "
@@ -5026,20 +5133,20 @@ msgstr ""
 "এই রঙের বিন্যাসের সাথে স্বচ্ছ পটভূমি ব্যবহৃত হয়, কিন্তু আপনার ডেস্কটপে স্বচ্ছ পটভূমি "
 "সমর্থিত নয়"
 
-#: widgets/EditProfileDialog.cpp:1633
+#: widgets/EditProfileDialog.cpp:1640
 #, kde-format
 msgid ""
 "Konsole was started before desktop effects were enabled. You need to restart "
 "Konsole to see transparent background."
 msgstr ""
 
-#: widgets/EditProfileDialog.cpp:2034
+#: widgets/EditProfileDialog.cpp:2041
 #, fuzzy, kde-format
 #| msgid "Delete Profile"
 msgid "Default for file type"
 msgstr "প্রোফাইল মুছে ফেলুন"
 
-#: widgets/EditProfileDialog.cpp:2060
+#: widgets/EditProfileDialog.cpp:2067
 #, kde-format
 msgid ""
 "The format is e.g. 'editorExec PATH:LINE:COLUMN'\n"
@@ -5056,7 +5163,7 @@ msgid ""
 "editor."
 msgstr ""
 
-#: widgets/EditProfileDialog.cpp:2073
+#: widgets/EditProfileDialog.cpp:2080
 #, kde-format
 msgid "Text Editor Custom Command"
 msgstr ""
@@ -5521,7 +5628,7 @@ msgstr ""
 #. i18n: ectx: property (text), widget (QCheckBox, openLinksByDirectClickButton)
 #: widgets/EditProfileMousePage.ui:338
 #, kde-format
-msgid "Open files/links by direct click"
+msgid "Open underlined files/links by direct click"
 msgstr ""
 
 #. i18n: ectx: property (text), widget (QCheckBox, allowLinkEscapeSequenceButton)
@@ -6163,45 +6270,56 @@ msgctxt "@info:tooltip"
 msgid "Restore terminal"
 msgstr "ট্যাব বন্ধ করুন (&C)"
 
-#: widgets/ViewContainer.cpp:60
+#: widgets/ViewContainer.cpp:86
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Open a new tab"
 msgstr ""
 
-#: widgets/ViewContainer.cpp:65
+#: widgets/ViewContainer.cpp:91
 #, fuzzy, kde-format
 #| msgid "&Rename Tab..."
 msgctxt "@info:tooltip"
 msgid "Search Tabs"
 msgstr "ট্যাবের নাম পরিবর্তন করুন...(&R)"
 
-#: widgets/ViewContainer.cpp:70
+#: widgets/ViewContainer.cpp:96
 #, fuzzy, kde-format
 #| msgid "Close the search bar"
 msgctxt "@info:tooltip"
 msgid "Close this tab"
 msgstr "অনুসন্ধানের বার বন্ধ করুন"
 
-#: widgets/ViewContainer.cpp:106
+#: widgets/ViewContainer.cpp:132
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Detach Tab"
 msgstr ""
 
-#: widgets/ViewContainer.cpp:112
+#: widgets/ViewContainer.cpp:138
 #, fuzzy, kde-format
 #| msgid "&Rename Tab..."
 msgctxt "@action:inmenu"
 msgid "&Configure or Rename Tab..."
 msgstr "ট্যাবের নাম পরিবর্তন করুন...(&R)"
 
-#: widgets/ViewContainer.cpp:117
+#: widgets/ViewContainer.cpp:143
 #, fuzzy, kde-format
 #| msgid "&Close Tab"
 msgctxt "@action:inmenu"
 msgid "Close Tab"
 msgstr "ট্যাব বন্ধ করুন (&C)"
+
+#: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
+#, fuzzy, kde-format
+#| msgid "Maintainer"
+msgid "Container"
+msgstr "মেইন্টেনার"
+
+#: widgets/ViewContainer.cpp:987
+#, kde-format
+msgid "%1: %2"
+msgstr ""
 
 #, fuzzy
 #~| msgid "Open Link"
@@ -6520,9 +6638,6 @@ msgstr "ট্যাব বন্ধ করুন (&C)"
 
 #~ msgid "Change Profile"
 #~ msgstr "প্রোফাইল পরিবর্তন করুন"
-
-#~ msgid "Maintainer"
-#~ msgstr "মেইন্টেনার"
 
 #~ msgid "Author"
 #~ msgstr "নির্মাতা"

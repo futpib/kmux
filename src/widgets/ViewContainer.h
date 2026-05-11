@@ -20,6 +20,7 @@
 class QPoint;
 class QToolButton;
 class QMenu;
+class QLabel;
 
 namespace Konsole
 {
@@ -69,10 +70,8 @@ public:
 
     /** Sets tab title to item title if the view is active */
     void updateTitle(ViewProperties *item);
-    /** Sets tab color to item color if the view is active */
-    void updateActivityColor(ViewProperties *item);
-    /** Sets tab color to item color if the view is active */
-    void updateColor(ViewProperties *item);
+    /** Sets tab colors (regular and activity) to item colors */
+    void updateColors(ViewProperties *item);
     /** Sets tab icon to item icon if the view is active */
     void updateIcon(ViewProperties *item);
     /** Sets tab activity status if the tab is not active */
@@ -278,10 +277,16 @@ private Q_SLOTS:
     void viewDestroyed(QObject *view);
     void konsoleConfigChanged();
     void activateView(const QString &xdgActivationToken);
+    void updateActiveContainerBadge();
 
 private:
     void closeTmuxTab(const QList<TerminalDisplay *> &terminals);
     void forgetView();
+    void ensureContainerBadge(TerminalDisplay *display);
+    void removeContainerBadge(TerminalDisplay *display);
+    void updateContainerBadgeForDisplay(TerminalDisplay *display);
+    QColor effectiveTabColor(ViewSplitter *splitter) const;
+    QColor effectiveTabActivityColor(ViewSplitter *splitter) const;
 
     struct TabIconState {
         TabIconState()
@@ -316,6 +321,9 @@ private:
     QToolButton *_newTabButton;
     QToolButton *_searchTabsButton;
     QToolButton *_closeTabButton;
+    QHash<TerminalDisplay *, QWidget *> _containerBadgeWidgets;
+    QHash<TerminalDisplay *, QLabel *> _containerBadgeColors;
+    QHash<TerminalDisplay *, QLabel *> _containerBadgeTexts;
     int _contextMenuTabIndex;
     NewTabBehavior _newTabBehavior;
 };
