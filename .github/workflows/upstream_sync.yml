@@ -18,13 +18,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: kuma0128/sync-upstream-action@c037cb0d0bd35006dceb21e42a8a976fb9861e45 # v1.2.0
+      - id: sync
+        uses: AndreasAugustin/actions-template-sync@8a0f668b83c32a0f673353086d74f12b8853d4f5 # v2.5.3
         with:
-          upstream_repo: KDE/konsole
+          source_repo_path: KDE/konsole
           upstream_branch: master
-          target_branch: master
-          mode: pr
           pr_title: 'Sync upstream KDE/konsole master'
           pr_labels: upstream-sync
-          create_issue_on_conflict: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: failure() && steps.sync.conclusion == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create \
+            --title "Upstream sync from KDE/konsole failed" \
+            --label upstream-sync \
+            --body "The scheduled upstream sync failed. See [run]($RUN_URL)."
