@@ -680,7 +680,7 @@ void TabbedViewContainer::currentTabChanged(int index)
         if (view != nullptr) {
             setTabActivity(index, false);
             _tabIconState[splitview].notification = Session::NoNotification;
-            Q_EMIT activeViewChanged(view);
+            Q_EMIT activeViewChanged(view, reason);
             updateIcon(view->sessionController());
             updateActiveContainerBadge();
         }
