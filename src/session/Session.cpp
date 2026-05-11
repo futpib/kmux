@@ -24,6 +24,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QFuture>
 #include <QKeyEvent>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -2638,24 +2639,12 @@ QString Session::activationToken(const QString &cookieForRequest) const
     const auto msg = message();
     setDelayedReply(true);
 
-    // we need to filter the response with the request serial
-    const int launchedSerial = KWaylandExtras::self()->lastInputSerial(window->window()->windowHandle());
-    connect(
-        KWaylandExtras::self(),
-        &KWaylandExtras::xdgActivationTokenArrived,
-        this,
-        [msg, launchedSerial](int tokenSerial, QString token) {
-            // if wrong token, ignore it, but we must always reply to not stall the caller
-            // we use here a SingleShotConnection, we will just be called once!
-            if (tokenSerial != launchedSerial) {
-                token.clear();
-            }
-            auto reply = msg.createReply(token);
-            QDBusConnection::sessionBus().send(reply);
-        },
-        Qt::SingleShotConnection);
-
-    KWaylandExtras::requestXdgActivationToken(window->window()->windowHandle(), launchedSerial, {});
+    QWindow *const windowHandle = window->window()->windowHandle();
+    const quint32 launchedSerial = KWaylandExtras::lastInputSerial(windowHandle);
+    KWaylandExtras::xdgActivationToken(windowHandle, launchedSerial, {}).then(KWaylandExtras::self(), [msg](const QString &token) {
+        auto reply = msg.createReply(token);
+        QDBusConnection::sessionBus().send(reply);
+    });
 
 #endif
 

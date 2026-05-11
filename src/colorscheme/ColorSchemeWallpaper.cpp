@@ -201,11 +201,11 @@ QImage ColorSchemeWallpaper::FlipImage(const QImage &image, const ColorSchemeWal
 {
     switch (flipType) {
     case Horizontal:
-        return image.mirrored(true, false);
+        return image.flipped(Qt::Horizontal);
     case Vertical:
-        return image.mirrored(false, true);
+        return image.flipped(Qt::Vertical);
     case Both:
-        return image.mirrored(true, true);
+        return image.flipped(Qt::Horizontal | Qt::Vertical);
     default:
         return image;
     }

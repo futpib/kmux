@@ -44,8 +44,8 @@ endif()
 # See comments in https://invent.kde.org/utilities/konsole/-/commit/9d8e47298c81fc1e47c998eda1b6e980589274eb
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
-set(QT_MIN_VERSION "6.7.0")
-set(KF6_DEP_VERSION "6.0.0")
+set(QT_MIN_VERSION "6.9.0")
+set(KF6_DEP_VERSION "6.19.0")
 
 # Release script will create bugzilla versions
 project(konsole VERSION ${RELEASE_SERVICE_VERSION})
@@ -158,6 +158,13 @@ add_definitions(
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Promote all warnings to errors so they cannot be ignored.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Werror)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options(/WX)
+endif()
 
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
 

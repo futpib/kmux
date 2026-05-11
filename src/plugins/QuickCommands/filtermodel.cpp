@@ -34,7 +34,8 @@ bool FilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParen
 void FilterModel::setInvertFilter(bool invert)
 {
     m_invertFilter = invert;
-    invalidateFilter();
+    beginFilterChange();
+    endFilterChange();
 }
 
 #include "moc_filtermodel.cpp"

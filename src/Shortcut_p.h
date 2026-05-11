@@ -14,15 +14,14 @@ namespace Konsole
 /**
  * Platform-specific main shortcut "opcode":
  */
-enum Modifier {
+constexpr Qt::Modifiers ACCEL =
 #ifdef Q_OS_MACOS
     // Use plain Command key for shortcuts
-    ACCEL = Qt::CTRL,
+    Qt::Modifiers(Qt::CTRL);
 #else
     // Use Ctrl+Shift for shortcuts
-    ACCEL = Qt::CTRL | Qt::SHIFT,
+    Qt::Modifiers(Qt::CTRL) | Qt::SHIFT;
 #endif
-};
 }
 
 #endif // SHORTCUT_H

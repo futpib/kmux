@@ -314,7 +314,9 @@ void QuickCommandsWidget::runShellCheck()
     }
 
     QTemporaryFile file;
-    file.open();
+    if (!file.open()) {
+        return;
+    }
 
     QTextStream ts(&file);
     ts << "#!/bin/bash\n";
