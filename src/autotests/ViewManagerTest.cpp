@@ -10,10 +10,53 @@
 
 #include "../MainWindow.h"
 #include "../ViewManager.h"
+#include "../containers/ContainerSessionState.h"
+#include "../containers/IContainerDetector.h"
+#include "../session/Session.h"
+#include "../session/SessionController.h"
 #include "../widgets/ViewContainer.h"
 #include <QStandardPaths>
 
 using namespace Konsole;
+
+namespace
+{
+class TestContainerDetector : public IContainerDetector
+{
+public:
+    using IContainerDetector::IContainerDetector;
+
+    QString typeId() const override
+    {
+        return QStringLiteral("distrobox");
+    }
+
+    QString displayName() const override
+    {
+        return QStringLiteral("Distrobox");
+    }
+
+    QString iconName() const override
+    {
+        return QStringLiteral("distrobox");
+    }
+
+    std::optional<ContainerInfo> detect(int) const override
+    {
+        return std::nullopt;
+    }
+
+    QStringList entryCommand(const QString &containerName) const override
+    {
+        return {QStringLiteral("distrobox"), QStringLiteral("enter"), containerName};
+    }
+
+    void startListContainers() override
+    {
+        Q_EMIT listContainersFinished({});
+    }
+};
+}
 
 void ViewManagerTest::initTestCase()
 {
@@ -55,6 +98,40 @@ void ViewManagerTest::testLoadLayout()
 
     mw.viewManager()->loadLayout(m_testDir->filePath(QStringLiteral("test.json")));
     QCOMPARE(mw.viewManager()->viewHierarchy(), expectedHierarchy);
+}
+
+void ViewManagerTest::testContainerMenuLaunchKeepsPendingColor()
+{
+    auto mw = MainWindow();
+
+    TestContainerDetector detector;
+    ContainerInfo container;
+    container.detector = &detector;
+    container.name = QStringLiteral("codex");
+    container.displayName = QStringLiteral("codex");
+    container.iconName = QStringLiteral("distrobox");
+
+    const bool invoked = QMetaObject::invokeMethod(&mw, "newInContainer", Qt::DirectConnection, Q_ARG(Konsole::ContainerInfo, container));
+    QVERIFY(invoked);
+
+    auto *controller = mw.viewManager()->activeViewController();
+    QVERIFY(controller != nullptr);
+    Session *session = controller->session();
+    QVERIFY(session != nullptr);
+
+    const QString key = QStringLiteral("%1:%2").arg(detector.typeId(), container.name);
+    QCOMPARE(session->property(ContainerSessionState::PendingContainerKeyProperty).toString(), key);
+    QCOMPARE(session->color(), ContainerSessionState::colorForContainerKey(key));
+
+    // Simulate transient host-side process state before in-container shell is confirmed.
+    session->setContainerContext(ContainerInfo{});
+    QCOMPARE(session->property(ContainerSessionState::PendingContainerKeyProperty).toString(), key);
+    QCOMPARE(session->color(), ContainerSessionState::colorForContainerKey(key));
+
+    // Once container detection confirms context, pending state is cleared.
+    session->setContainerContext(container);
+    QCOMPARE(session->property(ContainerSessionState::PendingContainerKeyProperty).toString(), QString());
+    QCOMPARE(session->color(), ContainerSessionState::colorForContainerKey(key));
 }
 
 QTEST_MAIN(ViewManagerTest)

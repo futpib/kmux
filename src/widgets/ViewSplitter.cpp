@@ -13,6 +13,7 @@
 #include <QChildEvent>
 #include <QDragEnterEvent>
 #include <QMimeData>
+#include <QVBoxLayout>
 
 // C++
 #include <memory>
@@ -37,6 +38,50 @@ int ViewSplitter::lastSplitterId = -1;
 
 namespace
 {
+constexpr auto kTerminalContainerProperty = "_konsole_terminal_container";
+
+TerminalDisplay *terminalDisplayFromWidget(QWidget *widget)
+{
+    if (auto *terminal = qobject_cast<TerminalDisplay *>(widget)) {
+        return terminal;
+    }
+    if (widget == nullptr) {
+        return nullptr;
+    }
+    return widget->findChild<TerminalDisplay *>(QString(), Qt::FindDirectChildrenOnly);
+}
+
+QWidget *containerWidgetForDisplayImpl(TerminalDisplay *display)
+{
+    if (display == nullptr) {
+        return nullptr;
+    }
+    QWidget *parent = display->parentWidget();
+    if (parent != nullptr && parent->property(kTerminalContainerProperty).toBool()) {
+        return parent;
+    }
+    return display;
+}
+
+QWidget *ensureContainerWidget(TerminalDisplay *display)
+{
+    QWidget *container = containerWidgetForDisplayImpl(display);
+    if (container == nullptr || container != display) {
+        return container;
+    }
+
+    auto *wrapper = new QWidget();
+    wrapper->setProperty(kTerminalContainerProperty, true);
+    auto *layout = new QVBoxLayout(wrapper);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addWidget(display);
+    wrapper->setFocusProxy(display);
+    // Ensure wrapper panes are removed when the terminal display goes away.
+    QObject::connect(display, &QObject::destroyed, wrapper, &QObject::deleteLater);
+    return wrapper;
+}
+
 int calculateHandleWidth(int settingsEnum)
 {
     switch (settingsEnum) {
@@ -65,14 +110,24 @@ ViewSplitter::ViewSplitter(QWidget *parent)
     });
 }
 
-void ViewSplitter::setTmuxMode(bool tmuxMode)
+QWidget *ViewSplitter::containerWidgetForDisplay(TerminalDisplay *display)
 {
-    _tmuxMode = tmuxMode;
-    if (_tmuxMode) {
-        setHandleWidth(1);
-    } else {
-        setHandleWidth(calculateHandleWidth(KonsoleSettings::self()->splitDragHandleSize()));
+    return containerWidgetForDisplayImpl(display);
+}
+
+TerminalDisplay *ViewSplitter::terminalDisplayForWidget(QWidget *widget)
+{
+    return terminalDisplayFromWidget(widget);
+}
+
+ViewSplitter *ViewSplitter::parentSplitterForDisplay(TerminalDisplay *display)
+{
+    for (QWidget *parent = display != nullptr ? display->parentWidget() : nullptr; parent != nullptr; parent = parent->parentWidget()) {
+        if (auto *splitter = qobject_cast<ViewSplitter *>(parent)) {
+            return splitter;
+        }
     }
+    return nullptr;
 }
 
 /* This function is called on the toplevel splitter, we need to look at the actual ViewSplitter inside it */
@@ -81,8 +136,9 @@ void ViewSplitter::adjustActiveTerminalDisplaySize(int percentage)
     auto focusedTerminalDisplay = activeTerminalDisplay();
     Q_ASSERT(focusedTerminalDisplay);
 
-    auto parentSplitter = qobject_cast<ViewSplitter *>(focusedTerminalDisplay->parent());
-    const int containerIndex = parentSplitter->indexOf(activeTerminalDisplay());
+    auto parentSplitter = parentSplitterForDisplay(focusedTerminalDisplay);
+    Q_ASSERT(parentSplitter != nullptr);
+    const int containerIndex = parentSplitter->indexOf(containerWidgetForDisplay(focusedTerminalDisplay));
     Q_ASSERT(containerIndex != -1);
 
     QList<int> containerSizes = parentSplitter->sizes();
@@ -123,24 +179,32 @@ void ViewSplitter::updateSizes()
 
 void ViewSplitter::addTerminalDisplay(TerminalDisplay *terminalDisplay, Qt::Orientation containerOrientation, AddBehavior behavior)
 {
+    QWidget *terminalWidget = ensureContainerWidget(terminalDisplay);
     ViewSplitter *splitter = activeSplitter();
-    const int currentIndex = splitter->activeTerminalDisplay() == nullptr ? splitter->count() : splitter->indexOf(splitter->activeTerminalDisplay());
+    TerminalDisplay *activeDisplay = splitter->activeTerminalDisplay();
+    const int currentIndex = activeDisplay == nullptr ? splitter->count() : splitter->indexOf(containerWidgetForDisplay(activeDisplay));
+
+    if (splitter->activeTerminalDisplay()) {
+        auto oldf = splitter->activeTerminalDisplay()->terminalFont()->getVTFont();
+        terminalDisplay->terminalFont()->setVTFont(oldf);
+    }
 
     if (splitter->count() < 2) {
-        splitter->insertWidget(behavior == AddBehavior::AddBefore ? currentIndex : currentIndex + 1, terminalDisplay);
+        splitter->insertWidget(behavior == AddBehavior::AddBefore ? currentIndex : currentIndex + 1, terminalWidget);
         splitter->setOrientation(containerOrientation);
         splitter->updateSizes();
     } else if (containerOrientation == splitter->orientation()) {
-        splitter->insertWidget(behavior == AddBehavior::AddBefore ? currentIndex : currentIndex + 1, terminalDisplay);
+        splitter->insertWidget(behavior == AddBehavior::AddBefore ? currentIndex : currentIndex + 1, terminalWidget);
         splitter->updateSizes();
     } else {
         QList<int> sizes = splitter->sizes();
         auto newSplitter = new ViewSplitter();
         TerminalDisplay *oldTerminalDisplay = splitter->activeTerminalDisplay();
-        const int oldContainerIndex = splitter->indexOf(oldTerminalDisplay);
+        const int oldContainerIndex = splitter->indexOf(containerWidgetForDisplay(oldTerminalDisplay));
+        QWidget *oldTerminalWidget = ensureContainerWidget(oldTerminalDisplay);
         splitter->m_blockPropagatedDeletion = true;
-        newSplitter->addWidget(behavior == AddBehavior::AddBefore ? terminalDisplay : oldTerminalDisplay);
-        newSplitter->addWidget(behavior == AddBehavior::AddBefore ? oldTerminalDisplay : terminalDisplay);
+        newSplitter->addWidget(behavior == AddBehavior::AddBefore ? terminalWidget : oldTerminalWidget);
+        newSplitter->addWidget(behavior == AddBehavior::AddBefore ? oldTerminalWidget : terminalWidget);
         newSplitter->setOrientation(containerOrientation);
         newSplitter->show();
         splitter->insertWidget(oldContainerIndex, newSplitter);
@@ -152,25 +216,27 @@ void ViewSplitter::addTerminalDisplay(TerminalDisplay *terminalDisplay, Qt::Orie
 
 void ViewSplitter::addTerminalDisplay(TerminalDisplay *terminalDisplay, int index)
 {
+    QWidget *terminalWidget = ensureContainerWidget(terminalDisplay);
     auto toplevelSplitter = getToplevelSplitter();
 
     if (index == -1)
         index = count();
 
-    if (toplevelSplitter->count() == 2 && toplevelSplitter == qobject_cast<ViewSplitter *>(parent()) && toplevelSplitter->indexOf(terminalDisplay) != -1) {
+    const bool displayAlreadyInTopLevel = toplevelSplitter->indexOf(terminalWidget) != -1 || toplevelSplitter->indexOf(terminalDisplay) != -1;
+    if (toplevelSplitter->count() == 2 && toplevelSplitter == qobject_cast<ViewSplitter *>(parent()) && displayAlreadyInTopLevel) {
         QVector<QWidget *> childWidgets;
 
         for (int i = 0; i < count(); ++i) {
             childWidgets.append(widget(i));
         }
 
-        childWidgets.insert(index, terminalDisplay);
+        childWidgets.insert(index, terminalWidget);
 
         for (auto child : childWidgets) {
             toplevelSplitter->addWidget(child);
         }
     } else {
-        insertWidget(index, terminalDisplay);
+        insertWidget(index, terminalWidget);
     }
 
     updateSizes();
@@ -247,7 +313,9 @@ void ViewSplitter::childEvent(QChildEvent *event)
 void ViewSplitter::handleFocusDirection(Qt::Orientation orientation, int direction)
 {
     auto terminalDisplay = activeTerminalDisplay();
-    auto parentSplitter = qobject_cast<ViewSplitter *>(terminalDisplay->parentWidget());
+    Q_ASSERT(terminalDisplay != nullptr);
+    auto parentSplitter = parentSplitterForDisplay(terminalDisplay);
+    Q_ASSERT(parentSplitter != nullptr);
     auto topSplitter = parentSplitter->getToplevelSplitter();
 
     // Find the theme's splitter width + extra space to find valid terminal
@@ -312,7 +380,9 @@ void ViewSplitter::focusRight()
 void ViewSplitter::focusNext(int dir)
 {
     auto terminalDisplay = activeTerminalDisplay();
-    auto parentSplitter = qobject_cast<ViewSplitter *>(terminalDisplay->parentWidget());
+    Q_ASSERT(terminalDisplay != nullptr);
+    auto parentSplitter = parentSplitterForDisplay(terminalDisplay);
+    Q_ASSERT(parentSplitter != nullptr);
     auto topSplitter = parentSplitter->getToplevelSplitter();
     auto terminals = topSplitter->findChildren<TerminalDisplay *>();
     int id = terminals.indexOf(terminalDisplay);
@@ -381,7 +451,7 @@ bool ViewSplitter::hideRecurse(TerminalDisplay *currentTerminalDisplay)
             allHidden = maybeSplitter->hideRecurse(currentTerminalDisplay) && allHidden;
             continue;
         }
-        if (auto maybeTerminalDisplay = qobject_cast<TerminalDisplay *>(widget(i))) {
+        if (auto maybeTerminalDisplay = terminalDisplayFromWidget(widget(i))) {
             if (maybeTerminalDisplay == currentTerminalDisplay) {
                 allHidden = false;
             } else {
@@ -513,7 +583,7 @@ QString ViewSplitter::getChildWidgetsLayout()
     QString layoutString;
 
     for (int i = 0; i < count(); ++i) {
-        if (auto v = qobject_cast<TerminalDisplay *>(widget(i)))
+        if (auto v = terminalDisplayFromWidget(widget(i)))
             layoutString += QString::number(v->id());
         else if (auto s = qobject_cast<ViewSplitter *>(widget(i)))
             layoutString += s->getChildWidgetsLayout();
@@ -576,7 +646,7 @@ void Konsole::ViewSplitter::dragEnterEvent(QDragEnterEvent *ev)
 void Konsole::ViewSplitter::dragMoveEvent(QDragMoveEvent *ev)
 {
     auto currentWidget = childAt(ev->position().toPoint());
-    if (auto terminal = qobject_cast<TerminalDisplay *>(currentWidget)) {
+    if (auto terminal = terminalDisplayFromWidget(currentWidget)) {
         if ((currentDragTarget != nullptr) && currentDragTarget != terminal) {
             currentDragTarget->hideDragTarget();
         }
@@ -624,29 +694,9 @@ void Konsole::ViewSplitter::dropEvent(QDropEvent *ev)
         if (currentDragTarget != nullptr) {
             currentDragTarget->hideDragTarget();
             auto source = qobject_cast<TerminalDisplay *>(ev->source());
-
-            // Route tmux pane drops through tmux commands
-            auto srcInfo = tmuxInfoForDisplay(source);
-            auto dstInfo = tmuxInfoForDisplay(currentDragTarget);
-            if (srcInfo.controller && dstInfo.controller && srcInfo.controller == dstInfo.controller) {
-                const auto droppedEdge = currentDragTarget->droppedEdge();
-                bool before = droppedEdge == Qt::LeftEdge || droppedEdge == Qt::TopEdge;
-                Qt::Orientation orientation = droppedEdge == Qt::LeftEdge || droppedEdge == Qt::RightEdge ? Qt::Horizontal : Qt::Vertical;
-
-                if (srcInfo.windowId == dstInfo.windowId) {
-                    srcInfo.controller->requestSwapPane(srcInfo.paneId, dstInfo.paneId);
-                } else {
-                    srcInfo.controller->requestMovePane(srcInfo.paneId, dstInfo.paneId, orientation, before);
-                }
-                currentDragTarget = nullptr;
-                return;
-            }
-
-            // Non-tmux: local widget reparenting
-            m_blockPropagatedDeletion = true;
-
-            source->setVisible(false);
-            source->setParent(nullptr);
+            auto *sourceWidget = containerWidgetForDisplay(source);
+            sourceWidget->setVisible(false);
+            sourceWidget->setParent(nullptr);
 
             currentDragTarget->setFocus(Qt::OtherFocusReason);
             const auto droppedEdge = currentDragTarget->droppedEdge();
@@ -661,7 +711,9 @@ void Konsole::ViewSplitter::dropEvent(QDropEvent *ev)
             // topLevel is the splitter that's connected with the ViewManager
             // that in turn can call the SessionController.
             Q_EMIT getToplevelSplitter()->terminalDisplayDropped(source);
-            source->setVisible(true);
+            if (auto *newWidget = containerWidgetForDisplay(source)) {
+                newWidget->setVisible(true);
+            }
             currentDragTarget = nullptr;
 
             m_blockPropagatedDeletion = false;
