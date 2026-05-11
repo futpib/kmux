@@ -159,6 +159,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(MSVC)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/WX>)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-Werror>)
+endif()
+
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
 
 file(GLOB ICONS_SRCS "data/icons/*.png")

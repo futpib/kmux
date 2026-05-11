@@ -119,7 +119,7 @@ void TerminalInterfaceTest::testTerminalInterface()
     QFile passwdFile(QStringLiteral("/etc/passwd"));
     QString defaultExePath;
 
-    passwdFile.open(QIODevice::ReadOnly);
+    QVERIFY(passwdFile.open(QIODevice::ReadOnly));
 
     do {
         const QString userData(QString::fromUtf8(passwdFile.readLine()));

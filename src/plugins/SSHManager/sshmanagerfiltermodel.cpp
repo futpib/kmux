@@ -31,8 +31,14 @@ bool SSHManagerFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &s
 
 void SSHManagerFilterModel::setInvertFilter(bool invert)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+    m_invertFilter = invert;
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
     m_invertFilter = invert;
     invalidateFilter();
+#endif
 }
 
 #include "moc_sshmanagerfiltermodel.cpp"

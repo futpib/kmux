@@ -6129,7 +6129,7 @@ void setupTreeSwitcherFixture(TreeSwitcherFixture &f, const QString &tmuxTmpDirP
 
     TmuxTestDSL::attachKonsole(f.tmuxPath, f.ctx, f.attach);
     f.attach.mw->show();
-    QTest::qWaitForWindowActive(f.attach.mw);
+    QVERIFY(QTest::qWaitForWindowActive(f.attach.mw));
 
     // Wait for 2 tabs
     auto *container = f.attach.mw->viewManager()->activeContainer();

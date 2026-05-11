@@ -7,6 +7,7 @@
 #ifndef SHORTCUT_H
 #define SHORTCUT_H
 
+#include <QKeySequence>
 #include <qnamespace.h>
 
 namespace Konsole
@@ -14,15 +15,11 @@ namespace Konsole
 /**
  * Platform-specific main shortcut "opcode":
  */
-enum Modifier {
 #ifdef Q_OS_MACOS
-    // Use plain Command key for shortcuts
-    ACCEL = Qt::CTRL,
+inline constexpr int ACCEL = Qt::CTRL;
 #else
-    // Use Ctrl+Shift for shortcuts
-    ACCEL = Qt::CTRL | Qt::SHIFT,
+inline constexpr int ACCEL = Qt::CTRL | Qt::SHIFT;
 #endif
-};
 }
 
 #endif // SHORTCUT_H

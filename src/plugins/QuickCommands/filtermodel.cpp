@@ -33,8 +33,14 @@ bool FilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParen
 
 void FilterModel::setInvertFilter(bool invert)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+    m_invertFilter = invert;
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
     m_invertFilter = invert;
     invalidateFilter();
+#endif
 }
 
 #include "moc_filtermodel.cpp"

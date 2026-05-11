@@ -34,7 +34,8 @@ void EscapeSequenceUrlExtractor::appendUrlText_impl(uint c)
         const int realCcolumn = _screen->getCursorY() + _screen->getHistLines();
         _currentUrl.begin = Coordinate{realCcolumn, _screen->getCursorX() - 1};
     }
-    _currentUrl.text += QString::fromUcs4(&c, 1);
+    const char32_t codePoint = c;
+    _currentUrl.text += QString::fromUcs4(&codePoint, 1);
 }
 
 void EscapeSequenceUrlExtractor::setUrl(const QString &url)

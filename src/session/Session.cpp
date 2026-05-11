@@ -24,6 +24,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QFutureWatcher>
 #include <QKeyEvent>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -38,6 +39,7 @@
 #include <KProcess>
 #include <KSelectAction>
 #include <KWindowSystem>
+#include <kwindowsystem_version.h>
 
 #ifndef Q_OS_WIN
 #include <KPtyDevice>
@@ -2639,7 +2641,17 @@ QString Session::activationToken(const QString &cookieForRequest) const
     setDelayedReply(true);
 
     // we need to filter the response with the request serial
-    const int launchedSerial = KWaylandExtras::self()->lastInputSerial(window->window()->windowHandle());
+    auto *windowHandle = window->window()->windowHandle();
+    const int launchedSerial = KWaylandExtras::self()->lastInputSerial(windowHandle);
+#if KWINDOWSYSTEM_VERSION >= QT_VERSION_CHECK(6, 19, 0)
+    auto *watcher = new QFutureWatcher<QString>();
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [msg, watcher] {
+        auto reply = msg.createReply(watcher->result());
+        QDBusConnection::sessionBus().send(reply);
+        watcher->deleteLater();
+    });
+    watcher->setFuture(KWaylandExtras::xdgActivationToken(windowHandle, launchedSerial, {}));
+#else
     connect(
         KWaylandExtras::self(),
         &KWaylandExtras::xdgActivationTokenArrived,
@@ -2655,7 +2667,8 @@ QString Session::activationToken(const QString &cookieForRequest) const
         },
         Qt::SingleShotConnection);
 
-    KWaylandExtras::requestXdgActivationToken(window->window()->windowHandle(), launchedSerial, {});
+    KWaylandExtras::requestXdgActivationToken(windowHandle, launchedSerial, {});
+#endif
 
 #endif
 

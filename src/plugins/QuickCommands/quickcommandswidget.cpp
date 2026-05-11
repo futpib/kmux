@@ -314,7 +314,11 @@ void QuickCommandsWidget::runShellCheck()
     }
 
     QTemporaryFile file;
-    file.open();
+    if (!file.open()) {
+        ui->warning->setPlainText(i18n("Failed to create a temporary file for shellcheck: %1", file.errorString()));
+        ui->tabWidget->setTabText(1, i18n("Warnings (*)"));
+        return;
+    }
 
     QTextStream ts(&file);
     ts << "#!/bin/bash\n";

@@ -41,7 +41,7 @@ void DetachableTabBar::setColor(int idx, const QColor &color)
     }
 }
 
-void DetachableTabBar::setActivityColor(int idx, const QColor &color)
+void DetachableTabBar::setActivityColor(int, const QColor &color)
 {
     _activityColor = color;
     update();
