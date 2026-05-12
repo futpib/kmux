@@ -83,14 +83,16 @@
 
 using namespace Konsole;
 
-inline int TerminalDisplay::loc(int x, int y) const
+int TerminalDisplay::loc(int x, int y) const
 {
+#ifndef QT_NO_DEBUG_OUTPUT
     if (y < 0 || y > _lines) {
         qDebug() << "Y: " << y << "Lines" << _lines;
     }
     if (x < 0 || x > _columns) {
         qDebug() << "X" << x << "Columns" << _columns;
     }
+#endif
 
     Q_ASSERT(y >= 0 && y < _lines);
     Q_ASSERT(x >= 0 && x < _columns);

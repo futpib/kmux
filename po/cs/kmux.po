@@ -5951,12 +5951,11 @@ msgid "Close Tab"
 msgstr "Zavřít kartu"
 
 #: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
-#, fuzzy, kde-format
-#| msgid "&Continue Task"
+#, kde-format
 msgid "Container"
-msgstr "&Pokračovat úlohu"
+msgstr "Kontejner"
 
 #: widgets/ViewContainer.cpp:987
 #, kde-format
 msgid "%1: %2"
-msgstr ""
+msgstr "%1: %2"

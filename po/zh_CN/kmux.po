@@ -5929,10 +5929,9 @@ msgid "Close Tab"
 msgstr "关闭标签页"
 
 #: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
-#, fuzzy, kde-format
-#| msgid "&Continue Task"
+#, kde-format
 msgid "Container"
-msgstr "继续任务(&C)"
+msgstr ""
 
 #: widgets/ViewContainer.cpp:987
 #, kde-format
