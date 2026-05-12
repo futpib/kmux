@@ -77,7 +77,9 @@ splits.
 | `/doc/developer` | Developer docs covering Konsole's design and the VT100 emulation layer.                                                  |
 | `/desktop`       | `.desktop` and AppStream metadata files used by KDE application launchers.                                               |
 | `/data`          | Color schemes, keyboard layouts, and other runtime data files.                                                           |
-| `/tests`         | Automated tests, including tmux integration tests.                                                                       |
+| `/src/autotests` | Qt/CTest unit and integration tests, including the tmux integration suite. Run via `ctest --test-dir build`.             |
+| `/scripts/autotests` | End-to-end bash tests that drive a real kmux process under Xvfb. Run via `USE_XVFB=1 ./scripts/autotests/run-all.sh`. |
+| `/tests`         | Manual test cases (text files and feature scripts) for ad-hoc verification — not run by CI.                              |
 
 ## Upstream
 
