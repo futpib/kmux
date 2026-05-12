@@ -8,15 +8,34 @@ splits.
 
 ## Features
 
-- **Native tmux pane/window management** — tmux windows appear as Konsole tabs;
-  pane splits are reflected as native Konsole split-view containers.
-- **Prefix key palette** — pressing your tmux prefix key (e.g. `Ctrl+B`) opens
-  a popup listing all bound tmux commands, letting you discover and invoke them
-  without leaving the keyboard.
-- **Session/window/pane tree switcher** — a searchable popup lets you jump
-  directly to any tmux session, window, or pane.
-- **Transparent resize coordination** — the terminal and tmux are kept in sync
-  so layout changes in either direction are applied consistently.
+- **Native tmux control-mode bridge** — kmux starts tmux in control mode
+  (`tmux -C`) and maps tmux state directly into native UI elements instead of
+  running tmux inside a nested terminal.
+- **Tabs and splits synchronized with tmux** — tmux windows map to Konsole tabs
+  and tmux panes map to native split containers, with focus/layout updates kept
+  in sync in both directions.
+- **Full pane/window operations from kmux UI** — split, close, move, swap,
+  break, and select panes/windows from kmux actions, with tmux updated
+  immediately.
+- **Zoom/maximize parity** — tmux pane zoom and Konsole maximize actions mirror
+  each other (including the `Ctrl+Shift+E` zoom workflow).
+- **Prefix key palette (dynamic)** — pressing the tmux prefix key opens a
+  popup of live tmux key bindings; selecting an entry executes its tmux command.
+- **Native choose-tree replacement** — tmux `choose-tree` bindings are
+  intercepted and opened as a kmux popup, with panes/windows/sessions modes and
+  fuzzy filtering.
+- **Server-wide tree switcher** — quickly jump to any tmux session, window, or
+  pane from a searchable hierarchical picker.
+- **Multi-window tmux workflows** — detach a tmux-backed tab into a new kmux
+  window and merge it back later, while staying attached to the same tmux
+  session.
+- **Session lifecycle actions** — detach the current tmux client or create and
+  switch to a brand-new tmux session directly from kmux actions.
+- **Working-directory aware creation** — new panes/windows/sessions preserve the
+  expected working directory behavior during tmux operations.
+- **Remote/socket-aware startup** — attach/create sessions by tmux session name,
+  socket name/path, custom tmux binary path, and optional remote shell wrapper
+  (`--rsh` / `KMUX_RSH`).
 - **Full Konsole feature set** — color schemes, keyboard shortcuts, KPart
   embedding, profiles, bookmarks, and everything else Konsole provides.
 
@@ -70,4 +89,3 @@ should be directed to the [Konsole project](https://bugs.kde.org/describecompone
 - [kmux on GitHub](https://github.com/futpib/kmux)
 - [CI / Builds](https://github.com/futpib/kmux/actions)
 - [Upstream Konsole](https://konsole.kde.org)
-
