@@ -50,13 +50,16 @@ struct PaneCells {
 
 static PaneCells maxCellsForWidget(QWidget *w)
 {
-    if (auto *td = qobject_cast<TerminalDisplay *>(w)) {
+    // Peel the container wrapper (kTerminalContainerProperty) around a leaf.
+    // Use the wrapper's outer size — it owns the layout we resize against —
+    // but the display's font metrics, so cell math stays consistent.
+    if (auto *td = ViewSplitter::terminalDisplayForWidget(w)) {
         int fontW = td->terminalFont()->fontWidth();
         int fontH = td->terminalFont()->fontHeight();
         if (fontW <= 0 || fontH <= 0) {
             return {0, 0};
         }
-        QSize size = td->size();
+        QSize size = (w == td) ? td->size() : w->size();
         QSize chrome = td->cellChromeSize();
         int cols = qMax(0, (size.width() - chrome.width()) / fontW);
         int rows = qMax(0, (size.height() - chrome.height()) / fontH);

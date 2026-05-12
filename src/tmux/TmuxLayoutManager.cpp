@@ -123,9 +123,11 @@ TmuxLayoutManager::TmuxLayoutManager(TmuxPaneManager *paneManager, ViewManager *
 
 TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPaneManager *paneManager)
 {
-    // Single-child splitter: unwrap and recurse into the child
+    // Single-child splitter: unwrap and recurse into the child.
+    // Displays are wrapped in a container QWidget (see ensureContainerWidget),
+    // so widget(i) is the wrapper — use terminalDisplayForWidget to peel it.
     if (splitter->count() == 1) {
-        auto *childDisplay = qobject_cast<TerminalDisplay *>(splitter->widget(0));
+        auto *childDisplay = ViewSplitter::terminalDisplayForWidget(splitter->widget(0));
         if (childDisplay) {
             TmuxLayoutNode leaf;
             leaf.type = TmuxLayoutNodeType::Leaf;
@@ -150,7 +152,7 @@ TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPa
     int maxCross = 0;
     for (int i = 0; i < splitter->count(); ++i) {
         TmuxLayoutNode child;
-        auto *display = qobject_cast<TerminalDisplay *>(splitter->widget(i));
+        auto *display = ViewSplitter::terminalDisplayForWidget(splitter->widget(i));
         if (display) {
             child.type = TmuxLayoutNodeType::Leaf;
             child.paneId = paneManager->paneIdForDisplay(display);
@@ -355,7 +357,7 @@ int TmuxLayoutManager::applyLayout(int tabIndex, const TmuxLayoutNode &layout)
 bool TmuxLayoutManager::updateSplitterSizes(ViewSplitter *splitter, const TmuxLayoutNode &node, bool skipSizeUpdate)
 {
     if (node.type == TmuxLayoutNodeType::Leaf) {
-        auto *display = qobject_cast<TerminalDisplay *>(splitter->widget(0));
+        auto *display = ViewSplitter::terminalDisplayForWidget(splitter->widget(0));
         if (splitter->count() != 1 || !display) {
             return false;
         }
@@ -380,7 +382,7 @@ bool TmuxLayoutManager::updateSplitterSizes(ViewSplitter *splitter, const TmuxLa
         QWidget *widget = splitter->widget(i);
 
         if (child.type == TmuxLayoutNodeType::Leaf) {
-            auto *display = qobject_cast<TerminalDisplay *>(widget);
+            auto *display = ViewSplitter::terminalDisplayForWidget(widget);
             if (!display) {
                 return false;
             }
@@ -404,7 +406,7 @@ bool TmuxLayoutManager::updateSplitterSizes(ViewSplitter *splitter, const TmuxLa
         for (int i = 0; i < node.children.size(); ++i) {
             const auto &child = node.children[i];
             if (child.type == TmuxLayoutNodeType::Leaf) {
-                auto *display = qobject_cast<TerminalDisplay *>(splitter->widget(i));
+                auto *display = ViewSplitter::terminalDisplayForWidget(splitter->widget(i));
                 if (display) {
                     display->setSize(child.width, child.height);
                     display->setForcedSize(child.width, child.height);
@@ -430,7 +432,7 @@ bool TmuxLayoutManager::updateSplitterSizes(ViewSplitter *splitter, const TmuxLa
 void TmuxLayoutManager::collectDisplays(ViewSplitter *splitter, QMap<int, TerminalDisplay *> &displayMap)
 {
     for (int i = 0; i < splitter->count(); ++i) {
-        auto *display = qobject_cast<TerminalDisplay *>(splitter->widget(i));
+        auto *display = ViewSplitter::terminalDisplayForWidget(splitter->widget(i));
         if (display) {
             int paneId = _paneManager->paneIdForDisplay(display);
             if (paneId >= 0) {

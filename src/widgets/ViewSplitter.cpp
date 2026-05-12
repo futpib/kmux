@@ -332,8 +332,13 @@ void ViewSplitter::handleFocusDirection(Qt::Orientation orientation, int directi
     // See https://bugs.kde.org/show_bug.cgi?id=411387 for more info
     const auto handleWidth = parentSplitter->handleWidth() + 3;
 
-    const auto start = QPoint(terminalDisplay->x(), terminalDisplay->y());
-    const auto startMapped = parentSplitter->mapTo(topSplitter, start);
+    // Use the display's own (0, 0) as the starting frame and let mapTo walk
+    // through whatever ancestors exist (wrapper QWidget → splitter → ... →
+    // topSplitter). terminalDisplay->x()/y() are relative to its immediate
+    // parent — the kTerminalContainerProperty wrapper inserted by
+    // ensureContainerWidget — not parentSplitter, so the old mapping was off
+    // by the wrapper's offset.
+    const auto startMapped = terminalDisplay->mapTo(topSplitter, QPoint(0, 0));
 
     const int newX = orientation != Qt::Horizontal ? startMapped.x() + handleWidth
         : direction == 1                           ? startMapped.x() + terminalDisplay->width() + handleWidth
@@ -351,10 +356,14 @@ void ViewSplitter::handleFocusDirection(Qt::Orientation orientation, int directi
         focusTerminal = terminal;
     } else if (qobject_cast<QSplitterHandle *>(child) != nullptr) {
         auto targetSplitter = qobject_cast<QSplitter *>(child->parent());
-        focusTerminal = qobject_cast<TerminalDisplay *>(targetSplitter->widget(0));
+        focusTerminal = terminalDisplayFromWidget(targetSplitter->widget(0));
     } else if (qobject_cast<QWidget *>(child) != nullptr) {
+        // child may be the kTerminalContainerProperty wrapper or one of its
+        // descendants (e.g. the badge widget). terminalDisplayFromWidget peels
+        // the wrapper to its TerminalDisplay child; otherwise walk up until we
+        // either find a wrapper or land at a TerminalDisplay directly.
         while (child != nullptr && focusTerminal == nullptr) {
-            focusTerminal = qobject_cast<TerminalDisplay *>(child->parentWidget());
+            focusTerminal = terminalDisplayFromWidget(child);
             child = child->parentWidget();
         }
     }

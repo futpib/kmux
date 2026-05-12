@@ -1370,6 +1370,16 @@ TerminalDisplay *ViewManager::createView(Session *session)
     session->addView(display);
     _terminalDisplayHistory.append(display);
 
+    // Remove the display from _sessionMap as soon as it's destroyed.
+    // Otherwise stale entries (e.g. when applyLayout queues old displays
+    // for deleteLater) leave dangling keys behind. Later lookups via
+    // _sessionMap.values()/_sessionMap.key() would then return the same
+    // session multiple times, causing finished() to be emitted twice and
+    // sessionFinished() to dereference a freed display.
+    connect(display, &QObject::destroyed, this, [this](QObject *obj) {
+        _sessionMap.remove(static_cast<TerminalDisplay *>(obj));
+    });
+
     // tell the session whether it has a light or dark background
     session->setDarkBackground(colorSchemeForProfile(profile)->hasDarkBackground());
     display->setFocus(Qt::OtherFocusReason);

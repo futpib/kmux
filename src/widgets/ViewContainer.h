@@ -9,6 +9,7 @@
 
 // Qt
 #include <QObject>
+#include <QPointer>
 #include <QTabWidget>
 
 // Konsole
@@ -321,9 +322,13 @@ private:
     QToolButton *_newTabButton;
     QToolButton *_searchTabsButton;
     QToolButton *_closeTabButton;
-    QHash<TerminalDisplay *, QWidget *> _containerBadgeWidgets;
-    QHash<TerminalDisplay *, QLabel *> _containerBadgeColors;
-    QHash<TerminalDisplay *, QLabel *> _containerBadgeTexts;
+    // QPointer values so badge widgets clear themselves when their parent
+    // wrapper is destroyed (e.g. applyLayout deletes the old splitter
+    // tree). Without this, _containerBadgeWidgets still references freed
+    // QWidgets after a tmux layout change.
+    QHash<TerminalDisplay *, QPointer<QWidget>> _containerBadgeWidgets;
+    QHash<TerminalDisplay *, QPointer<QLabel>> _containerBadgeColors;
+    QHash<TerminalDisplay *, QPointer<QLabel>> _containerBadgeTexts;
     int _contextMenuTabIndex;
     NewTabBehavior _newTabBehavior;
 };

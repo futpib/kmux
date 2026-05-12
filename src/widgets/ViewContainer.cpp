@@ -1022,7 +1022,7 @@ void TabbedViewContainer::removeContainerBadge(TerminalDisplay *display)
 
     disconnect(display, &QObject::destroyed, this, nullptr);
 
-    if (auto *badgeWidget = _containerBadgeWidgets.take(display)) {
+    if (auto badgeWidget = _containerBadgeWidgets.take(display)) {
         badgeWidget->deleteLater();
     }
 
@@ -1038,9 +1038,12 @@ void TabbedViewContainer::updateContainerBadgeForDisplay(TerminalDisplay *displa
 
     ensureContainerBadge(display);
 
-    auto *badgeWidget = _containerBadgeWidgets.value(display, nullptr);
-    auto *badgeColor = _containerBadgeColors.value(display, nullptr);
-    auto *badgeText = _containerBadgeTexts.value(display, nullptr);
+    // QPointer's bool conversion is nullptr-safe — a badge widget destroyed
+    // alongside its wrapper parent (applyLayout deletes the old splitter tree
+    // on a tmux layout change) becomes nullptr here instead of dangling.
+    QWidget *badgeWidget = _containerBadgeWidgets.value(display).data();
+    QLabel *badgeColor = _containerBadgeColors.value(display).data();
+    QLabel *badgeText = _containerBadgeTexts.value(display).data();
     if (badgeWidget == nullptr || badgeColor == nullptr || badgeText == nullptr) {
         return;
     }

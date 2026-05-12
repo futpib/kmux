@@ -468,8 +468,8 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
     QCOMPARE(paneSplitter->orientation(), Qt::Horizontal);
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+    auto *rightDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY(leftDisplay);
     QVERIFY(rightDisplay);
 
@@ -1282,8 +1282,8 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
     QCOMPARE(paneSplitter->orientation(), Qt::Horizontal);
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+    auto *rightDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY(leftDisplay);
     QVERIFY(rightDisplay);
 
@@ -1498,7 +1498,7 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QCOMPARE(topSplitter->orientation(), Qt::Horizontal);
     QCOMPARE(topSplitter->count(), 2);
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(topSplitter->widget(0));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(topSplitter->widget(0));
     QVERIFY(leftDisplay);
 
     // The right child should be a nested vertical splitter
@@ -1507,8 +1507,8 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QCOMPARE(rightSplitter->orientation(), Qt::Vertical);
     QCOMPARE(rightSplitter->count(), 2);
 
-    auto *topRightDisplay = qobject_cast<TerminalDisplay *>(rightSplitter->widget(0));
-    auto *bottomRightDisplay = qobject_cast<TerminalDisplay *>(rightSplitter->widget(1));
+    auto *topRightDisplay = ViewSplitter::terminalDisplayForWidget(rightSplitter->widget(0));
+    auto *bottomRightDisplay = ViewSplitter::terminalDisplayForWidget(rightSplitter->widget(1));
     QVERIFY(topRightDisplay);
     QVERIFY(bottomRightDisplay);
 
@@ -2003,11 +2003,26 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     sizes[2] -= shift;
     topSplitter->setSizes(sizes);
 
-    allDisplays = topSplitter->findChildren<TerminalDisplay *>();
-    for (auto *d : allDisplays) {
-        QResizeEvent ev(d->size(), d->size());
-        QCoreApplication::sendEvent(d, &ev);
-    }
+    // The wrapper QWidgets around each display take the splitter's child
+    // sizes, but display->sizeHint() is fixed by setSize() so QVBoxLayout
+    // won't shrink the display below its hint. Explicitly resize each leaf
+    // to the wrapper's allotment so display->columns() reflects the new
+    // pixel width — buildLayoutNode reads columns() to encode the layout
+    // sent to tmux.
+    auto resizeDisplaysToWrappers = [&](ViewSplitter *root) {
+        const auto displaysInRoot = root->findChildren<TerminalDisplay *>();
+        for (auto *d : displaysInRoot) {
+            auto *wrapper = ViewSplitter::containerWidgetForDisplay(d);
+            if (wrapper && wrapper != d) {
+                const QSize target = wrapper->size();
+                const QSize oldSize = d->size();
+                d->resize(target);
+                QResizeEvent ev(target, oldSize);
+                QCoreApplication::sendEvent(d, &ev);
+            }
+        }
+    };
+    resizeDisplaysToWrappers(topSplitter);
     QCoreApplication::processEvents();
 
     Q_EMIT topSplitter->splitterMoved(sizes[0] + sizes[1], 2);
@@ -2202,7 +2217,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
              qPrintable(QStringLiteral("Expected lines <= 12 but got %1").arg(display->lines())));
 
     // 8. Assert the TabPageWidget is constrained (the whole layout moves to top-left)
-    auto *topSplitter = qobject_cast<ViewSplitter *>(display->parentWidget());
+    auto *topSplitter = ViewSplitter::parentSplitterForDisplay(display);
     QVERIFY(topSplitter);
     while (auto *parentSplitter = qobject_cast<ViewSplitter *>(topSplitter->parentWidget())) {
         topSplitter = parentSplitter;
@@ -2289,8 +2304,8 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
     }
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+    auto *rightDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY(leftDisplay);
     QVERIFY(rightDisplay);
 
@@ -3883,8 +3898,8 @@ void TmuxIntegrationTest::testSwapPaneFromTmux()
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+    auto *rightDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY(leftDisplay);
     QVERIFY(rightDisplay);
 
@@ -3921,8 +3936,8 @@ void TmuxIntegrationTest::testSwapPaneFromTmux()
             }
             if (!paneSplitter)
                 return false;
-            auto *newLeft = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-            auto *newRight = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+            auto *newLeft = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+            auto *newRight = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
             if (!newLeft || !newRight)
                 return false;
             int newLeftPaneId = controller->paneIdForSession(newLeft->sessionController()->session());
@@ -3980,8 +3995,8 @@ void TmuxIntegrationTest::testSwapPaneFromKonsole()
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
 
-    auto *leftDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-    auto *rightDisplay = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *leftDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+    auto *rightDisplay = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY(leftDisplay);
     QVERIFY(rightDisplay);
 
@@ -4007,8 +4022,8 @@ void TmuxIntegrationTest::testSwapPaneFromKonsole()
             }
             if (!paneSplitter)
                 return false;
-            auto *newLeft = qobject_cast<TerminalDisplay *>(paneSplitter->widget(0));
-            auto *newRight = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+            auto *newLeft = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(0));
+            auto *newRight = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
             if (!newLeft || !newRight)
                 return false;
             int newLeftPaneId = controller->paneIdForSession(newLeft->sessionController()->session());
@@ -7132,7 +7147,7 @@ void TmuxIntegrationTest::testFractalSplitDownRight8()
     while (auto *splitter = qobject_cast<ViewSplitter *>(node)) {
         node = splitter->widget(splitter->count() - 1);
     }
-    auto *deepestBottomRight = qobject_cast<TerminalDisplay *>(node);
+    auto *deepestBottomRight = ViewSplitter::terminalDisplayForWidget(node);
     QVERIFY(deepestBottomRight);
     QTRY_VERIFY_WITH_TIMEOUT(deepestBottomRight->hasFocus(), 5000);
 
@@ -7235,10 +7250,10 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     QCOMPARE(topSplitter->count(), 2);
     QCOMPARE(bottomSplitter->count(), 2);
 
-    auto *topLeft = qobject_cast<TerminalDisplay *>(topSplitter->widget(0));
-    auto *topRight = qobject_cast<TerminalDisplay *>(topSplitter->widget(1));
-    auto *bottomLeft = qobject_cast<TerminalDisplay *>(bottomSplitter->widget(0));
-    auto *bottomRight = qobject_cast<TerminalDisplay *>(bottomSplitter->widget(1));
+    auto *topLeft = ViewSplitter::terminalDisplayForWidget(topSplitter->widget(0));
+    auto *topRight = ViewSplitter::terminalDisplayForWidget(topSplitter->widget(1));
+    auto *bottomLeft = ViewSplitter::terminalDisplayForWidget(bottomSplitter->widget(0));
+    auto *bottomRight = ViewSplitter::terminalDisplayForWidget(bottomSplitter->widget(1));
     QVERIFY(topLeft);
     QVERIFY(topRight);
     QVERIFY(bottomLeft);
@@ -7399,15 +7414,15 @@ void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
     QCOMPARE(paneSplitter->count(), 2);
 
     auto *leftChild = qobject_cast<ViewSplitter *>(paneSplitter->widget(0));
-    auto *rightChild = qobject_cast<TerminalDisplay *>(paneSplitter->widget(1));
+    auto *rightChild = ViewSplitter::terminalDisplayForWidget(paneSplitter->widget(1));
     QVERIFY2(leftChild, "Expected left child of outer splitter to be a ViewSplitter");
     QVERIFY2(rightChild, "Expected right child of outer splitter to be a TerminalDisplay");
     QCOMPARE(rightChild, firstRightDisplay);
 
     QCOMPARE(leftChild->orientation(), Qt::Vertical);
     QCOMPARE(leftChild->count(), 2);
-    auto *topDisplay = qobject_cast<TerminalDisplay *>(leftChild->widget(0));
-    auto *bottomDisplay = qobject_cast<TerminalDisplay *>(leftChild->widget(1));
+    auto *topDisplay = ViewSplitter::terminalDisplayForWidget(leftChild->widget(0));
+    auto *bottomDisplay = ViewSplitter::terminalDisplayForWidget(leftChild->widget(1));
     QVERIFY2(topDisplay, "Expected top child of nested splitter to be a TerminalDisplay");
     QVERIFY2(bottomDisplay, "Expected bottom child of nested splitter to be a TerminalDisplay");
     QCOMPARE(topDisplay, originalDisplay);
