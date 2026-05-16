@@ -27,6 +27,11 @@ jobs:
           pr_title: 'Sync upstream KDE/konsole master'
           pr_commit_msg: 'Merge upstream KDE/konsole master'
           pr_labels: upstream-sync
+          # Close any older open PR carrying the upstream-sync label when a
+          # new sync runs, so at most one sync PR exists at a time. The
+          # branch name embeds the upstream hash, so each sync would
+          # otherwise leave a stale PR + branch behind.
+          is_pr_cleanup: true
           git_remote_pull_params: '--allow-unrelated-histories --no-commit --strategy=recursive'
           is_allow_hooks: true
           hooks: |
