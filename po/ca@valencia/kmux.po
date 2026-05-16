@@ -10,8 +10,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: konsole\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-05-11 00:47+0000\n"
-"PO-Revision-Date: 2026-05-01 10:08+0200\n"
+"POT-Creation-Date: 2026-05-13 00:49+0000\n"
+"PO-Revision-Date: 2026-05-11 09:30+0200\n"
 "Last-Translator: Josep M. Ferrer <txemaq@gmail.com>\n"
 "Language-Team: Catalan <kde-i18n-ca@kde.org>\n"
 "Language: ca@valencia\n"
@@ -1477,8 +1477,8 @@ msgstr "Mostra l'accés ràpid"
 #, kde-format
 msgid "No quick commands found. You can add one on Plugins -> Quick Commands"
 msgstr ""
-"No s'ha trobat cap ordre ràpida. Podeu afegir-ne una a «Connectors → Ordres» "
-"ràpides"
+"No s'ha trobat cap ordre ràpida. Podeu afegir-ne una en «Connectors → "
+"Ordres» ràpides"
 
 #: plugins/QuickCommands/quickcommandsplugin.cpp:124
 #, kde-format
@@ -1613,7 +1613,7 @@ msgstr "Mostra l'accés ràpid per a les accions SSH"
 #, kde-format
 msgid "No saved SSH config found. You can add one on Plugins -> SSH Manager"
 msgstr ""
-"No s'ha trobat cap configuració SSH guardada. Podeu afegir-ne una a "
+"No s'ha trobat cap configuració SSH guardada. Podeu afegir-ne una en "
 "«Connectors → Gestor de SSH»"
 
 #: plugins/SSHManager/sshmanagerplugin.cpp:147
@@ -3528,64 +3528,64 @@ msgstr "Ctrl"
 msgid "Enable thumbnails generation"
 msgstr "Activa la generació de les miniatures"
 
-#: terminalDisplay/TerminalDisplay.cpp:702
+#: terminalDisplay/TerminalDisplay.cpp:704
 #, kde-format
 msgid "Size: %1 x %2"
 msgstr "Mida: %1 x %2"
 
-#: terminalDisplay/TerminalDisplay.cpp:2421
+#: terminalDisplay/TerminalDisplay.cpp:2423
 #, kde-format
 msgid "Are you sure you want to paste %1 character?"
 msgid_plural "Are you sure you want to paste %1 characters?"
 msgstr[0] "Segur que voleu apegar %1 caràcter?"
 msgstr[1] "Segur que voleu apegar %1 caràcters?"
 
-#: terminalDisplay/TerminalDisplay.cpp:2422
+#: terminalDisplay/TerminalDisplay.cpp:2424
 #, kde-format
 msgid "Confirm Paste"
 msgstr "Confirmeu l'apegat"
 
-#: terminalDisplay/TerminalDisplay.cpp:2455
+#: terminalDisplay/TerminalDisplay.cpp:2457
 #, kde-format
 msgid "End Of Text/Interrupt: may exit the current process"
 msgstr "Final de text/Interrupció: pot eixir del procés actual"
 
-#: terminalDisplay/TerminalDisplay.cpp:2456
+#: terminalDisplay/TerminalDisplay.cpp:2458
 #, kde-format
 msgid "End Of Transmission: may exit the current process"
 msgstr "Final de transmissió: pot eixir del procés actual"
 
-#: terminalDisplay/TerminalDisplay.cpp:2457
+#: terminalDisplay/TerminalDisplay.cpp:2459
 #, kde-format
 msgid "Bell: will try to emit an audible warning"
 msgstr "Timbre: intentarà emetre un avís audible"
 
-#: terminalDisplay/TerminalDisplay.cpp:2458
+#: terminalDisplay/TerminalDisplay.cpp:2460
 #, kde-format
 msgid "Backspace"
 msgstr "Retrocés"
 
-#: terminalDisplay/TerminalDisplay.cpp:2459
+#: terminalDisplay/TerminalDisplay.cpp:2461
 #, kde-format
 msgid "Device Control Three/XOFF: suspends output"
 msgstr "Control tres del dispositiu/XOFF: suspén l'eixida"
 
-#: terminalDisplay/TerminalDisplay.cpp:2460
+#: terminalDisplay/TerminalDisplay.cpp:2462
 #, kde-format
 msgid "Substitute/Suspend: may suspend current process"
 msgstr "Substitució/Suspensió: pot suspendre el procés actual"
 
-#: terminalDisplay/TerminalDisplay.cpp:2461
+#: terminalDisplay/TerminalDisplay.cpp:2463
 #, kde-format
 msgid "Escape: used for manipulating terminal state"
 msgstr "Escapada: utilitzat per a manipular l'estat del terminal"
 
-#: terminalDisplay/TerminalDisplay.cpp:2462
+#: terminalDisplay/TerminalDisplay.cpp:2464
 #, kde-format
 msgid "File Separator/Quit: may abort the current process"
 msgstr "Separador de fitxer/Eixida: pot interrompre el procés actual"
 
-#: terminalDisplay/TerminalDisplay.cpp:2485
+#: terminalDisplay/TerminalDisplay.cpp:2487
 #, kde-format
 msgid ""
 "The text you're trying to paste contains hidden control characters, do you "
@@ -3594,31 +3594,31 @@ msgstr ""
 "El text que s'intenta apegar conté caràcters de control ocults. Els voleu "
 "filtrar?"
 
-#: terminalDisplay/TerminalDisplay.cpp:2488
+#: terminalDisplay/TerminalDisplay.cpp:2490
 #, kde-format
 msgctxt "@title"
 msgid "Confirm Paste"
 msgstr "Confirmeu l'apegat"
 
-#: terminalDisplay/TerminalDisplay.cpp:2489
+#: terminalDisplay/TerminalDisplay.cpp:2491
 #, kde-format
 msgctxt "@action:button"
 msgid "Paste &without control characters"
 msgstr "Apega &sense els caràcters de control"
 
-#: terminalDisplay/TerminalDisplay.cpp:2490
+#: terminalDisplay/TerminalDisplay.cpp:2492
 #, kde-format
 msgctxt "@action:button"
 msgid "&Paste everything"
 msgstr "A&pega-ho tot"
 
-#: terminalDisplay/TerminalDisplay.cpp:2491
+#: terminalDisplay/TerminalDisplay.cpp:2493
 #, kde-format
 msgctxt "@action:button"
 msgid "&Cancel"
 msgstr "C&ancel·la"
 
-#: terminalDisplay/TerminalDisplay.cpp:2722
+#: terminalDisplay/TerminalDisplay.cpp:2724
 #, kde-format
 msgid ""
 "<qt>Output has been <a href=\"https://en.wikipedia.org/wiki/"
@@ -3629,17 +3629,17 @@ msgstr ""
 "Software_flow_control\">suspés</a> en prémer «Ctrl+S». Premeu <b>Ctrl+Q</b> "
 "per a continuar.</qt>"
 
-#: terminalDisplay/TerminalDisplay.cpp:2777
+#: terminalDisplay/TerminalDisplay.cpp:2779
 #, kde-format
 msgid "This terminal is read-only."
 msgstr "Este terminal només és de lectura."
 
-#: terminalDisplay/TerminalDisplay.cpp:3183
+#: terminalDisplay/TerminalDisplay.cpp:3185
 #, kde-format
 msgid "Change &Directory To"
 msgstr "Canvia el &directori a"
 
-#: terminalDisplay/TerminalDisplay.cpp:3218
+#: terminalDisplay/TerminalDisplay.cpp:3220
 #, kde-format
 msgid "&Paste Location"
 msgstr "A&pega la ubicació"
@@ -4009,12 +4009,14 @@ msgid ""
 "Allow terminal programs to use the Kitty keyboard protocol for enhanced "
 "keyboard input"
 msgstr ""
+"Permet que els programes de terminal utilitzen el protocol de teclat Kitty "
+"per a l'entrada de teclat millorada"
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableKittyKeyboardButton)
 #: widgets/EditProfileAdvancedPage.ui:215
 #, kde-format
 msgid "Kitty keyboard protocol"
-msgstr ""
+msgstr "Protocol de teclat Kitty"
 
 #. i18n: ectx: property (text), widget (QLabel, label_14)
 #: widgets/EditProfileAdvancedPage.ui:238
@@ -6117,12 +6119,11 @@ msgid "Close Tab"
 msgstr "Tanca la pestanya"
 
 #: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
-#, fuzzy, kde-format
-#| msgid "&Continue Task"
+#, kde-format
 msgid "Container"
-msgstr "&Continua la tasca"
+msgstr "Contenidor"
 
 #: widgets/ViewContainer.cpp:987
 #, kde-format
 msgid "%1: %2"
-msgstr ""
+msgstr "%1: %2"
