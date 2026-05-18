@@ -2628,18 +2628,21 @@ void TerminalDisplay::copyToX11Selection(bool useSavedText)
     _doubleClickSelectedText.clear();
     _doubleClickSelectedHtml.clear();
 
-    QMimeData *mimeData = new QMimeData;
-    mimeData->setText(text);
-    if (!html.isEmpty()) {
-        mimeData->setHtml(html);
-    }
+    auto createMimeData = [&text, &html]() {
+        QMimeData *data = new QMimeData;
+        data->setText(text);
+        if (!html.isEmpty()) {
+            data->setHtml(html);
+        }
+        return data;
+    };
 
     if (QApplication::clipboard()->supportsSelection()) {
-        QApplication::clipboard()->setMimeData(mimeData, QClipboard::Selection);
+        QApplication::clipboard()->setMimeData(createMimeData(), QClipboard::Selection);
     }
 
     if (_autoCopySelectedText) {
-        QApplication::clipboard()->setMimeData(mimeData, QClipboard::Clipboard);
+        QApplication::clipboard()->setMimeData(createMimeData(), QClipboard::Clipboard);
     }
 }
 
