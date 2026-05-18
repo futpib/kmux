@@ -1,10 +1,25 @@
 # kmux - Konsole with Native tmux Integration
 
+**Like [iTerm2's tmux integration](https://iterm2.com/documentation-tmux-integration.html), but for Linux/KDE.**
+
 kmux is a fork of [Konsole](https://konsole.kde.org) (KDE's terminal emulator)
 that adds first-class tmux integration. Instead of running tmux inside a plain
 terminal, kmux communicates directly with a tmux server via tmux's control
 mode (`tmux -CC`), mapping tmux windows and panes onto native Konsole tabs and
-splits.
+splits — detach, reattach, and remote sessions included, with the full
+Konsole feature set on top.
+
+<!--
+TODO: demo GIF/asciinema goes here. kmux's value is visual — show tmux
+splits becoming native Konsole splits and the prefix palette in action.
+This is the single highest-converting addition to this README. Record on
+a real desktop session, drop the file under doc/, and reference it here.
+-->
+
+If you've used `tmux -CC` with iTerm2 on a Mac and missed it on Linux, this
+is that. The only comparable Linux option is WezTerm's (still-maturing)
+control-mode support; kmux instead builds the integration on Konsole's full
+KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
 
 ## Features
 
@@ -39,7 +54,18 @@ splits.
 - **Full Konsole feature set** — color schemes, keyboard shortcuts, KPart
   embedding, profiles, bookmarks, and everything else Konsole provides.
 
-## Building
+## Installation
+
+### Arch Linux (recommended)
+
+kmux is packaged on the AUR as
+[`kmux-git`](https://aur.archlinux.org/packages/kmux-git):
+
+```
+yay -S kmux-git        # or: paru -S kmux-git
+```
+
+### Build from source (other distributions / development)
 
 1. Install dependencies. On Arch Linux:
    ```
@@ -89,5 +115,6 @@ should be directed to the [Konsole project](https://bugs.kde.org/describecompone
 
 ## Quick Links
 - [kmux on GitHub](https://github.com/futpib/kmux)
+- [kmux-git on the AUR](https://aur.archlinux.org/packages/kmux-git)
 - [CI / Builds](https://github.com/futpib/kmux/actions)
 - [Upstream Konsole](https://konsole.kde.org)
