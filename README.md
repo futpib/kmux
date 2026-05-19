@@ -9,12 +9,7 @@ mode (`tmux -CC`), mapping tmux windows and panes onto native Konsole tabs and
 splits — detach, reattach, and remote sessions included, with the full
 Konsole feature set on top.
 
-<!--
-TODO: demo GIF/asciinema goes here. kmux's value is visual — show tmux
-splits becoming native Konsole splits and the prefix palette in action.
-This is the single highest-converting addition to this README. Record on
-a real desktop session, drop the file under doc/, and reference it here.
--->
+https://github.com/user-attachments/assets/65cf72f8-b589-448d-a1ac-8d8eaed0d316
 
 If you've used `tmux -CC` with iTerm2 on a Mac and missed it on Linux, this
 is that. The only comparable Linux option is WezTerm's (still-maturing)
