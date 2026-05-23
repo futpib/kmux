@@ -6,6 +6,8 @@
 
 #include "TmuxTreeModel.h"
 
+#include "TmuxTreeRowFormat.h"
+
 namespace Konsole
 {
 
@@ -49,10 +51,11 @@ void TmuxTreeModel::decodeId(quintptr id, int &sessionRow, int &windowRow, int &
     sessionRow = int(id >> 24);
 }
 
-void TmuxTreeModel::setData(const QList<TmuxController::SessionDescriptor> &sessions)
+void TmuxTreeModel::setData(const QList<TmuxController::SessionDescriptor> &sessions, const QString &hostShort)
 {
     beginResetModel();
     _sessions.clear();
+    _hostShort = hostShort;
     for (const auto &src : sessions) {
         SessionInfo s;
         s.sessionId = src.sessionId;
@@ -62,11 +65,13 @@ void TmuxTreeModel::setData(const QList<TmuxController::SessionDescriptor> &sess
             WindowInfo w;
             w.windowId = srcW.windowId;
             w.name = srcW.name;
+            w.flags = srcW.flags;
             w.active = srcW.active;
             for (const auto &srcP : srcW.panes) {
                 PaneInfo p;
                 p.paneId = srcP.paneId;
                 p.title = srcP.title;
+                p.command = srcP.command;
                 p.active = srcP.active;
                 w.panes.append(p);
             }
@@ -210,8 +215,20 @@ QVariant TmuxTreeModel::data(const QModelIndex &idx, int role) const
             return {};
         const WindowInfo &w = _sessions[sessionIdx].windows[idx.row()];
         switch (role) {
-        case Qt::DisplayRole:
-            return w.name.isEmpty() ? QStringLiteral("window %1").arg(w.windowId) : w.name;
+        case Qt::DisplayRole: {
+            // Mirror tmux choose-tree's per-row format (window-tree.c's
+            // WINDOW_TREE_DEFAULT_FORMAT): "<name><flags>" plus a
+            // `: "<pane_title>"` suffix iff the window has exactly one
+            // pane and that pane's title is non-trivial.
+            TmuxTreeRowFormat::WindowRow row;
+            row.name = w.name.isEmpty() ? QStringLiteral("window %1").arg(w.windowId) : w.name;
+            row.flags = w.flags;
+            row.paneCount = w.panes.size();
+            if (row.paneCount == 1) {
+                row.singlePaneTitle = w.panes.first().title;
+            }
+            return TmuxTreeRowFormat::formatWindow(row, _hostShort);
+        }
         case NodeTypeRole:
             return int(WindowNode);
         case IdRole:
@@ -233,8 +250,17 @@ QVariant TmuxTreeModel::data(const QModelIndex &idx, int role) const
             return {};
         const PaneInfo &p = _sessions[sessionIdx].windows[windowIdx].panes[idx.row()];
         switch (role) {
-        case Qt::DisplayRole:
-            return p.title.isEmpty() ? QStringLiteral("pane %%1").arg(p.paneId) : p.title;
+        case Qt::DisplayRole: {
+            // Pane-row half of WINDOW_TREE_DEFAULT_FORMAT:
+            // "<pane_current_command>[*active][Mmarked][: "title"]".
+            // Fall back to `pane %<id>` if the command name is empty
+            // (e.g. during pane teardown) so the row still has a label.
+            TmuxTreeRowFormat::PaneRow row;
+            row.command = p.command.isEmpty() ? QStringLiteral("pane %%1").arg(p.paneId) : p.command;
+            row.title = p.title;
+            row.active = p.active;
+            return TmuxTreeRowFormat::formatPane(row, _hostShort);
+        }
         case NodeTypeRole:
             return int(PaneNode);
         case IdRole:

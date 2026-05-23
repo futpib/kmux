@@ -67,16 +67,20 @@ public:
     void requestSwitchSession(int sessionId);
 
     // Asynchronously query tmux for all sessions on the server.
-    // Callback receives a list of {sessionId, sessionName, windows}
-    // where each window has {windowId, windowName, panes (id+title)}.
+    // Callback receives the session/window/pane tree plus tmux's
+    // `#{host_short}` (used by the tree-row formatter to suppress
+    // default PS1-set "user@host" pane titles, matching upstream
+    // tmux's window-tree.c behavior).
     struct PaneDescriptor {
         int paneId = -1;
         QString title;
+        QString command; // pane_current_command, e.g. "claude", "bash", "vim"
         bool active = false;
     };
     struct WindowDescriptor {
         int windowId = -1;
         QString name;
+        QString flags; // tmux window_flags, e.g. "*", "-", "!"
         bool active = false;
         QList<PaneDescriptor> panes;
     };
@@ -86,7 +90,7 @@ public:
         bool active = false;
         QList<WindowDescriptor> windows;
     };
-    using TreeCallback = std::function<void(QList<SessionDescriptor>)>;
+    using TreeCallback = std::function<void(QList<SessionDescriptor>, QString hostShort)>;
     void queryTree(TreeCallback callback);
 
     bool hasPane(int paneId) const;

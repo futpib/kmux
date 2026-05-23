@@ -136,10 +136,10 @@ void TmuxTreeSwitcher::updateState()
 {
     // Query tmux for all sessions/windows/panes across the whole server.
     QPointer<TmuxTreeSwitcher> self(this);
-    _controller->queryTree([self](QList<TmuxController::SessionDescriptor> sessions) {
+    _controller->queryTree([self](QList<TmuxController::SessionDescriptor> sessions, QString hostShort) {
         if (!self)
             return;
-        self->_model->setData(sessions);
+        self->_model->setData(sessions, hostShort);
         self->applyInitialExpansion();
         self->reselectFirst();
     });

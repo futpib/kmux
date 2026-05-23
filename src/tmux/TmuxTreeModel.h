@@ -40,7 +40,7 @@ public:
 
     explicit TmuxTreeModel(QObject *parent = nullptr);
 
-    void setData(const QList<TmuxController::SessionDescriptor> &sessions);
+    void setData(const QList<TmuxController::SessionDescriptor> &sessions, const QString &hostShort);
     void setScore(const QModelIndex &index, int score);
 
     QModelIndex index(int row, int column, const QModelIndex &parent = {}) const override;
@@ -53,12 +53,14 @@ private:
     struct PaneInfo {
         int paneId = -1;
         QString title;
+        QString command;
         bool active = false;
         mutable int score = 0;
     };
     struct WindowInfo {
         int windowId = -1;
         QString name;
+        QString flags;
         bool active = false;
         QList<PaneInfo> panes;
         mutable int score = 0;
@@ -72,6 +74,7 @@ private:
     };
 
     QList<SessionInfo> _sessions;
+    QString _hostShort;
 
     // Internal pointer encoding: low 2 bits = level, upper bits = index
     // Level 0 = session, 1 = window, 2 = pane

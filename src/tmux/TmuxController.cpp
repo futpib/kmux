@@ -313,17 +313,23 @@ void TmuxController::queryTree(TreeCallback callback)
         QStringLiteral("session_attached"),
         QStringLiteral("window_id"),
         QStringLiteral("window_name"),
+        QStringLiteral("window_flags"),
         QStringLiteral("window_active"),
         QStringLiteral("pane_id"),
         QStringLiteral("pane_title"),
+        QStringLiteral("pane_current_command"),
         QStringLiteral("pane_active"),
+        // `host_short` is the same on every row (server-local); we read it
+        // off the first row and pass it back through the callback.
+        QStringLiteral("host_short"),
     });
     int currentSessionId = _sessionId;
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec),
                           [callback, currentSessionId, spec](bool success, const QString &response) {
                               QList<SessionDescriptor> sessions;
+                              QString hostShort;
                               if (!success) {
-                                  callback(sessions);
+                                  callback(sessions, hostShort);
                                   return;
                               }
                               QMap<int, int> sessionIndex; // sessionId -> idx in sessions
@@ -334,10 +340,15 @@ void TmuxController::queryTree(TreeCallback callback)
                                   bool sessionAttached = row.value(QStringLiteral("session_attached")).toInt() != 0;
                                   int windowId = row.value(QStringLiteral("window_id")).mid(1).toInt(); // strip @
                                   QString windowName = row.value(QStringLiteral("window_name"));
+                                  QString windowFlags = row.value(QStringLiteral("window_flags"));
                                   bool windowActive = row.value(QStringLiteral("window_active")).toInt() != 0;
                                   int paneId = row.value(QStringLiteral("pane_id")).mid(1).toInt(); // strip %
                                   QString paneTitle = row.value(QStringLiteral("pane_title"));
+                                  QString paneCommand = row.value(QStringLiteral("pane_current_command"));
                                   bool paneActive = row.value(QStringLiteral("pane_active")).toInt() != 0;
+                                  if (hostShort.isEmpty()) {
+                                      hostShort = row.value(QStringLiteral("host_short"));
+                                  }
 
                                   if (!sessionIndex.contains(sessionId)) {
                                       SessionDescriptor s;
@@ -354,6 +365,7 @@ void TmuxController::queryTree(TreeCallback callback)
                                       WindowDescriptor w;
                                       w.windowId = windowId;
                                       w.name = windowName;
+                                      w.flags = windowFlags;
                                       w.active = windowActive;
                                       windowIndex[wKey] = s.windows.size();
                                       s.windows.append(w);
@@ -363,10 +375,11 @@ void TmuxController::queryTree(TreeCallback callback)
                                   PaneDescriptor p;
                                   p.paneId = paneId;
                                   p.title = paneTitle;
+                                  p.command = paneCommand;
                                   p.active = paneActive;
                                   w.panes.append(p);
                               }
-                              callback(sessions);
+                              callback(sessions, hostShort);
                           });
 }
 
