@@ -279,6 +279,7 @@ void TmuxController::requestDetach()
 
 void TmuxController::requestSelectWindow(int windowId)
 {
+    qCDebug(KonsoleTmuxController) << "[tree-switcher] requestSelectWindow @" << windowId;
     _gateway->sendCommand(TmuxCommand(QStringLiteral("select-window")).windowTarget(windowId));
 }
 
@@ -923,8 +924,34 @@ void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
     if (sessionId != _sessionId) {
         return;
     }
-    // tmux just switched the active window in our session. Query the
-    // active pane of that window so our _activePaneId stays in sync.
+    // tmux just switched the active window in our session — most often
+    // because the user picked a different window in the tree switcher
+    // (TmuxTreeSwitcher::activateCurrent → requestSelectWindow), or via
+    // Prefix+0..9 / next-window / etc. Bring the matching Konsole tab to
+    // the front. Without this, focusPane below only moves focus inside a
+    // *hidden* tab — leaving the user looking at whichever tab they were
+    // viewing when they opened the picker (the "i stay on the tab i was
+    // on" symptom). Use OtherFocusReason so the echo-to-tmux path in
+    // ViewManager::controllerChanged treats this as programmatic and
+    // skips bouncing a redundant select-window back to tmux. setFocus on
+    // the active TerminalDisplay drives the title-update chain
+    // (compositeFocusChanged → viewFocused → controllerChanged →
+    // MainWindow::updateWindowCaption); QStackedLayout's own setFocus on
+    // the page widget doesn't always reach the inner display.
+    int tabIndex = _windowToTabIndex.value(windowId, -1);
+    if (auto *container = _viewManager->activeContainer(); container && tabIndex >= 0) {
+        container->setCurrentIndex(tabIndex, Qt::OtherFocusReason);
+        if (auto *splitter = qobject_cast<ViewSplitter *>(container->currentWidget())) {
+            if (TerminalDisplay *td = splitter->activeTerminalDisplay()) {
+                td->setFocus(Qt::OtherFocusReason);
+            }
+        }
+        qCDebug(KonsoleTmuxController) << "onSessionWindowChanged: switched Konsole tab to" << tabIndex
+                                       << "for tmux window @" << windowId;
+    }
+    // Query the active pane of the new window so our _activePaneId stays
+    // in sync, then focus its TerminalDisplay (now visible because the
+    // tab swap above brought its parent tab forward).
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).windowTarget(windowId).format(QStringLiteral("#{pane_id} #{pane_active}")),
                           [this](bool success, const QString &response) {
                               if (!success)
