@@ -51,21 +51,9 @@ TerminalDisplay *terminalDisplayFromWidget(QWidget *widget)
     return widget->findChild<TerminalDisplay *>(QString(), Qt::FindDirectChildrenOnly);
 }
 
-QWidget *containerWidgetForDisplayImpl(TerminalDisplay *display)
-{
-    if (display == nullptr) {
-        return nullptr;
-    }
-    QWidget *parent = display->parentWidget();
-    if (parent != nullptr && parent->property(kTerminalContainerProperty).toBool()) {
-        return parent;
-    }
-    return display;
-}
-
 QWidget *ensureContainerWidget(TerminalDisplay *display)
 {
-    QWidget *container = containerWidgetForDisplayImpl(display);
+    QWidget *container = ViewSplitter::containerWidgetForDisplay(display);
     if (container == nullptr || container != display) {
         return container;
     }
@@ -122,7 +110,14 @@ void ViewSplitter::setTmuxMode(bool tmuxMode)
 
 QWidget *ViewSplitter::containerWidgetForDisplay(TerminalDisplay *display)
 {
-    return containerWidgetForDisplayImpl(display);
+    if (display == nullptr) {
+        return nullptr;
+    }
+    QWidget *parent = display->parentWidget();
+    if (parent != nullptr && parent->property(kTerminalContainerProperty).toBool()) {
+        return parent;
+    }
+    return display;
 }
 
 TerminalDisplay *ViewSplitter::terminalDisplayForWidget(QWidget *widget)
@@ -457,6 +452,7 @@ void restoreAll(QList<TerminalDisplay *> &&terminalDisplays, QList<ViewSplitter 
     }
     for (auto terminalDisplay : terminalDisplays) {
         terminalDisplay->setVisible(true);
+        ViewSplitter::containerWidgetForDisplay(terminalDisplay)->setVisible(true);
     }
 }
 }
@@ -475,6 +471,7 @@ bool ViewSplitter::hideRecurse(TerminalDisplay *currentTerminalDisplay)
                 allHidden = false;
             } else {
                 maybeTerminalDisplay->setVisible(false);
+                containerWidgetForDisplay(maybeTerminalDisplay)->setVisible(false);
             }
         }
     }
@@ -525,6 +522,11 @@ void ViewSplitter::handleMinimizeMaximize(bool maximize, bool zoom)
             if (auto *maybeSplitter = qobject_cast<ViewSplitter *>(widgetAt)) {
                 maybeSplitter->hideRecurse(currentTerminalDisplay);
             }
+
+            if (auto *maybeParentSplitter = qobject_cast<ViewSplitter *>(widgetAt->parentWidget())) {
+                maybeParentSplitter->hideRecurse(currentTerminalDisplay);
+            }
+
             if (auto maybeTerminalDisplay = qobject_cast<TerminalDisplay *>(widgetAt)) {
                 if (maybeTerminalDisplay != currentTerminalDisplay) {
                     maybeTerminalDisplay->setVisible(false);
