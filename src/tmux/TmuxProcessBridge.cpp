@@ -134,6 +134,14 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
             _process->setWorkingDirectory(logDir);
         }
     }
+    // `-u` forces tmux to set CLIENT_UTF8 unconditionally. Without it tmux
+    // probes LC_ALL/LC_CTYPE/LANG for "UTF-8" and, when none match (e.g.
+    // when invoked over `--rsh ssh ...` to a host whose sshd doesn't
+    // forward LC_*), runs `utf8_sanitize` on every control-mode response
+    // — turning non-ASCII bytes into `_`. That mangles `#{pane_title}`
+    // (and anything else with multi-byte chars) before we ever see it.
+    // The control-mode protocol is UTF-8 capable, but it's opt-in.
+    args << QStringLiteral("-u");
     args << QStringLiteral("-C");
     args << command;
     _process->start(executable, args);

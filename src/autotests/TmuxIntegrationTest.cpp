@@ -675,6 +675,138 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()
+{
+    // Regression for the `kmux --rsh ssh host` UTF-8 sanitization bug:
+    // sshd doesn't forward LC_*/LANG by default, so the remote tmux client
+    // probes locale, finds POSIX, and runs utf8_sanitize() on every
+    // control-mode response — turning ✳ (U+2733) and friends into `_`
+    // before kmux ever sees them. Fix: TmuxProcessBridge passes `-u` to
+    // tmux, forcing CLIENT_UTF8 regardless of locale.
+    //
+    // We don't need real SSH for this test: a one-line bash script that
+    // drops the host arg and clears locale env vars reproduces the exact
+    // condition. Without the `-u` fix this test fails with `_` in tabText.
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    // Mock ssh: $1 is the "host", rest is the command. Strip host, wipe
+    // locale, exec the rest. This is what real sshd hands tmux when LC_*
+    // isn't in AcceptEnv.
+    const QString mockRsh = m_tmuxTmpDir.path() + QStringLiteral("/mock_ssh.sh");
+    {
+        QFile f(mockRsh);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("#!/bin/bash\n"
+                "shift  # drop the \"remote host\" arg\n"
+                "# Reproduce what sshd hands to its exec child: no LC_*/LANG,\n"
+                "# no TMUX. (tmux short-circuits to CLIENT_UTF8 if TMUX is set,\n"
+                "# so leaving it inherited would mask the bug we're testing.)\n"
+                "unset LANG LANGUAGE LC_ALL LC_CTYPE LC_COLLATE LC_MESSAGES LC_NUMERIC LC_TIME TMUX TMUX_PANE\n"
+                "export LC_ALL=POSIX LC_CTYPE=POSIX\n"
+                "exec \"$@\"\n");
+        f.close();
+    }
+    QVERIFY(QFile::setPermissions(mockRsh,
+                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    QProcess sendOsc;
+    sendOsc.start(tmuxPath,
+                  {QStringLiteral("-S"),
+                   ctx.socketPath,
+                   QStringLiteral("send-keys"),
+                   QStringLiteral("-t"),
+                   ctx.sessionName,
+                   QStringLiteral("printf '\\033]2;\\xe2\\x9c\\xb3 idle-marker\\033\\\\'"),
+                   QStringLiteral("Enter")});
+    QVERIFY(sendOsc.waitForFinished(5000));
+    QCOMPARE(sendOsc.exitCode(), 0);
+    QTest::qWait(500);
+
+    // Confirm tmux server stored ✳.
+    QProcess readTitle;
+    readTitle.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath,
+                               QStringLiteral("display-message"),
+                               QStringLiteral("-t"), ctx.sessionName,
+                               QStringLiteral("-p"), QStringLiteral("#{pane_title}")});
+    QVERIFY(readTitle.waitForFinished(5000));
+    QVERIFY2(readTitle.readAllStandardOutput().trimmed().contains("\xe2\x9c\xb3"),
+             "tmux server didn't store ✳ — OSC delivery failed, test premise broken");
+
+    // Attach kmux through the mock rsh wrapper. This forces TmuxProcessBridge
+    // through the rsh code path AND wipes the locale that tmux would otherwise
+    // pick up — reproducing the SSH condition without needing SSH.
+    QPointer<MainWindow> mw = new MainWindow();
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    const bool started = bridge->start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath},
+        {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName},
+        {mockRsh, QStringLiteral("fake-host")});
+    QVERIFY2(started, "TmuxProcessBridge failed to start under mock rsh");
+
+    auto *container = mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container->count() >= 1, 10000);
+
+    const auto sessions = mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    Session *paneSession = sessions.first();
+
+    paneSession->setTabTitleFormat(Session::LocalTabTitle, QStringLiteral("%w"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(paneSession->userTitle().contains(QChar(0x2733)), 10000);
+
+    qWarning().noquote() << "rsh+POSIX userTitle bytes :"
+                         << paneSession->userTitle().toUtf8().toHex(' ');
+
+    auto *sessionCtrl = mw->viewManager()->activeViewController();
+    QVERIFY(sessionCtrl);
+    QVERIFY(QMetaObject::invokeMethod(sessionCtrl, "snapshot", Qt::DirectConnection));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
+    QVERIFY(controller);
+    int paneId = controller->paneIdForSession(paneSession);
+    int windowId = controller->windowIdForPane(paneId);
+    int tabIndex = controller->windowToTabIndex().value(windowId, -1);
+    QVERIFY(tabIndex >= 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(
+        container->tabText(tabIndex).contains(QStringLiteral("idle-marker")),
+        10000);
+
+    const QString tabText = container->tabText(tabIndex);
+    qWarning().noquote() << "rsh+POSIX tab text bytes  :"
+                         << tabText.toUtf8().toHex(' ')
+                         << " text=[" << tabText << "]";
+
+    // The whole point of the fix: even under POSIX locale on the rsh side,
+    // ✳ must survive because tmux is invoked with `-u`.
+    QVERIFY2(tabText.contains(QChar(0x2733)),
+             qPrintable(QStringLiteral("tab text lost ✳ under mock rsh; got: [%1]").arg(tabText)));
+
+    const auto allSessions = mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!mw, 10000);
+    delete mw.data();
+}
+
 void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();

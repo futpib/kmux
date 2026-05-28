@@ -106,6 +106,7 @@ private Q_SLOTS:
     void testClosePaneFromSessionControllerConfirmed();
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();
+    void testTabTextPreservesEmojiOverMockRshStrippingLocale();
 
 private:
     QTemporaryDir m_tmuxTmpDir;
