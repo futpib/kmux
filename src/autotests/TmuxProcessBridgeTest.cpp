@@ -46,6 +46,15 @@ void TmuxProcessBridgeTest::killTmuxServer()
     QProcess kill;
     kill.start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath(), QStringLiteral("kill-server")});
     kill.waitForFinished(5000);
+    // `kill-server` is async: the client returns after queueing the request,
+    // but the server takes a moment to exit and unlink its socket. If the
+    // next test races in with `new-session -d` while the socket is still on
+    // disk, it connects to the dying server and hits "server exited
+    // unexpectedly". Poll until the socket is gone (cap at 2s).
+    QDeadlineTimer deadline(2000);
+    while (QFile::exists(tmuxSocketPath()) && !deadline.hasExpired()) {
+        QTest::qWait(20);
+    }
 }
 
 void TmuxProcessBridgeTest::testConnectNoServer()
