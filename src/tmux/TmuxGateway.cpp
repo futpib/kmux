@@ -42,6 +42,20 @@ void TmuxGateway::processLine(const QByteArray &line)
             // If ID doesn't match, ignore (could be a nested server response)
             return;
         }
+        // tmux can interleave notifications (%session-changed,
+        // %window-add, etc.) inside server-originated blocks as
+        // side-effects of whatever caused the block (e.g. `new-session
+        // -A` emitting %session-changed). Route them to the handler so
+        // controller state stays in sync; without this, %session-changed
+        // gets dropped, _sessionId stays -1, and follow-up
+        // %session-window-changed events silently no-op on the mismatch.
+        // Inside client-originated blocks the body is opaque payload —
+        // even lines that happen to start with `%` are response data,
+        // not notifications.
+        if (_serverOriginated && line.startsWith("%")) {
+            handleNotification(line);
+            return;
+        }
         // Accumulate response data
         if (!_serverOriginated) {
             if (!_currentCommand.response.isEmpty()) {

@@ -56,6 +56,7 @@ ecm_add_tests(
     TerminalInterfaceTest.cpp
     TerminalTest.cpp
     TmuxFormatSpecTest.cpp
+    TmuxGatewayTest.cpp
     TmuxLayoutParserTest.cpp
     TmuxTreeRowFormatTest.cpp
     ViewManagerTest.cpp

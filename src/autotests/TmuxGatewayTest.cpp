@@ -1,0 +1,93 @@
+/*
+    SPDX-FileCopyrightText: 2026 Konsole contributors
+
+    SPDX-License-Identifier: GPL-2.0-or-later
+*/
+
+#include "TmuxGatewayTest.h"
+
+#include <QSignalSpy>
+#include <QTest>
+
+#include "../tmux/TmuxGateway.h"
+
+using namespace Konsole;
+
+void TmuxGatewayTest::testNotificationInsideServerOriginatedBlockIsRouted()
+{
+    // Repro for the dropped-notification bug. When tmux starts (or in any
+    // other server-originated %begin/%end where no kmux command is queued),
+    // tmux may interleave notifications inside the block — e.g. when
+    // `new-session -A` triggers `%session-changed` as a side effect of the
+    // server creating the session, and that arrives between %begin and
+    // %end of an unrelated server-originated block.
+    //
+    // The gateway used to silently drop every non-%end line in a
+    // server-originated block. That meant %session-changed never reached
+    // the controller, _sessionId stayed -1, and downstream
+    // %session-window-changed handling early-returned on the sessionId
+    // mismatch — producing the "tab switch silently no-ops" symptom.
+    TmuxGateway gateway([](const QByteArray &) {});
+
+    QSignalSpy sessionChangedSpy(&gateway, &TmuxGateway::sessionChanged);
+    QVERIFY(sessionChangedSpy.isValid());
+
+    // Server-originated block (no pending commands when %begin arrives →
+    // gateway flags it server-originated). Flag field "0" makes it
+    // explicit; the no-pending-command path would also do it.
+    gateway.processLine("%begin 1779000000 1 0");
+    gateway.processLine("%session-changed $7 main");
+    gateway.processLine("%end 1779000000 1 0");
+
+    QCOMPARE(sessionChangedSpy.count(), 1);
+    QCOMPARE(sessionChangedSpy.first().at(0).toInt(), 7);
+    QCOMPARE(sessionChangedSpy.first().at(1).toString(), QStringLiteral("main"));
+}
+
+void TmuxGatewayTest::testNotificationOutsideAnyBlockIsRouted()
+{
+    // Baseline: notifications outside any %begin/%end block must reach
+    // their signal. This is the always-worked path; we assert it so the
+    // fix to the inside-block path doesn't accidentally break it.
+    TmuxGateway gateway([](const QByteArray &) {});
+
+    QSignalSpy spy(&gateway, &TmuxGateway::sessionChanged);
+    gateway.processLine("%session-changed $3 other");
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.first().at(0).toInt(), 3);
+    QCOMPARE(spy.first().at(1).toString(), QStringLiteral("other"));
+}
+
+void TmuxGatewayTest::testResponseInsideClientOriginatedBlockIsCaptured()
+{
+    // Make sure routing notifications inside server-originated blocks
+    // didn't break the client-originated body capture: command responses
+    // (non-%-prefixed lines and even %-prefixed text that's part of a
+    // response payload) must still accumulate into the command response.
+    TmuxGateway gateway([](const QByteArray &) {});
+
+    bool fired = false;
+    QString got;
+    TmuxCommand cmd(QStringLiteral("display-message"));
+    gateway.sendCommand(cmd, [&](bool ok, const QString &response) {
+        fired = true;
+        got = response;
+        Q_UNUSED(ok);
+    });
+
+    // tmux replies with a client-originated block (flags=1). Body is plain
+    // data — even though it starts with `%` it's the literal pane title,
+    // not a notification. The gateway must not reroute it to
+    // handleNotification.
+    gateway.processLine("%begin 1779000000 1 1");
+    gateway.processLine("hello world");
+    gateway.processLine("%end 1779000000 1 1");
+
+    QVERIFY(fired);
+    QCOMPARE(got, QStringLiteral("hello world"));
+}
+
+QTEST_MAIN(TmuxGatewayTest)
+
+#include "moc_TmuxGatewayTest.cpp"
