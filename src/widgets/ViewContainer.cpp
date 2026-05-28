@@ -879,6 +879,16 @@ void TabbedViewContainer::updateActivity(ViewProperties *item)
     if (!controller || !controller->view()) {
         return;
     }
+    // During pane teardown a closing display can fire one last activity
+    // signal *after* it has been reparented out of its splitter (the
+    // controller is still alive when QSplitter::removeWidget detaches the
+    // display, and Session::outputChanged from the dying shell relays
+    // through SessionController::fireActivity to here). Skip the update —
+    // a closing tab doesn't need its activity flag recomputed — otherwise
+    // topLevelSplitterForDisplay Q_ASSERTs on the missing splitter parent.
+    if (!ViewSplitter::parentSplitterForDisplay(controller->view())) {
+        return;
+    }
     auto *topLevelSplitter = topLevelSplitterForDisplay(controller->view());
     if (!topLevelSplitter) {
         return;
