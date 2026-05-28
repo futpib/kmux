@@ -121,7 +121,11 @@ trap cleanup_kmux EXIT
 WIN=""
 for _ in $(seq 1 100); do
     if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared (see $LOGDIR/kmux.log)" >&2
+        echo "FAIL: kmux exited before window appeared" >&2
+        echo "--- $LOGDIR/kmux.log ---" >&2
+        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
+        echo "--- $LOGDIR/xvfb.log ---" >&2
+        tail -20 "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
         exit 1
     fi
     WIN=$(xdotool search --name kmux 2>/dev/null | tail -1 || true)

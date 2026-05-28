@@ -130,10 +130,27 @@ kmux_test_setup() {
         # Poll until the Xvfb socket is up. Probe via xdotool (already a
         # required dependency) rather than xdpyinfo, so the test scaffold
         # has one fewer xorg-* package to pull in.
-        for _ in $(seq 1 50); do
-            xdotool getdisplaygeometry >/dev/null 2>&1 && break
+        #
+        # Bail (not silently continue) if Xvfb doesn't come up within
+        # budget. Previously this loop returned with no error after 5s,
+        # so under heavy load (e.g. CI runner during build) kmux could
+        # launch against a DISPLAY whose Xvfb wasn't accepting yet and
+        # die with "cannot connect to X server" — surfacing later as the
+        # opaque "kmux exited before window appeared" in the caller.
+        local xvfb_ready=0
+        for _ in $(seq 1 100); do
+            if xdotool getdisplaygeometry >/dev/null 2>&1; then
+                xvfb_ready=1
+                break
+            fi
             sleep 0.1
         done
+        if (( xvfb_ready != 1 )); then
+            echo "FAIL: Xvfb on $DISPLAY didn't accept connections within 10s" >&2
+            echo "--- xvfb.log ---" >&2
+            cat "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
+            kmux_test_bail 2 "Xvfb startup timed out"
+        fi
         eval "$(dbus-launch --sh-syntax)"
         export DBUS_SESSION_BUS_ADDRESS
         export DBUS_SESSION_BUS_PID
