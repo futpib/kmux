@@ -114,7 +114,7 @@ tmux -S "$SOCKET" list-panes -t "$SESSION" \
 echo "=== launching kmux to attach ==="
 QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true' \
     QT_ASSUME_STDERR_HAS_CONSOLE=1 \
-    "$KMUX" -S "$SOCKET" -s "$SESSION" -geometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
+    "$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
 KMUX_PID=$!
 
 cleanup_kmux() {

@@ -88,18 +88,22 @@ echo "=== launching kmux to attach to existing session ==="
 # a stray session and leaving our pre-created one untouched. The short flags
 # are not Qt-reserved and pass through cleanly.
 #
-# -geometry to force a non-trivial pane size: bare Xvfb has no window manager
-# enforcing initial sizes, so kmux's default size hint resolves to a few
-# cols × one row — too degenerate for the wrap assertion to be meaningful.
+# --qwindowgeometry to force a non-trivial pane size: bare Xvfb has no window
+# manager enforcing initial sizes, so kmux's default size hint resolves to a
+# few cols × one row — too degenerate for the wrap assertion to be meaningful.
 # 1100x700 fits inside the 1280x720 Xvfb screen lib.sh provisions and gives
-# a comfortable ~150x45 pane.
+# a comfortable ~150x45 pane. The single-letter `-geometry` form is Qt5-era;
+# Qt6's QCommandLineParser only honours `--qwindowgeometry` (or its single-
+# dash long form `-qwindowgeometry`). Passing `-geometry` instead made
+# QCommandLineParser treat it as `-g <eometry>` and abort with "Unknown
+# option 'g'.", which silently broke this test once the CI image got Qt6.
 #
 # konsole.tmux.* debug logging produces the refresh-client -C lines and
 # %layout-change events so a failure dump (below) can show what size kmux
 # advertised vs what tmux echoed back.
 QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true' \
     QT_ASSUME_STDERR_HAS_CONSOLE=1 \
-    "$KMUX" -S "$SOCKET" -s "$SESSION" -geometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
+    "$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
 KMUX_PID=$!
 
 cleanup_kmux() {

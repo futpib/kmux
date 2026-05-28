@@ -58,7 +58,7 @@ echo "=== pre-creating tmux session ==="
 tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 200 -y 60
 
 echo "=== launching kmux to attach ==="
-"$KMUX" -S "$SOCKET" -s "$SESSION" -geometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
+"$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
 KMUX_PID=$!
 
 cleanup_kmux() {
