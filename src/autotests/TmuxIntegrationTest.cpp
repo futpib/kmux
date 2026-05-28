@@ -2020,7 +2020,13 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
         {
             QStringLiteral("-q"),
             QStringLiteral("-c"),
-            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            // TERM=xterm so tmux's terminfo lookup succeeds. In CI's
+            // archlinux container the inherited environment has TERM unset
+            // (no controlling terminal), so the spawned `tmux attach` would
+            // bail with "open terminal failed: terminal does not support
+            // clear", the second client never connects, and the
+            // list-clients QTRY_VERIFY below times out.
+            QStringLiteral("stty cols 40 rows 12; TERM=xterm ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
             QStringLiteral("/dev/null"),
         });
     QVERIFY(scriptProc.waitForStarted(5000));
@@ -2318,7 +2324,13 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
         {
             QStringLiteral("-q"),
             QStringLiteral("-c"),
-            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            // TERM=xterm so tmux's terminfo lookup succeeds. In CI's
+            // archlinux container the inherited environment has TERM unset
+            // (no controlling terminal), so the spawned `tmux attach` would
+            // bail with "open terminal failed: terminal does not support
+            // clear", the second client never connects, and the
+            // list-clients QTRY_VERIFY below times out.
+            QStringLiteral("stty cols 40 rows 12; TERM=xterm ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
             QStringLiteral("/dev/null"),
         });
     QVERIFY(scriptProc.waitForStarted(5000));
@@ -2456,7 +2468,13 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
         {
             QStringLiteral("-q"),
             QStringLiteral("-c"),
-            QStringLiteral("stty cols 40 rows 12; ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
+            // TERM=xterm so tmux's terminfo lookup succeeds. In CI's
+            // archlinux container the inherited environment has TERM unset
+            // (no controlling terminal), so the spawned `tmux attach` would
+            // bail with "open terminal failed: terminal does not support
+            // clear", the second client never connects, and the
+            // list-clients QTRY_VERIFY below times out.
+            QStringLiteral("stty cols 40 rows 12; TERM=xterm ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath + QStringLiteral(" attach -t ") + ctx.sessionName,
             QStringLiteral("/dev/null"),
         });
     QVERIFY(scriptProc.waitForStarted(5000));
