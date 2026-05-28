@@ -230,7 +230,11 @@ fi
 
 # Look for the fix's success marker in the kmux log. This works even
 # when Xvfb's focus chain doesn't propagate to the title-update path.
-if rg -q "onSessionWindowChanged: switched Konsole tab" "$LOGDIR/kmux.log" 2>/dev/null; then
+# `grep -q` not `rg -q` — ripgrep isn't in the CI container's pacman
+# install list, and `rg` exiting "command not found" silently sent this
+# fallback to the FAIL branch under Xvfb (where the X title path is the
+# one that stalls).
+if grep -q "onSessionWindowChanged: switched Konsole tab" "$LOGDIR/kmux.log" 2>/dev/null; then
     echo "PASS: kmux switched the Konsole tab (X title didn't update — Xvfb focus quirk; see kmux.log)"
     exit 0
 fi
