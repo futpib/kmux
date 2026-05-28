@@ -12,8 +12,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: konsole\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-05-18 00:48+0000\n"
-"PO-Revision-Date: 2026-05-11 08:19+0300\n"
+"POT-Creation-Date: 2026-05-28 00:47+0000\n"
+"PO-Revision-Date: 2026-05-26 08:05+0300\n"
 "Last-Translator: Yuri Chornoivan <yurchor@ukr.net>\n"
 "Language-Team: Ukrainian <trans-uk@lists.fedoraproject.org>\n"
 "Language: uk\n"
@@ -1937,7 +1937,7 @@ msgstr "&Оптимізувати для друку (чорний текст б�
 msgid "&Scale output"
 msgstr "&Масштабувати результат"
 
-#: profile/Profile.cpp:285
+#: profile/Profile.cpp:286
 #, kde-format
 msgctxt "Name of the built-in profile"
 msgid "Built-in"
@@ -3598,7 +3598,7 @@ msgctxt "@action:button"
 msgid "&Cancel"
 msgstr "&Скасувати"
 
-#: terminalDisplay/TerminalDisplay.cpp:2727
+#: terminalDisplay/TerminalDisplay.cpp:2731
 #, kde-format
 msgid ""
 "<qt>Output has been <a href=\"https://en.wikipedia.org/wiki/"
@@ -3609,17 +3609,17 @@ msgstr ""
 "Software_flow_control\">призупинено</a> натисканням Ctrl+S. Натисніть <b>Ctrl"
 "+Q</b>, щоб його поновити.</qt>"
 
-#: terminalDisplay/TerminalDisplay.cpp:2782
+#: terminalDisplay/TerminalDisplay.cpp:2786
 #, kde-format
 msgid "This terminal is read-only."
 msgstr "Термінал відкрито лише для читання."
 
-#: terminalDisplay/TerminalDisplay.cpp:3188
+#: terminalDisplay/TerminalDisplay.cpp:3192
 #, kde-format
 msgid "Change &Directory To"
 msgstr "Змінити &каталог"
 
-#: terminalDisplay/TerminalDisplay.cpp:3223
+#: terminalDisplay/TerminalDisplay.cpp:3227
 #, kde-format
 msgid "&Paste Location"
 msgstr "&Вставити адресу"
@@ -4079,7 +4079,7 @@ msgstr "Змінити вибрану схему кольорів"
 #. i18n: ectx: property (text), widget (QPushButton, editColorSchemeButton)
 #: widgets/EditProfileAppearancePage.ui:82
 #: widgets/EditProfileGeneralPage.ui:276 widgets/EditProfileKeyboardPage.ui:73
-#: widgets/EditProfileMousePage.ui:320
+#: widgets/EditProfileMousePage.ui:330
 #, kde-format
 msgid "Edit..."
 msgstr "Змінити…"
@@ -4288,7 +4288,7 @@ msgstr "Плавне анімування курсора"
 
 #. i18n: ectx: attribute (title), widget (QWidget, tab_2)
 #. i18n: ectx: attribute (title), widget (QWidget, miscTab)
-#: widgets/EditProfileAppearancePage.ui:499 widgets/EditProfileMousePage.ui:252
+#: widgets/EditProfileAppearancePage.ui:499 widgets/EditProfileMousePage.ui:262
 #, kde-format
 msgctxt "Items that do not fit in other categories"
 msgid "Miscellaneous"
@@ -4921,12 +4921,12 @@ msgstr ""
 "Konsole було запущено до вмикання стільничних ефектів. Щоб побачити прозоре "
 "тло, вам слід перезапустити Konsole."
 
-#: widgets/EditProfileDialog.cpp:2041
+#: widgets/EditProfileDialog.cpp:2043
 #, kde-format
 msgid "Default for file type"
 msgstr "Типова для типу файлів"
 
-#: widgets/EditProfileDialog.cpp:2067
+#: widgets/EditProfileDialog.cpp:2069
 #, kde-format
 msgid ""
 "The format is e.g. 'editorExec PATH:LINE:COLUMN'\n"
@@ -4956,7 +4956,7 @@ msgstr ""
 "буде проігноровано — файл буде відкрито у типовому текстовому\n"
 "редакторі."
 
-#: widgets/EditProfileDialog.cpp:2080
+#: widgets/EditProfileDialog.cpp:2082
 #, kde-format
 msgid "Text Editor Custom Command"
 msgstr "Нетипова команда текстового редактора:"
@@ -5363,8 +5363,20 @@ msgstr ""
 msgid "Trim trailing spaces"
 msgstr "Вилучити кінцеві пробіли"
 
+#. i18n: ectx: property (toolTip), widget (QCheckBox, clearSelectionButton)
+#: widgets/EditProfileMousePage.ui:236
+#, kde-format
+msgid "Clear selection after copying"
+msgstr "Зняти позначення після копіювання"
+
+#. i18n: ectx: property (text), widget (QCheckBox, clearSelectionButton)
+#: widgets/EditProfileMousePage.ui:239
+#, kde-format
+msgid "Clear selection"
+msgstr "Зняти позначення"
+
 #. i18n: ectx: property (toolTip), widget (QCheckBox, underlineLinksButton)
-#: widgets/EditProfileMousePage.ui:266
+#: widgets/EditProfileMousePage.ui:276
 #, kde-format
 msgid ""
 "Text recognized as a link or an email address will be underlined when "
@@ -5374,13 +5386,13 @@ msgstr ""
 "підкреслено при наведенні на нього вказівника миші."
 
 #. i18n: ectx: property (text), widget (QCheckBox, underlineLinksButton)
-#: widgets/EditProfileMousePage.ui:269
+#: widgets/EditProfileMousePage.ui:279
 #, kde-format
 msgid "Underline links"
 msgstr "Підкреслювати посилання"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, underlineFilesButton)
-#: widgets/EditProfileMousePage.ui:276
+#: widgets/EditProfileMousePage.ui:286
 #, kde-format
 msgid ""
 "Text recognized as a file will be underlined when hovered by the mouse "
@@ -5390,14 +5402,14 @@ msgstr ""
 "вказівника миші."
 
 #. i18n: ectx: property (text), widget (QCheckBox, underlineFilesButton)
-#: widgets/EditProfileMousePage.ui:279
+#: widgets/EditProfileMousePage.ui:289
 #, kde-format
 msgid "Underline files"
 msgstr "Підкреслювати файли"
 
 #. i18n: ectx: property (toolTip), widget (QLabel, textEditorCommandLabel)
 #. i18n: ectx: property (toolTip), widget (QComboBox, textEditorCombo)
-#: widgets/EditProfileMousePage.ui:288 widgets/EditProfileMousePage.ui:307
+#: widgets/EditProfileMousePage.ui:298 widgets/EditProfileMousePage.ui:317
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Text editor to use when opening text file URLs at a given line/column."
@@ -5406,13 +5418,13 @@ msgstr ""
 "файлах, які задано як рядок і стовпчик."
 
 #. i18n: ectx: property (text), widget (QLabel, textEditorCommandLabel)
-#: widgets/EditProfileMousePage.ui:291
+#: widgets/EditProfileMousePage.ui:301
 #, kde-format
 msgid "Text Editor Command: "
 msgstr "Команда текстового редактора:"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, openLinksByDirectClickButton)
-#: widgets/EditProfileMousePage.ui:335
+#: widgets/EditProfileMousePage.ui:345
 #, kde-format
 msgid ""
 "Text recognized as a file, link or an email address can be opened by direct "
@@ -5422,19 +5434,19 @@ msgstr ""
 "буде відповідним чином оброблено у відповідь на клацання кнопкою миші."
 
 #. i18n: ectx: property (text), widget (QCheckBox, openLinksByDirectClickButton)
-#: widgets/EditProfileMousePage.ui:338
+#: widgets/EditProfileMousePage.ui:348
 #, kde-format
 msgid "Open underlined files/links by direct click"
 msgstr "Відкривати підкреслені файли і посилання безпосереднім клацанням"
 
 #. i18n: ectx: property (text), widget (QCheckBox, allowLinkEscapeSequenceButton)
-#: widgets/EditProfileMousePage.ui:349
+#: widgets/EditProfileMousePage.ui:359
 #, kde-format
 msgid "Allow escape sequences for links"
 msgstr "Дозволити екрановані послідовності для посилань"
 
 #. i18n: ectx: property (text), widget (QLabel, allowLinkEscapeSequenceButtonWarning)
-#: widgets/EditProfileMousePage.ui:356
+#: widgets/EditProfileMousePage.ui:366
 #, kde-format
 msgid ""
 "<b>WARNING</b>: This has security implications as it allows malicious URLs "
@@ -5446,19 +5458,19 @@ msgstr ""
 "<br>Зважте на це, перш ніж вмикати цей параметр."
 
 #. i18n: ectx: property (text), widget (QLabel, label_2)
-#: widgets/EditProfileMousePage.ui:374
+#: widgets/EditProfileMousePage.ui:384
 #, kde-format
 msgid "Allowed link formats: "
 msgstr "Дозволені формати посилань: "
 
 #. i18n: ectx: property (toolTip), widget (QLineEdit, linkEscapeSequenceTexts)
-#: widgets/EditProfileMousePage.ui:384
+#: widgets/EditProfileMousePage.ui:394
 #, kde-format
 msgid "The formats of possible links, like http://, https:// and file://"
 msgstr "Формати можливих посилань, зокрема http://, https:// і file://"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, ctrlRequiredForDragButton)
-#: widgets/EditProfileMousePage.ui:395
+#: widgets/EditProfileMousePage.ui:405
 #, kde-format
 msgid "Selected text will require control key plus click to drag."
 msgstr ""
@@ -5466,13 +5478,13 @@ msgstr ""
 "клавішу Ctrl."
 
 #. i18n: ectx: property (text), widget (QCheckBox, ctrlRequiredForDragButton)
-#: widgets/EditProfileMousePage.ui:398
+#: widgets/EditProfileMousePage.ui:408
 #, kde-format
 msgid "Require Ctrl key for drag && drop"
 msgstr "Перетягувати і скидати лише з натиснутою Ctrl"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableAlternateScrollingButton)
-#: widgets/EditProfileMousePage.ui:405
+#: widgets/EditProfileMousePage.ui:415
 #, kde-format
 msgid ""
 "Mouse scroll wheel will emulate up/down key presses in programs that use the "
@@ -5482,13 +5494,13 @@ msgstr ""
 "програмах, де використовується альтернативний буфер даних (наприклад, у less)"
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableAlternateScrollingButton)
-#: widgets/EditProfileMousePage.ui:408
+#: widgets/EditProfileMousePage.ui:418
 #, kde-format
 msgid "Enable Alternate Screen buffer scrolling"
 msgstr "Увімкнути гортання у альтернативному буфері"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, dropUrlsAsText)
-#: widgets/EditProfileMousePage.ui:415
+#: widgets/EditProfileMousePage.ui:425
 #, kde-format
 msgid ""
 "Always paste dropped files and URLs as text without offering move, copy and "
@@ -5498,13 +5510,13 @@ msgstr ""
 "пересування, копіювання чи створення посилання"
 
 #. i18n: ectx: property (text), widget (QCheckBox, dropUrlsAsText)
-#: widgets/EditProfileMousePage.ui:418
+#: widgets/EditProfileMousePage.ui:428
 #, kde-format
 msgid "Disable drag && drop menu for files && URLs"
 msgstr "Вимкнути меню перетягування зі скиданням для адрес і файлів"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, enableMouseWheelZoomButton)
-#: widgets/EditProfileMousePage.ui:425
+#: widgets/EditProfileMousePage.ui:435
 #, kde-format
 msgid "Pressing Ctrl+scrollwheel will increase/decrease the text size."
 msgstr ""
@@ -5512,14 +5524,14 @@ msgstr ""
 "тексту."
 
 #. i18n: ectx: property (text), widget (QCheckBox, enableMouseWheelZoomButton)
-#: widgets/EditProfileMousePage.ui:428
+#: widgets/EditProfileMousePage.ui:438
 #, kde-format
 msgid "Allow Ctrl+scrollwheel to zoom text size"
 msgstr ""
 "Дозволити змінювати масштаб тексту за допомогою Ctrl+коліщатко гортання"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, allowColorFilters)
-#: widgets/EditProfileMousePage.ui:435
+#: widgets/EditProfileMousePage.ui:445
 #, kde-format
 msgid ""
 "When positioning the mouse over a hexadecimal color it will be displayed in "
@@ -5529,13 +5541,13 @@ msgstr ""
 "показано у рамці поряд із вказівником миші"
 
 #. i18n: ectx: property (text), widget (QCheckBox, allowColorFilters)
-#: widgets/EditProfileMousePage.ui:438
+#: widgets/EditProfileMousePage.ui:448
 #, kde-format
 msgid "Preview Colors on hover"
 msgstr "Попередній пурегляд кольорів при наведенні"
 
 #. i18n: ectx: property (toolTip), widget (QCheckBox, allowMouseTrackingButton)
-#: widgets/EditProfileMousePage.ui:458
+#: widgets/EditProfileMousePage.ui:468
 #, kde-format
 msgid ""
 "Some terminal applications have mouse support, this allows them to get it by "
@@ -5547,7 +5559,7 @@ msgstr ""
 "програми."
 
 #. i18n: ectx: property (text), widget (QCheckBox, allowMouseTrackingButton)
-#: widgets/EditProfileMousePage.ui:461
+#: widgets/EditProfileMousePage.ui:471
 #, kde-format
 msgid "Allow terminal applications to handle clicks and drags"
 msgstr "Дозволити програмам з термінала обробляти клацання і перетягування"
@@ -6083,12 +6095,18 @@ msgid "Close Tab"
 msgstr "Закрити вкладку"
 
 #: widgets/ViewContainer.cpp:968 widgets/ViewContainer.cpp:977
-#, kde-format
+#, fuzzy, kde-format
+#| msgid "Container"
+msgctxt "As in Distrobox, Toolbox, Kapsule etc."
 msgid "Container"
 msgstr "Контейнер"
 
 #: widgets/ViewContainer.cpp:987
-#, kde-format
+#, fuzzy, kde-format
+#| msgid "%1: %2"
+msgctxt ""
+"%1 is the type of container (e.g. Distrobox, Toolbox, Kapsule etc.), %2 its "
+"name"
 msgid "%1: %2"
 msgstr "%1: %2"
 
