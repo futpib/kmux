@@ -42,6 +42,16 @@ void TmuxGateway::processLine(const QByteArray &line)
             // If ID doesn't match, ignore (could be a nested server response)
             return;
         }
+        // Notifications (lines starting with %) can appear inside
+        // server-originated blocks as side-effects of the startup command
+        // (e.g. %session-changed inside the new-session response).  Route
+        // them to handleNotification so the controller state is populated
+        // correctly.  Inside client-originated blocks the response text is
+        // plain data, not notifications, so we leave that path unchanged.
+        if (_serverOriginated && line.startsWith("%")) {
+            handleNotification(line);
+            return;
+        }
         // Accumulate response data
         if (!_serverOriginated) {
             if (!_currentCommand.response.isEmpty()) {

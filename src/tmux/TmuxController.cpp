@@ -921,6 +921,12 @@ void TmuxController::onSessionChanged(int sessionId, const QString &name)
 
 void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
 {
+    // If our session ID is still unknown (e.g. %session-changed arrived
+    // before we finished initialisation), accept the notification and
+    // learn the session ID from it so we can process future ones too.
+    if (_sessionId < 0) {
+        _sessionId = sessionId;
+    }
     if (sessionId != _sessionId) {
         return;
     }
