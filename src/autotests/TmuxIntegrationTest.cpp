@@ -6248,6 +6248,92 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToPane()
     delete attach.mw.data();
 }
 
+// Sibling of testTmuxPrefixPaletteSendsLiteralPrefixToPane, but the pane runs a
+// *TUI-style* program (alternate screen + raw/non-canonical tty) like claude or
+// vim, rather than a cooked-mode `cat`. The user reported that C-b C-b (the tmux
+// `send-prefix` chord — type a literal prefix byte into the focused program)
+// appears to work for cooked programs but not TUIs. send-prefix is a pure tmux
+// operation (tmux writes 0x02 to the pane's pty regardless of what's running),
+// so this *should* pass for a TUI too; the test pins that down. The meaningful
+// difference from the cooked case: raw mode delivers the byte immediately, so we
+// assert on a bare "\x02" with no trailing Enter to flush a line buffer.
+void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Turn the pane into a TUI: enter the alternate screen and put the tty in
+    // raw mode (no canonical line buffering, no echo), then exec cat so every
+    // byte tmux delivers lands in outFile immediately — no Enter required. The
+    // `> outFile` redirect creates the file before cat reads, so its existence
+    // is our "the TUI is ready" signal. stty/printf run in the shell's cooked
+    // mode (the line is executed only after we press Enter); raw mode takes
+    // effect for cat, the program under test.
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/ctrlb-prefix-tui.bin");
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("stty raw -echo; printf '\\033[?1049h'; exec cat > %1").arg(outFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QCOMPARE(controller->prefixShortcut(), QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    // First C-b — the kmux global QAction shortcut spawns the palette.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QVERIFY(palette->hasFocus());
+
+    // Second C-b — the palette resolves "C-b" to the default `send-prefix`
+    // binding and hands it to the gateway, then closes itself.
+    QTest::keyClick(palette, Qt::Key_B, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
+
+    // Raw mode: the byte is delivered to cat without a newline, so unlike the
+    // cooked sibling test we do NOT send Enter — the bare prefix byte must
+    // arrive on its own. A failure here (timeout / empty file) would confirm
+    // the reported "send-prefix doesn't reach a TUI" bug.
+    auto readFile = [&]() -> QByteArray {
+        QFile f(outFile);
+        if (!f.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return f.readAll();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 10000);
+
+    delete attach.mw.data();
+}
+
 namespace
 {
 // Helper: set up a tmux session with 2 windows: window 0 has 2 panes (split),
