@@ -31,6 +31,7 @@ private Q_SLOTS:
     void testTmuxTwoPaneSplitAttach();
     void testTmuxAttachContentRecovery();
     void testTmuxAttachComplexPromptRecovery();
+    void testTmuxAttachAlternateScreenRecovery();
     void testSplitterResizePropagatedToTmux();
     void testTmuxPaneTitleInfo();
     void testMainWindowTitleReflectsTmuxPane();

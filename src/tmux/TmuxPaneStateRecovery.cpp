@@ -139,6 +139,20 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
         session->emulation()->setImageSize(dims.second, dims.first);
     }
 
+    // If the pane is on the alternate screen (a full-screen TUI like htop/vim),
+    // capture-pane returns the *alternate* screen's contents — so we must switch
+    // to the alternate screen BEFORE injecting the captured frame. Entering the
+    // alternate screen clears it, so doing this after injection (as
+    // applyPaneState used to) would wipe the frame we just painted and leave the
+    // active screen blank — the TUI then only ever shows subsequent %output
+    // diffs on an empty screen. Entering it first means the frame lands on the
+    // alternate screen where it belongs.
+    const bool alternateOn = _paneStates.contains(paneId) && _paneStates[paneId].alternateOn;
+    if (alternateOn) {
+        static const char altScreenSeq[] = "\033[?1049h";
+        session->injectData(altScreenSeq, sizeof(altScreenSeq) - 1);
+    }
+
     // Clear any garbled content from %output that arrived before the
     // emulation was sized correctly
     static const char clearSeq[] = "\033[2J\033[H";
@@ -178,9 +192,12 @@ void TmuxPaneStateRecovery::applyPaneState(int paneId)
     const TmuxPaneState &state = _paneStates[paneId];
     QByteArray seq;
 
-    if (state.alternateOn) {
-        seq.append("\033[?1049h");
-    }
+    // Note: entering the alternate screen (\033[?1049h) is NOT done here. For an
+    // alternate-screen pane handleCapturePaneResponse switches to it *before*
+    // injecting the captured frame, because \033[?1049h clears the screen — doing
+    // it here (after injection) would wipe the recovered frame. By the time this
+    // runs we're already on the correct screen; only cursor/scroll/mode state
+    // remains to restore.
 
     if (state.scrollRegionUpper != 0 || state.scrollRegionLower != -1) {
         int lower = state.scrollRegionLower;

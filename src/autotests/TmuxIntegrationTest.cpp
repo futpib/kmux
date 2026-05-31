@@ -407,6 +407,91 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
     delete attach.mw.data();
 }
 
+// Repro for: run a full-screen TUI (htop, vim, …) in a tmux pane, detach the
+// kmux window, reattach — the TUI's screen comes back blank/garbled, as if only
+// later diff frames were received and never the initial reference frame.
+//
+// Mechanism: for an alternate-screen pane, tmux's `capture-pane` returns the
+// *alternate* screen contents (the TUI's current frame). On reattach,
+// TmuxPaneStateRecovery injects that captured frame, then applyPaneState() emits
+// `\033[?1049h` to enter the alternate screen — but entering the alt screen
+// CLEARS it, so the just-injected reference frame is on the primary screen and
+// the now-active alt screen is empty. The TUI's subsequent partial redraws
+// (%output diffs) then paint onto a blank alt screen → corrupted display.
+//
+// We don't need htop: a bare alt-screen painter reproduces it. The pane enters
+// the alt screen and writes a marker at a fixed row; after reattach the marker
+// must be visible on the (active) screen readSessionScreenText reads.
+void TmuxIntegrationTest::testTmuxAttachAlternateScreenRecovery()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Enter the alternate screen and paint a reference frame, then idle so the
+    // pane stays in the alt screen (alternate_on=1) — exactly the state a live
+    // htop/vim leaves the pane in. `exec sleep` keeps the alt screen up with no
+    // further output (so recovery has only the captured frame to work from).
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("printf '\\033[?1049h\\033[3;1HALT_REFERENCE_FRAME_MARKER'; exec sleep 60"),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTest::qWait(500);
+
+    // Sanity: tmux really has the pane on the alternate screen, and capture-pane
+    // returns the reference frame. (If this fails the test premise is wrong.)
+    QProcess altCheck;
+    altCheck.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath,
+                              QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName,
+                              QStringLiteral("-p"), QStringLiteral("#{alternate_on}")});
+    QVERIFY(altCheck.waitForFinished(5000));
+    QCOMPARE(QString::fromUtf8(altCheck.readAllStandardOutput()).trimmed(), QStringLiteral("1"));
+
+    // Now attach kmux via the control-mode bridge — triggers pane state recovery.
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    Session *paneSession = sessions.first();
+    QVERIFY(paneSession);
+
+    // After reattach the recovered screen must show the reference frame the TUI
+    // had painted. The bug: it comes back blank (the captured alternate-screen
+    // frame is lost during pane-state recovery), so this assertion fails — which
+    // is the point of the repro.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        readSessionScreenText(paneSession).contains(QStringLiteral("ALT_REFERENCE_FRAME_MARKER")),
+        10000);
+
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
