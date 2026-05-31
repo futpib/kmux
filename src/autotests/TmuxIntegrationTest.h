@@ -59,6 +59,7 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteShowsActionLabelForChooseTree();
     void testTmuxPrefixPaletteSendsLiteralPrefixToPane();
     void testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane();
+    void testRshSilentHangShowsUnresponsiveBanner();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
     void testNewWindowInheritsWorkingDirectory();

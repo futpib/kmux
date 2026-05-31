@@ -9,6 +9,7 @@
 
 #include <KActionCollection>
 #include <KMessageBox>
+#include <KMessageWidget>
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
@@ -38,8 +39,10 @@
 #include "../session/SessionManager.h"
 #include "../session/VirtualSession.h"
 #include "../terminalDisplay/TerminalDisplay.h"
+#include "../tmux/TmuxCommand.h"
 #include "../tmux/TmuxController.h"
 #include "../tmux/TmuxControllerRegistry.h"
+#include "../tmux/TmuxGateway.h"
 #include "../tmux/TmuxLayoutManager.h"
 #include "../tmux/TmuxLayoutParser.h"
 #include "../tmux/TmuxPaneManager.h"
@@ -6332,6 +6335,142 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 10000);
 
     delete attach.mw.data();
+}
+
+// End-to-end: a silently hung control link (ssh that stops forwarding bytes but
+// keeps the fd open) is invisible at the process level — no EOF, so the bridge's
+// process-exit teardown never fires. The gateway's command-timeout detector is
+// the only signal.
+//
+// We reproduce a stalled transport faithfully via the --rsh hook. The wrapper
+// runs the real tmux but pipes its stdout through a `cat` relay whose PID it
+// records: `tmux … | cat`. The relay's stdout is kmux's read socket, so kmux's
+// commands still reach tmux and tmux still replies into the pipe — but SIGSTOP'd,
+// the relay stops forwarding those replies. kmux sees silence with the fd open:
+// exactly a frozen ssh. After the command timeout the gateway emits
+// unresponsive() and kmux shows the inline banner; SIGCONT resumes the relay,
+// buffered replies flush, and responsive() clears the banner.
+void TmuxIntegrationTest::testRshSilentHangShowsUnresponsiveBanner()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    const QString killPath = QStandardPaths::findExecutable(QStringLiteral("kill"));
+    if (killPath.isEmpty()) {
+        QSKIP("kill(1) not found.");
+    }
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // rsh wrapper: run tmux with its stdout piped through a `cat` relay. The
+    // relay subshell records its own PID ($BASHPID, not $$, which inside a pipe
+    // subshell is still the parent shell) then exec's cat so that PID *is* the
+    // relay. Freezing it stalls tmux→kmux delivery while leaving the fd open and
+    // kmux→tmux writes flowing — a faithful silent transport hang.
+    const QString pidFile = m_tmuxTmpDir.path() + QStringLiteral("/relay.pid");
+    const QString wrapper = m_tmuxTmpDir.path() + QStringLiteral("/hang-rsh.sh");
+    {
+        QFile f(wrapper);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("#!/bin/bash\n\"$@\" | { echo $BASHPID > \"");
+        f.write(pidFile.toUtf8());
+        f.write("\"; exec cat; }\n");
+        f.close();
+    }
+    QVERIFY(QFile::setPermissions(wrapper,
+                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    QVERIFY(bridge->start(tmuxPath,
+                          {QStringLiteral("-S"), ctx.socketPath},
+                          {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName},
+                          {wrapper}));
+
+    auto *container = mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container->count() >= 1, 10000);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    TmuxGateway *gateway = controller->gateway();
+    QVERIFY(gateway);
+
+    // Short timeout so the test doesn't wait the full 5s production default.
+    gateway->setCommandTimeoutMs(600);
+
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(pidFile), 10000);
+    qint64 relayPid = 0;
+    {
+        QFile f(pidFile);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        relayPid = QString::fromUtf8(f.readAll()).trimmed().toLongLong();
+    }
+    QVERIFY2(relayPid > 0, "rsh wrapper didn't record a relay PID");
+
+    QSignalSpy unspy(gateway, &TmuxGateway::unresponsive);
+    QSignalSpy respy(gateway, &TmuxGateway::responsive);
+    QVERIFY(unspy.isValid() && respy.isValid());
+
+    // Freeze the relay: tmux's replies pile up in the pipe but never reach kmux.
+    QCOMPARE(QProcess::execute(killPath, {QStringLiteral("-STOP"), QString::number(relayPid)}), 0);
+
+    // The detector arms on the next outstanding command. kmux's own periodic
+    // pane-title refresh (~2s) would trigger it, but nudge it for speed and
+    // determinism. Assert on count() via QTRY_VERIFY rather than
+    // QSignalSpy::wait(): unresponsive() may fire while an earlier QTRY loop is
+    // already spinning the event loop, which a later wait() would miss.
+    gateway->sendCommand(TmuxCommand(QStringLiteral("display-message")));
+    QTRY_VERIFY_WITH_TIMEOUT(unspy.count() >= 1, 5000);
+
+    // The inline banner must be up on the pane (same KMessageWidget mechanism as
+    // the read-only banner).
+    // isVisibleTo(view), not isVisible(): the test never maps the MainWindow, so
+    // isVisible() (which requires the whole top-level to be shown) is always
+    // false. isVisibleTo(parent) reports whether the banner would be visible if
+    // its parent were shown — i.e. that animatedShow() ran — which is what we
+    // care about.
+    Session *paneSession = mw->viewManager()->sessions().first();
+    QVERIFY(!paneSession->views().isEmpty());
+    TerminalDisplay *view = paneSession->views().first();
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *banner = view->findChild<KMessageWidget *>(QStringLiteral("tmuxUnresponsiveBanner"));
+            return banner != nullptr && banner->isVisibleTo(view);
+        }(),
+        5000);
+
+    // Resume the relay: the buffered replies flush through to kmux. Any line is
+    // proof of life → responsive() → banner hides.
+    QCOMPARE(QProcess::execute(killPath, {QStringLiteral("-CONT"), QString::number(relayPid)}), 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(respy.count() >= 1, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            auto *banner = view->findChild<KMessageWidget *>(QStringLiteral("tmuxUnresponsiveBanner"));
+            return banner == nullptr || !banner->isVisibleTo(view);
+        }(),
+        5000);
+
+    const auto allSessions = mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!mwGuard, 10000);
+    delete mwGuard.data();
 }
 
 namespace

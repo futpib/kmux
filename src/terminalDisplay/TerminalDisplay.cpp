@@ -2816,6 +2816,27 @@ void TerminalDisplay::updateReadOnlyState(bool readonly)
     _readOnly = readonly;
 }
 
+void TerminalDisplay::setTmuxUnresponsive(bool unresponsive)
+{
+    if (unresponsive) {
+        // Lazily create the banner the first time the link goes quiet.
+        if (_tmuxUnresponsiveMessageWidget == nullptr) {
+            _tmuxUnresponsiveMessageWidget = createMessageWidget(i18n("The tmux connection is not responding — it may have dropped."));
+            // objectName lets the autotests findChild this specific banner
+            // (there can be more than one KMessageWidget on a display).
+            _tmuxUnresponsiveMessageWidget->setObjectName(QStringLiteral("tmuxUnresponsiveBanner"));
+            _tmuxUnresponsiveMessageWidget->setMessageType(KMessageWidget::Warning);
+            _tmuxUnresponsiveMessageWidget->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
+            // Non-dismissable: it auto-clears when the link recovers, and a
+            // stale "dismissed" banner would misrepresent a still-dead link.
+            _tmuxUnresponsiveMessageWidget->setCloseButtonVisible(false);
+        }
+        _tmuxUnresponsiveMessageWidget->animatedShow();
+    } else if (_tmuxUnresponsiveMessageWidget != nullptr) {
+        _tmuxUnresponsiveMessageWidget->animatedHide();
+    }
+}
+
 #define SELECT_BY_MODIFIERS                                                                                                                                    \
     if (startSelect) {                                                                                                                                         \
         clearSelection();                                                                                                                                      \

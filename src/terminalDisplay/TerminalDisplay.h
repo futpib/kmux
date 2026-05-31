@@ -414,6 +414,11 @@ public:
 
     // Used to show/hide the message widget
     void updateReadOnlyState(bool readonly);
+    // Show/hide an inline banner when the tmux control connection stops
+    // responding (a silent transport hang produces no EOF, so this is the
+    // only user-visible signal) and hide it again when traffic resumes. Uses
+    // the same lazily-created KMessageWidget mechanism as the read-only banner.
+    void setTmuxUnresponsive(bool unresponsive);
 
     void setSelectMode(bool readonly);
 
@@ -803,6 +808,7 @@ private:
     bool _centerContents = false; // center the contents between margins
 
     KMessageWidget *_readOnlyMessageWidget = nullptr; // Message shown at the top when read-only mode gets activated
+    KMessageWidget *_tmuxUnresponsiveMessageWidget = nullptr; // Shown when the tmux control link stops responding
 
     // Needed to know whether the mode really changed between update calls
     bool _readOnly = false;

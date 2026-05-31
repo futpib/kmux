@@ -69,6 +69,9 @@ private:
     void onReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void teardown();
+    // Show/hide the "tmux not responding" banner on every pane of this
+    // bridge's window, driven by TmuxGateway::unresponsive()/responsive().
+    void setViewsTmuxUnresponsive(bool unresponsive);
 
     ViewManager *_viewManager;
     QProcess *_process = nullptr;

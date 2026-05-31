@@ -10,6 +10,10 @@
 #include "TmuxControllerRegistry.h"
 #include "TmuxGateway.h"
 
+#include "ViewManager.h"
+#include "session/Session.h"
+#include "terminalDisplay/TerminalDisplay.h"
+
 #include <QDir>
 #include <QLoggingCategory>
 #include <QSocketNotifier>
@@ -118,6 +122,16 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
     connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxProcessBridge::teardown);
+    // A silently hung control link (e.g. dropped ssh) is invisible at the
+    // process level — no EOF, so teardown never fires. The gateway's
+    // command-timeout detector is the only signal; surface it as an inline
+    // banner on every pane and clear it when traffic resumes.
+    connect(_gateway, &TmuxGateway::unresponsive, this, [this]() {
+        setViewsTmuxUnresponsive(true);
+    });
+    connect(_gateway, &TmuxGateway::responsive, this, [this]() {
+        setViewsTmuxUnresponsive(false);
+    });
 
     TmuxControllerRegistry::instance()->registerController(_controller);
 
@@ -232,6 +246,20 @@ void TmuxProcessBridge::teardown()
         _controller->cleanup();
     }
     Q_EMIT disconnected();
+}
+
+void TmuxProcessBridge::setViewsTmuxUnresponsive(bool unresponsive)
+{
+    if (_viewManager == nullptr) {
+        return;
+    }
+    const auto sessions = _viewManager->sessions();
+    for (Session *session : sessions) {
+        const auto views = session->views();
+        for (TerminalDisplay *view : views) {
+            view->setTmuxUnresponsive(unresponsive);
+        }
+    }
 }
 
 } // namespace Konsole
