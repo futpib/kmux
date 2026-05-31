@@ -88,6 +88,68 @@ void TmuxGatewayTest::testResponseInsideClientOriginatedBlockIsCaptured()
     QCOMPARE(got, QStringLiteral("hello world"));
 }
 
+void TmuxGatewayTest::testUnresponsiveFiresWhenCommandUnanswered()
+{
+    // A command that never gets its %begin/%end within the timeout marks the
+    // control link unresponsive — the "ssh silently hung" case that produces
+    // no EOF and so isn't caught by the bridge's process-exit teardown.
+    TmuxGateway gateway([](const QByteArray &) {});
+    gateway.setCommandTimeoutMs(50);
+    QSignalSpy spy(&gateway, &TmuxGateway::unresponsive);
+    QVERIFY(spy.isValid());
+
+    gateway.sendCommand(TmuxCommand(QStringLiteral("display-message")));
+    QVERIFY(spy.wait(2000));
+    QCOMPARE(spy.count(), 1);
+}
+
+void TmuxGatewayTest::testReplyBeforeTimeoutStaysResponsive()
+{
+    // A command answered before the deadline must NOT trip the detector.
+    TmuxGateway gateway([](const QByteArray &) {});
+    gateway.setCommandTimeoutMs(300);
+    QSignalSpy spy(&gateway, &TmuxGateway::unresponsive);
+
+    gateway.sendCommand(TmuxCommand(QStringLiteral("display-message")));
+    // Client-originated reply (flags bit 0 set) for command id 7.
+    gateway.processLine("%begin 1700000000 7 1");
+    gateway.processLine("hello");
+    gateway.processLine("%end 1700000000 7 1");
+
+    QVERIFY(!spy.wait(600));
+    QCOMPARE(spy.count(), 0);
+}
+
+void TmuxGatewayTest::testIdleLinkNeverUnresponsive()
+{
+    // With no command outstanding the detector is disarmed — an idle link is
+    // never flagged (matching iTerm2: only outstanding commands are timed).
+    TmuxGateway gateway([](const QByteArray &) {});
+    gateway.setCommandTimeoutMs(50);
+    QSignalSpy spy(&gateway, &TmuxGateway::unresponsive);
+
+    QVERIFY(!spy.wait(300));
+    QCOMPARE(spy.count(), 0);
+}
+
+void TmuxGatewayTest::testActivityRecoversFromUnresponsive()
+{
+    // After going unresponsive, any line from the server resumes the link and
+    // emits responsive() (so a UI prompt can dismiss itself).
+    TmuxGateway gateway([](const QByteArray &) {});
+    gateway.setCommandTimeoutMs(50);
+    QSignalSpy unspy(&gateway, &TmuxGateway::unresponsive);
+    QSignalSpy respy(&gateway, &TmuxGateway::responsive);
+
+    gateway.sendCommand(TmuxCommand(QStringLiteral("display-message")));
+    QVERIFY(unspy.wait(2000));
+    QCOMPARE(unspy.count(), 1);
+
+    // A reply block arrives late — the link is alive again.
+    gateway.processLine("%begin 1700000000 7 1");
+    QCOMPARE(respy.count(), 1);
+}
+
 QTEST_MAIN(TmuxGatewayTest)
 
 #include "moc_TmuxGatewayTest.cpp"

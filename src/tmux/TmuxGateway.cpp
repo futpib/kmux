@@ -10,6 +10,7 @@
 #include "TmuxCommand.h"
 
 #include <QLoggingCategory>
+#include <QTimer>
 
 Q_LOGGING_CATEGORY(KonsoleTmuxGateway, "konsole.tmux.gateway", QtWarningMsg)
 
@@ -20,6 +21,9 @@ TmuxGateway::TmuxGateway(WriteCallback writeCallback, QObject *parent)
     : QObject(parent)
     , _writeCallback(std::move(writeCallback))
 {
+    _commandTimeoutTimer = new QTimer(this);
+    _commandTimeoutTimer->setSingleShot(true);
+    connect(_commandTimeoutTimer, &QTimer::timeout, this, &TmuxGateway::onCommandTimeout);
 }
 
 void TmuxGateway::processLine(const QByteArray &line)
@@ -27,6 +31,10 @@ void TmuxGateway::processLine(const QByteArray &line)
     if (_exited) {
         return;
     }
+
+    // Any line from the server is proof of life: recover from unresponsive and
+    // push the command deadline out.
+    noteServerActivity();
 
     if (_inResponseBlock) {
         // Match %end/%error by command ID: "%end <id> <number>" or "%error <id> <number>"
@@ -298,6 +306,45 @@ void TmuxGateway::finishCurrentCommand(bool success)
         _currentCommand.callback(success, _currentCommand.response);
     }
     _currentCommand = PendingCommand();
+    updateCommandTimeout();
+}
+
+void TmuxGateway::setCommandTimeoutMs(int ms)
+{
+    _commandTimeoutMs = ms;
+    updateCommandTimeout();
+}
+
+void TmuxGateway::updateCommandTimeout()
+{
+    if (_commandTimeoutTimer == nullptr) {
+        return;
+    }
+    if (_commandTimeoutMs > 0 && !_exited && hasOutstandingCommand()) {
+        _commandTimeoutTimer->start(_commandTimeoutMs);
+    } else {
+        _commandTimeoutTimer->stop();
+    }
+}
+
+void TmuxGateway::noteServerActivity()
+{
+    if (_unresponsive) {
+        _unresponsive = false;
+        Q_EMIT responsive();
+    }
+    updateCommandTimeout();
+}
+
+void TmuxGateway::onCommandTimeout()
+{
+    if (_exited || !hasOutstandingCommand()) {
+        return;
+    }
+    _unresponsive = true;
+    qCWarning(KonsoleTmuxGateway) << "tmux control link unresponsive: no reply for" << _commandTimeoutMs << "ms,"
+                                  << _pendingCommands.size() << "command(s) outstanding";
+    Q_EMIT unresponsive();
 }
 
 void TmuxGateway::sendCommand(const TmuxCommand &command, CommandCallback callback)
@@ -321,6 +368,7 @@ void TmuxGateway::sendCommand(const TmuxCommand &command, CommandCallback callba
 
     QByteArray data = commandStr.toUtf8() + '\n';
     writeToGateway(data);
+    updateCommandTimeout();
 }
 
 void TmuxGateway::sendKeys(int paneId, const QByteArray &data)
