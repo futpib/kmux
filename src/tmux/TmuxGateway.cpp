@@ -321,7 +321,15 @@ void TmuxGateway::updateCommandTimeout()
         return;
     }
     if (_commandTimeoutMs > 0 && !_exited && hasOutstandingCommand()) {
-        _commandTimeoutTimer->start(_commandTimeoutMs);
+        // Arm only if not already running. The deadline measures time since the
+        // last *server reply*, NOT since our last *send* — so a command we send
+        // while one is already outstanding must not push the deadline back.
+        // (kmux re-sends a pane-title refresh every ~2s; with a 5s timeout,
+        // restarting on each send would reset the deadline forever and a dead
+        // link would never be detected — the "wifi off, no banner" bug.)
+        if (!_commandTimeoutTimer->isActive()) {
+            _commandTimeoutTimer->start(_commandTimeoutMs);
+        }
     } else {
         _commandTimeoutTimer->stop();
     }
@@ -333,7 +341,16 @@ void TmuxGateway::noteServerActivity()
         _unresponsive = false;
         Q_EMIT responsive();
     }
-    updateCommandTimeout();
+    // Any byte from the server is proof of life: push the deadline out to a full
+    // timeout from now (or stop it if nothing is outstanding). This is the only
+    // place the deadline is reset — receiving data, not sending it.
+    if (_commandTimeoutTimer != nullptr) {
+        if (_commandTimeoutMs > 0 && !_exited && hasOutstandingCommand()) {
+            _commandTimeoutTimer->start(_commandTimeoutMs);
+        } else {
+            _commandTimeoutTimer->stop();
+        }
+    }
 }
 
 void TmuxGateway::onCommandTimeout()

@@ -23,6 +23,7 @@ private Q_SLOTS:
     void testReplyBeforeTimeoutStaysResponsive();
     void testIdleLinkNeverUnresponsive();
     void testActivityRecoversFromUnresponsive();
+    void testUnresponsiveFiresDespitePeriodicResends();
 };
 }
 

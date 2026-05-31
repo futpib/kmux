@@ -150,6 +150,33 @@ void TmuxGatewayTest::testActivityRecoversFromUnresponsive()
     QCOMPARE(respy.count(), 1);
 }
 
+void TmuxGatewayTest::testUnresponsiveFiresDespitePeriodicResends()
+{
+    // Regression: the deadline must measure time since the last *server reply*,
+    // not since our last *send*. kmux re-sends a pane-title refresh every ~2s;
+    // the production timeout is 5s. If sending a command restarted the deadline,
+    // each refresh (interval < timeout) would push it back forever and a dead
+    // link would never be flagged — which is exactly what happened when wifi was
+    // turned off and no banner appeared.
+    //
+    // Reproduce with a timeout SHORTER than the test would otherwise need but
+    // LONGER than the resend cadence: resend every 100ms with NO server reply,
+    // and a 300ms timeout. With the restart-on-send bug, unresponsive() never
+    // fires; correctly, it fires ~300ms after the first send because nothing
+    // from the server has reset the deadline.
+    TmuxGateway gateway([](const QByteArray &) {});
+    gateway.setCommandTimeoutMs(300);
+    QSignalSpy spy(&gateway, &TmuxGateway::unresponsive);
+    QVERIFY(spy.isValid());
+
+    gateway.sendCommand(TmuxCommand(QStringLiteral("list-panes")));
+    for (int i = 0; i < 8 && spy.count() == 0; ++i) {
+        QTest::qWait(100); // < 300ms timeout: a resend-restart would defeat detection
+        gateway.sendCommand(TmuxCommand(QStringLiteral("list-panes")));
+    }
+    QVERIFY2(spy.count() >= 1, "unresponsive() never fired while commands kept being re-sent without replies");
+}
+
 QTEST_MAIN(TmuxGatewayTest)
 
 #include "moc_TmuxGatewayTest.cpp"
