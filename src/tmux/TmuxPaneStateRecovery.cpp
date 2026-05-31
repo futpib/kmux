@@ -153,16 +153,9 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
         session->injectData(altScreenSeq, sizeof(altScreenSeq) - 1);
     }
 
-    // Clear before injecting the captured frame. Recovery can run more than
-    // once for the same pane on a single attach: initialize() runs, then tmux's
-    // %session-changed re-runs it, so handleCapturePaneResponse fires twice.
-    // \033[2J\033[H alone clears only the visible screen, leaving the first
-    // injection's lines in scrollback — the second injection then stacks on top
-    // of them, pushing content down so the restored cursor row no longer matches
-    // tmux's cursor_y (the off-by-one that makes typed input land on the wrong
-    // row). \033[3J also clears the scrollback history, making re-injection a
-    // full replace and recovery idempotent.
-    static const char clearSeq[] = "\033[3J\033[2J\033[H";
+    // Clear any garbled content from %output that arrived before the
+    // emulation was sized correctly
+    static const char clearSeq[] = "\033[2J\033[H";
     session->injectData(clearSeq, sizeof(clearSeq) - 1);
 
     QStringList lines = response.split(QLatin1Char('\n'));
