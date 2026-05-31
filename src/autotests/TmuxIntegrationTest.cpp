@@ -576,7 +576,10 @@ void TmuxIntegrationTest::testTmuxAttachPrimaryScreenRowAlignment()
     // Wait for the captured frame to be injected.
     QTRY_VERIFY_WITH_TIMEOUT(
         paneSession->getAllDisplayedText(false).contains(QStringLiteral("PROMPT_ANCHOR_MARKER")), 10000);
-    // Let applyPaneState (cursor restore) run.
+    // Let recovery finish and the post-attach %output settle. Recovery itself
+    // restores the cursor to tmux's cursor_y correctly; the drift is introduced
+    // by the live %output tmux sends right after attach (unsuppressed once
+    // recovery completes), which repositions the cursor away from cursor_y.
     QTest::qWait(500);
 
     Screen *screen = paneSession->emulation()->createWindow()->screen();
