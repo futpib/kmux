@@ -160,11 +160,15 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
 
     QStringList lines = response.split(QLatin1Char('\n'));
 
-    // Trim trailing empty lines — capture-pane pads to the pane height
-    // which would push real content off-screen
-    while (!lines.isEmpty() && lines.last().trimmed().isEmpty()) {
-        lines.removeLast();
-    }
+    // Do NOT trim trailing blank lines. `capture-pane -p -S -` returns the full
+    // scrollback plus the visible screen (history + pane_height rows); the blank
+    // rows below the cursor are part of the visible screen, not spurious padding.
+    // Injecting every row makes the last pane_height rows the visible screen —
+    // matching tmux exactly — so the absolute cursor position restored by
+    // applyPaneState() lands on the right row. Trimming those blanks shifted the
+    // content up relative to the cursor on an over-tall capture: the prompt/input
+    // line was pushed to the bottom while the cursor stayed on its original row,
+    // so typed input rendered on the wrong row (e.g. on a TUI's box border).
 
     for (int i = 0; i < lines.size(); ++i) {
         QByteArray lineData = lines[i].toUtf8();
