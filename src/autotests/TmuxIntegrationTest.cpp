@@ -492,6 +492,114 @@ void TmuxIntegrationTest::testTmuxAttachAlternateScreenRecovery()
     delete attach.mw.data();
 }
 
+// Repro for the "off-by-one row" bug seen on initial connect (diagnosed from a
+// real kmux.tmux.bridge protocol log of a failing reattach):
+//
+// A TUI like Claude Code leaves the pane with the cursor on its prompt row near
+// the bottom of the screen, and lots of scrollback above. tmux's pane state
+// reports cursor_y (e.g. 75 on an 80-row pane). On reattach kmux recovers via
+// `capture-pane -p -J -e -S -`, which returns the FULL scrollback+screen — far
+// more rows than the pane height (the log showed 693 rows for an 80-row pane).
+// TmuxPaneStateRecovery injects all of them line-by-line, so the top rows scroll
+// off into history and the prompt ends up on some visible row; then
+// applyPaneState teleports the cursor to cursor_y. The injected prompt row and
+// cursor_y are off by one, so the live %output redraw (which Claude Code draws
+// relative to the cursor) paints the input box one row above the prompt — the
+// user's typed text lands on the box's top border.
+//
+// The user found Ctrl+Shift+K (clear-history-and-reset) fixes it: that resets
+// the screen so cursor and content re-agree.
+//
+// This drives the real shape — capture taller than the pane, cursor on the
+// bottom content row — through a real reattach and asserts kmux's recovered
+// cursor row matches tmux's cursor_y. Off-by-one ⇒ this fails.
+void TmuxIntegrationTest::testTmuxAttachPrimaryScreenRowAlignment()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │columns: 80                 │
+        │lines: 24                   │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto sendLine = [&](const QString &keys) {
+        QProcess p;
+        p.start(tmuxPath,
+                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"),
+                 QStringLiteral("-t"), ctx.sessionName, keys, QStringLiteral("Enter")});
+        QVERIFY(p.waitForFinished(5000));
+        QCOMPARE(p.exitCode(), 0);
+    };
+
+    // Fill far more than the 24-row pane with scrollback, then leave the shell
+    // prompt sitting on the bottom rows with the cursor on it. capture-pane -S -
+    // will return all ~100+ rows; the pane is only 24 tall. A distinctive marker
+    // right before the final prompt lets us locate the prompt row in the
+    // recovered screen.
+    sendLine(QStringLiteral("for i in $(seq 1 100); do echo \"scrollback line $i\"; done; echo PROMPT_ANCHOR_MARKER"));
+    QTest::qWait(700);
+
+    // tmux's authoritative cursor row for the pane (0-based, screen-relative).
+    QProcess curCheck;
+    curCheck.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("display-message"),
+                              QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-p"),
+                              QStringLiteral("#{cursor_y}|#{pane_height}|#{history_size}")});
+    QVERIFY(curCheck.waitForFinished(5000));
+    const QStringList curParts = QString::fromUtf8(curCheck.readAllStandardOutput()).trimmed().split(QLatin1Char('|'));
+    QCOMPARE(curParts.size(), 3);
+    const int tmuxCursorY = curParts[0].toInt();
+    // Sanity: there really is scrollback (capture will exceed pane height), else
+    // the over-tall-capture shape that triggers the bug isn't present.
+    QVERIFY2(curParts[2].toInt() > curParts[1].toInt(),
+             qPrintable(QStringLiteral("test setup: expected history_size(%1) > pane_height(%2)")
+                            .arg(curParts[2]).arg(curParts[1])));
+
+    // Attach kmux → pane state recovery replays the frame and restores cursor.
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    Session *paneSession = sessions.first();
+    QVERIFY(paneSession);
+
+    // Wait for the captured frame to be injected.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        paneSession->getAllDisplayedText(false).contains(QStringLiteral("PROMPT_ANCHOR_MARKER")), 10000);
+    // Let applyPaneState (cursor restore) run.
+    QTest::qWait(500);
+
+    Screen *screen = paneSession->emulation()->createWindow()->screen();
+    const int kmuxCursorY = screen->getCursorY();
+
+    QVERIFY2(kmuxCursorY == tmuxCursorY,
+             qPrintable(QStringLiteral("cursor row off by %1: tmux cursor_y=%2 but kmux getCursorY=%3 after "
+                                       "recovery (pane_height=%4, history_size=%5). This is the off-by-one that "
+                                       "makes typed input render on the wrong row.")
+                            .arg(kmuxCursorY - tmuxCursorY)
+                            .arg(tmuxCursorY)
+                            .arg(kmuxCursorY)
+                            .arg(curParts[1])
+                            .arg(curParts[2])));
+
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
