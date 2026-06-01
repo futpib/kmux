@@ -67,10 +67,13 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
 
     populateModel();
 
-    // Single-click a row to run its binding, mirroring the tmux tree switcher
-    // (Ctrl+B w). The keyboard path is untouched: keys still trigger bindings
-    // directly via keyPressEvent.
+    // Mouse interaction mirrors the tmux tree switcher (Ctrl+B w): single-click
+    // selects (highlights) a row, double-click runs its binding. The keyboard
+    // path is untouched — keys still trigger bindings directly via keyPressEvent.
     connect(_treeView, &QTreeView::clicked, this, [this](const QModelIndex &index) {
+        _treeView->setCurrentIndex(index);
+    });
+    connect(_treeView, &QTreeView::activated, this, [this](const QModelIndex &index) {
         if (!index.isValid()) {
             return;
         }

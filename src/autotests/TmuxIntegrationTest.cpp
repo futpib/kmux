@@ -6229,14 +6229,22 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteRowClickTriggersBinding()
     }
     QVERIFY2(target.isValid(), "palette should have a row bound to 'n' (next-window)");
 
-    // Click the row with the mouse — this should run its binding, exactly as
-    // pressing `n` would.
     tree->scrollTo(target);
     const QRect rect = tree->visualRect(target);
     QVERIFY(rect.isValid());
-    QTest::mouseClick(tree->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center());
 
-    // The active window should advance, and the palette should close.
+    // Single-click selects the row (highlights it) but must NOT run the binding,
+    // mirroring the Ctrl+B w tree switcher. The palette stays open and the
+    // active window is unchanged.
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center());
+    QCOMPARE(tree->currentIndex().row(), target.row());
+    QVERIFY(attach.mw->findChild<TmuxPrefixPalette *>() != nullptr);
+    QCOMPARE(controller->windowIdForPane(controller->activePaneId()), initialWindowId);
+
+    // Double-click runs the binding, exactly as pressing `n` would: the active
+    // window advances and the palette closes.
+    QTest::mouseDClick(tree->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center());
+
     QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0 && controller->windowIdForPane(controller->activePaneId()) != initialWindowId, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
 
