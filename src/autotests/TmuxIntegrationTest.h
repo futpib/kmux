@@ -56,6 +56,7 @@ private Q_SLOTS:
     void testTmuxZoomReflectedAsKonsoleMaximize();
     void testTmuxPrefixPaletteDetach();
     void testTmuxPrefixPaletteNextWindow();
+    void testTmuxPrefixPaletteRowClickTriggersBinding();
     void testTmuxPrefixPaletteChooseTreeWindow();
     void testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSessions();
     void testTmuxPrefixPaletteShowsActionLabelForChooseTree();

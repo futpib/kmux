@@ -50,8 +50,15 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
     _treeView->setRootIsDecorated(false);
     _treeView->setUniformRowHeights(true);
     _treeView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // Keep keyboard focus on the palette frame, not the tree view: every
+    // keystroke is a tmux binding the palette dispatches in keyPressEvent, so
+    // the tree must never steal keys for its own navigation. The mouse, however,
+    // can select and run rows.
     _treeView->setFocusPolicy(Qt::NoFocus);
-    _treeView->setSelectionMode(QAbstractItemView::NoSelection);
+    _treeView->setSelectionMode(QAbstractItemView::SingleSelection);
+    _treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    // Highlight the row under the cursor so it's clear what a click will run.
+    _treeView->setMouseTracking(true);
     _treeView->setHeaderHidden(true);
     layout->addWidget(_treeView, 1);
 
@@ -59,6 +66,19 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
     _treeView->setModel(_model);
 
     populateModel();
+
+    // Single-click a row to run its binding, mirroring the tmux tree switcher
+    // (Ctrl+B w). The keyboard path is untouched: keys still trigger bindings
+    // directly via keyPressEvent.
+    connect(_treeView, &QTreeView::clicked, this, [this](const QModelIndex &index) {
+        if (!index.isValid()) {
+            return;
+        }
+        const int row = index.row();
+        if (row >= 0 && row < _bindings.size()) {
+            triggerBinding(_bindings.at(row));
+        }
+    });
 
     // Column 1 (raw tmux command) stretches and elides: commands can run long
     // (e.g. `switch-client -n`, `send-keys -R C-l`) and the horizontal scrollbar

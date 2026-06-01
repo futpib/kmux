@@ -6158,6 +6158,91 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
     delete attach.mw.data();
 }
 
+// Sibling of testTmuxPrefixPaletteNextWindow, but the row is *clicked* with the
+// mouse instead of triggered by keystroke — the palette rows are selectable and
+// clickable like the Ctrl+B w tree switcher's rows.
+void TmuxIntegrationTest::testTmuxPrefixPaletteRowClickTriggersBinding()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Create a second window so `next-window` has somewhere to go.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    QProcess selectFirst;
+    selectFirst.start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(ctx.sessionName)});
+    QVERIFY(selectFirst.waitForFinished(5000));
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() >= 2 && controller->activePaneId() >= 0, 10000);
+
+    int initialWindowId = controller->windowIdForPane(controller->activePaneId());
+    QVERIFY(initialWindowId >= 0);
+
+    // Open the palette with the tmux prefix.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+
+    QTreeView *tree = palette->treeView();
+    QVERIFY(tree);
+    QAbstractItemModel *model = tree->model();
+    QVERIFY(model);
+
+    // Find the row bound to `n` (next-window, a tmux default) in column 0.
+    QModelIndex target;
+    for (int i = 0; i < model->rowCount(); ++i) {
+        const QModelIndex idx = model->index(i, 0);
+        if (idx.data(Qt::DisplayRole).toString() == QStringLiteral("n")) {
+            target = idx;
+            break;
+        }
+    }
+    QVERIFY2(target.isValid(), "palette should have a row bound to 'n' (next-window)");
+
+    // Click the row with the mouse — this should run its binding, exactly as
+    // pressing `n` would.
+    tree->scrollTo(target);
+    const QRect rect = tree->visualRect(target);
+    QVERIFY(rect.isValid());
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center());
+
+    // The active window should advance, and the palette should close.
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0 && controller->windowIdForPane(controller->activePaneId()) != initialWindowId, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
 {
     // Ctrl+B w should dispatch the kmux-side `tmux-tree-switcher-windows`
