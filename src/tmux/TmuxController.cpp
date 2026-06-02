@@ -838,7 +838,15 @@ void TmuxController::onWindowRenamed(int windowId, const QString &name)
 
 void TmuxController::onWindowPaneChanged(int windowId, int paneId)
 {
-    Q_UNUSED(windowId)
+    // Only adopt the active pane if this controller actually shows the
+    // window. Sibling clients on the same tmux session (e.g. a window
+    // detached into its own kmux MainWindow) broadcast %window-pane-changed
+    // for windows we've hidden; adopting their pane would point _activePaneId
+    // — and the next split/pane op — into a window the user can't see.
+    if (!shouldShowWindow(windowId)) {
+        qCDebug(KonsoleTmuxController) << "onWindowPaneChanged: ignoring pane" << paneId << "in @" << windowId << "— not shown on this controller";
+        return;
+    }
     _activePaneId = paneId;
     focusPane(paneId);
 }
@@ -924,6 +932,17 @@ void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
     if (sessionId != _sessionId) {
         return;
     }
+    // Ignore windows this controller doesn't display. A multi-window kmux
+    // session keeps several controllers/clients on one tmux session; when a
+    // sibling client makes its window active, tmux broadcasts
+    // %session-window-changed to us too. Acting on it here would switch focus
+    // and point _activePaneId at a window we hide (e.g. one detached into its
+    // own kmux MainWindow), so a later split would target that invisible
+    // window instead of the one the user is looking at.
+    if (!shouldShowWindow(windowId)) {
+        qCDebug(KonsoleTmuxController) << "onSessionWindowChanged: ignoring @" << windowId << "— not shown on this controller";
+        return;
+    }
     // tmux just switched the active window in our session — most often
     // because the user picked a different window in the tree switcher
     // (TmuxTreeSwitcher::activateCurrent → requestSelectWindow), or via
@@ -953,8 +972,13 @@ void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
     // in sync, then focus its TerminalDisplay (now visible because the
     // tab swap above brought its parent tab forward).
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).windowTarget(windowId).format(QStringLiteral("#{pane_id} #{pane_active}")),
-                          [this](bool success, const QString &response) {
+                          [this, windowId](bool success, const QString &response) {
                               if (!success)
+                                  return;
+                              // The window may have been hidden between the
+                              // notification and this async reply; don't adopt
+                              // its pane if we no longer show it.
+                              if (!shouldShowWindow(windowId))
                                   return;
                               const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
                               for (const QString &line : lines) {

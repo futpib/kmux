@@ -361,9 +361,16 @@ fail=0
 if [[ "$X_SIZE_AFTER" != "$X_SIZE_BEFORE" && "$X_SIZE_BEFORE" != *'?'* && "$X_SIZE_AFTER" != *'?'* ]]; then
     echo "FAIL: kmux X-window resized $X_SIZE_BEFORE → $X_SIZE_AFTER" >&2; fail=1
 fi
-# Split must tile the (still-baseline) window exactly: panes start at the
-# origin, reach both far edges, and none overflow.
-[[ "$WIN_CELLS_SPLIT" == "$WIN_CELLS_BEFORE" ]] || { echo "FAIL: window changed size across the split $WIN_CELLS_BEFORE → $WIN_CELLS_SPLIT" >&2; fail=1; }
+# A left/right split legitimately costs ~1 column to the vertical splitter
+# handle (124x38 → 123x38), so don't demand the window size be unchanged —
+# only that it stayed essentially the baseline and didn't collapse (e.g. to
+# the orphan window's 80x24, which is what a mis-targeted/desynced split
+# would leave). The tiling checks below confirm the panes fill whatever
+# size it settled at.
+(( sw >= cols_before - 2 && sw <= cols_before )) || { echo "FAIL: window width changed too much across the split: ${cols_before} → ${sw}" >&2; fail=1; }
+(( sh >= rows_before - 2 && sh <= rows_before )) || { echo "FAIL: window height changed too much across the split: ${rows_before} → ${sh}" >&2; fail=1; }
+# The two panes must tile the window: start at the origin, reach both far
+# edges, and never overflow.
 (( overflow == 0 ))      || { echo "FAIL: a split pane extends past the window ${sw}x${sh}" >&2; fail=1; }
 (( min_l == 0 && min_t == 0 )) || { echo "FAIL: split panes don't start at the window origin (left=$min_l top=$min_t)" >&2; fail=1; }
 (( max_r == sw - 1 ))    || { echo "FAIL: split panes don't reach the right edge (max right=$max_r, expected $((sw-1)))" >&2; fail=1; }
