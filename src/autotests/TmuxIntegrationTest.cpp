@@ -6661,6 +6661,88 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     delete attach.mw.data();
 }
 
+// Regression for the user-reported intermittent "C-b C-b works in tmux but not
+// kmux" on Wayland. The doubled-prefix gesture relies on the second press
+// resolving to the send-prefix binding. Under Wayland the first key event after
+// the palette grabs focus can arrive with its Ctrl modifier dropped (a
+// modifier-state race), so the second C-b reaches the palette looking like a
+// bare "b": it matches no prefix binding and the palette would discard it,
+// closing without sending anything — the pane never sees the literal prefix.
+//
+// We can't make a compositor drop the modifier on demand, so we inject the exact
+// QKeyEvent the race produces: the palette opens from a real Ctrl+B, then the
+// second press is delivered as Key_B with NoModifier. A robust palette
+// recognises this as a re-press of the prefix key and still dispatches
+// send-prefix, so a bare 0x02 reaches the raw-mode pane.
+void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPressLosesCtrl()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Raw-mode TUI pane (no Enter needed to flush): every delivered byte lands in
+    // outFile immediately. The `> outFile` redirect creates the file before cat
+    // reads, so its existence is the "pane is ready" signal.
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/ctrlb-prefix-dropctrl.bin");
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("stty raw -echo; printf '\\033[?1049h'; exec cat > %1").arg(outFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+    QCOMPARE(controller->prefixShortcut(), QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    // First C-b — opens the palette (real prefix chord, Ctrl intact).
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QVERIFY(palette->hasFocus());
+
+    // Second press WITHOUT Ctrl — the event the Wayland race produces. The fix
+    // must recognise it as a prefix re-press and still dispatch send-prefix.
+    QTest::keyClick(palette, Qt::Key_B, Qt::NoModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
+
+    auto readFile = [&]() -> QByteArray {
+        QFile f(outFile);
+        if (!f.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return f.readAll();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 10000);
+
+    delete attach.mw.data();
+}
+
 // End-to-end: a silently hung control link (ssh that stops forwarding bytes but
 // keeps the fd open) is invisible at the process level — no EOF, so the bridge's
 // process-exit teardown never fires. The gateway's command-timeout detector is

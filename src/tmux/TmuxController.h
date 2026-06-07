@@ -131,6 +131,10 @@ public:
         QString command;
     };
     QKeySequence prefixShortcut() const;
+    // The prefix as tmux's own key token (e.g. "C-b"), straight from
+    // `show-options -gv prefix`. The palette needs this to recognise a re-press
+    // of the prefix key when a modifier was dropped (see TmuxPrefixPalette).
+    QString prefixToken() const;
     const QList<PrefixBinding> &prefixBindings() const;
 
 Q_SIGNALS:
@@ -180,6 +184,7 @@ private:
     bool shouldShowWindow(int windowId) const;
 
     QKeySequence _prefixShortcut;
+    QString _prefixToken;
     QList<PrefixBinding> _prefixBindings;
 
     QTimer *_paneTitleTimer;

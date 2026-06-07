@@ -62,6 +62,12 @@ private:
     void populateModel();
     void triggerBinding(const TmuxPrefixBinding &binding);
     bool tryTriggerByKey(const QKeyEvent *event);
+    // True when `event` is a re-press of the prefix key whose only difference
+    // from the real prefix chord is one or more *missing* prefix modifiers — the
+    // shape of the Wayland modifier-state race that drops Ctrl from the first key
+    // after the palette grabs focus. Never true for an unrelated key or one with
+    // extra modifiers, so it can't promote, say, a bare `o` into `C-o`.
+    bool isPrefixRepressWithDroppedModifier(const QKeyEvent *event) const;
 
     // Some tmux commands (e.g. choose-tree, where we want our native UI) are
     // handled client-side by dispatching to a kmux QAction instead of forwarding
@@ -73,6 +79,12 @@ private:
     ViewManager *_viewManager;
     TmuxController *_controller;
     QList<TmuxPrefixBinding> _bindings;
+
+    // The prefix key, cached from the controller at construction, used to detect
+    // a modifier-dropped re-press of the prefix (the tmux send-prefix gesture).
+    Qt::Key _prefixKey = Qt::Key_unknown;
+    Qt::KeyboardModifiers _prefixModifiers = Qt::NoModifier;
+    QString _prefixToken;
 
     QTreeView *_treeView;
     QStandardItemModel *_model = nullptr;

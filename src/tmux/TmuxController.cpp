@@ -1014,6 +1014,11 @@ QKeySequence TmuxController::prefixShortcut() const
     return _prefixShortcut;
 }
 
+QString TmuxController::prefixToken() const
+{
+    return _prefixToken;
+}
+
 const QList<TmuxController::PrefixBinding> &TmuxController::prefixBindings() const
 {
     return _prefixBindings;
@@ -1150,6 +1155,7 @@ void TmuxController::queryPrefixBindings()
         }
         QString token = response.trimmed();
         // `show-options -gv prefix` prints just the value, e.g. `C-b`.
+        _prefixToken = token;
         _prefixShortcut = tmuxTokenToShortcut(token);
         if (!_prefixBindings.isEmpty()) {
             Q_EMIT prefixBindingsChanged();

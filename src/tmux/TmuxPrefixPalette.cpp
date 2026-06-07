@@ -18,7 +18,9 @@
 
 #include <QAction>
 #include <QHeaderView>
+#include <QKeyCombination>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QStandardItem>
@@ -38,6 +40,19 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
 {
     setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
     setProperty("_breeze_force_frame", true);
+
+    // Cache the prefix key/modifiers/token so a re-press whose modifier the
+    // compositor dropped can still be recognised as the prefix (see
+    // isPrefixRepressWithDroppedModifier / tryTriggerByKey).
+    if (_controller) {
+        const QKeySequence seq = _controller->prefixShortcut();
+        if (!seq.isEmpty()) {
+            const QKeyCombination combo = seq[0];
+            _prefixKey = combo.key();
+            _prefixModifiers = combo.keyboardModifiers();
+        }
+        _prefixToken = _controller->prefixToken();
+    }
 
     window()->installEventFilter(this);
 
@@ -186,7 +201,38 @@ bool TmuxPrefixPalette::tryTriggerByKey(const QKeyEvent *event)
             return true;
         }
     }
+    // Wayland modifier-state race recovery: the press right after the palette
+    // grabs focus can arrive with a prefix modifier dropped, so a re-press of the
+    // prefix key (tmux send-prefix, e.g. C-b C-b) comes through as a bare key that
+    // matches no token and would be silently discarded. Recognise exactly that
+    // case and dispatch the prefix's own binding.
+    if (isPrefixRepressWithDroppedModifier(event)) {
+        for (const TmuxPrefixBinding &b : std::as_const(_bindings)) {
+            if (b.keyToken == _prefixToken) {
+                triggerBinding(b);
+                return true;
+            }
+        }
+    }
     return false;
+}
+
+bool TmuxPrefixPalette::isPrefixRepressWithDroppedModifier(const QKeyEvent *event) const
+{
+    if (_prefixToken.isEmpty() || _prefixKey == Qt::Key_unknown) {
+        return false;
+    }
+    if (event->key() != _prefixKey) {
+        return false;
+    }
+    constexpr Qt::KeyboardModifiers relevant = Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier | Qt::MetaModifier;
+    const Qt::KeyboardModifiers evMods = event->modifiers() & relevant;
+    const Qt::KeyboardModifiers prefixMods = _prefixModifiers & relevant;
+    // Same base key as the prefix, strictly fewer modifiers, and no modifier
+    // beyond the prefix's own set — i.e. a prefix modifier went missing. This is
+    // never true for an unrelated key or one carrying extra modifiers, so it
+    // cannot promote e.g. a bare "o" into "C-o".
+    return evMods != prefixMods && (evMods & ~prefixMods) == 0;
 }
 
 QString TmuxPrefixPalette::keyEventToTmuxToken(const QKeyEvent *event)
