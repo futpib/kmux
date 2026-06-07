@@ -136,6 +136,29 @@ std::optional<TmuxNotification> TmuxGateway::parseNotification(const QByteArray 
         QByteArray encoded = line.mid(firstSpace + 1);
         return TmuxOutputNotification{paneId, decodeOctalEscapes(encoded)};
 
+    } else if (line.startsWith("%extended-output ")) {
+        // tmux sends this in place of %output once the client enables the
+        // pause-after flag (see TmuxController::enableFlowControl). Format:
+        // "%extended-output <pane-id> <age> [<reserved>...] : <value>" — age is
+        // how many ms tmux had the output buffered, and any further fields up to
+        // the " : " are reserved. The value is octal-escaped exactly like
+        // %output. Without this branch, enabling flow control would make kmux
+        // ignore all pane output.
+        constexpr int prefixLen = 17; // strlen("%extended-output ")
+        int firstSpace = line.indexOf(' ', prefixLen);
+        if (firstSpace < 0) {
+            return std::nullopt;
+        }
+        int paneId = parsePaneId(line.mid(prefixLen, firstSpace - prefixLen));
+        if (paneId < 0) {
+            return std::nullopt;
+        }
+        int sep = line.indexOf(" : ", firstSpace);
+        if (sep < 0) {
+            return std::nullopt;
+        }
+        return TmuxOutputNotification{paneId, decodeOctalEscapes(line.mid(sep + 3))};
+
     } else if (line.startsWith("%layout-change ")) {
         QList<QByteArray> parts = line.mid(15).split(' ');
         if (parts.size() < 2) {

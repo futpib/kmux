@@ -85,11 +85,6 @@ void TmuxPaneManager::deliverOutput(int paneId, const QByteArray &data)
         return;
     }
 
-    if (_pausedPanes.contains(paneId)) {
-        _pauseBuffers[paneId].append(data);
-        return;
-    }
-
     auto *session = qobject_cast<VirtualSession *>(_paneToSession.value(paneId, nullptr));
     if (session) {
         session->injectData(data.constData(), data.size());
@@ -111,29 +106,6 @@ void TmuxPaneManager::suppressAllOutput()
 void TmuxPaneManager::unsuppressOutput(int paneId)
 {
     _suppressedPanes.remove(paneId);
-}
-
-void TmuxPaneManager::pausePane(int paneId)
-{
-    _pausedPanes.insert(paneId);
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
-                              .flag(QStringLiteral("-A"))
-                              .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":on")));
-}
-
-void TmuxPaneManager::continuePane(int paneId)
-{
-    _pausedPanes.remove(paneId);
-
-    if (_pauseBuffers.contains(paneId)) {
-        QByteArray buffered = _pauseBuffers.take(paneId);
-        if (!buffered.isEmpty()) {
-            auto *session = qobject_cast<VirtualSession *>(_paneToSession.value(paneId, nullptr));
-            if (session) {
-                session->injectData(buffered.constData(), buffered.size());
-            }
-        }
-    }
 }
 
 bool TmuxPaneManager::hasPane(int paneId) const

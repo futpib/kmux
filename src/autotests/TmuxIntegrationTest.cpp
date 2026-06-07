@@ -317,6 +317,202 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
     delete attach.mw.data();
 }
 
+// Covers the pause -> resume round trip behind the suspend fix. When tmux pauses
+// a pane (control-mode flow control — what happens once kmux enables pause-after
+// and the client falls behind during a suspend), kmux must resume the pane and
+// resync it, not leave it paused forever (TmuxController::onPanePaused).
+//
+// We pause the pane for real through kmux's own control connection, produce
+// output the paused pane drops, then deliver the %pause to the gateway the way
+// tmux would asynchronously after a suspend. (The %pause acknowledging our own
+// pause request arrives inside that command's response block and is consumed as
+// response data — the async delivery is the path onPanePaused reacts to.)
+// onPanePaused must then (a) resync, recovering the output dropped while paused —
+// only capture-pane can, the live stream dropped it — and (b) resume the pane so
+// new output flows again.
+void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        │                            │
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto sendKeys = [&](const QString &keys) {
+        QProcess p;
+        p.start(tmuxPath,
+                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, keys, QStringLiteral("Enter")});
+        QVERIFY(p.waitForFinished(5000));
+        QCOMPARE(p.exitCode(), 0);
+    };
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    Session *paneSession = sessions.first();
+    QVERIFY(paneSession);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
+    QVERIFY(controller);
+    TmuxGateway *gateway = controller->gateway();
+    QVERIFY(gateway);
+    const int paneId = controller->paneIdForSession(paneSession);
+    QVERIFY(paneId >= 0);
+
+    // Sanity: kmux is attached and live output reaches the pane.
+    sendKeys(QStringLiteral("echo BEFORE_RT_MARKER"));
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("BEFORE_RT_MARKER")), 10000);
+
+    // Pause the pane (quoted form — tmux's control-command parser rejects a bare
+    // %id:pause). tmux acknowledges with %pause inside this command's own
+    // response block, so kmux's notification handler doesn't act on it here.
+    gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                             .flag(QStringLiteral("-A"))
+                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")));
+    QTest::qWait(1000);
+
+    // Output produced now is withheld by the paused pane and dropped from the
+    // live stream — confirm it does not reach kmux.
+    sendKeys(QStringLiteral("echo DROPPED_WHILE_PAUSED_MARKER"));
+    QTest::qWait(1000);
+    QVERIFY2(!readSessionScreenText(paneSession).contains(QStringLiteral("DROPPED_WHILE_PAUSED_MARKER")),
+             "output on a paused pane should not reach kmux via the live stream");
+
+    // Deliver the %pause to kmux as tmux would asynchronously after a suspend.
+    // This drives onPanePaused: resume (refresh-client -A %id:continue) + resync.
+    gateway->processLine(QByteArray("%pause %") + QByteArray::number(paneId));
+
+    // (a) The resync recovers the output dropped while paused.
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("DROPPED_WHILE_PAUSED_MARKER")), 15000);
+    // (b) The pane is live again: new output flows.
+    sendKeys(QStringLiteral("echo AFTER_RT_MARKER"));
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("AFTER_RT_MARKER")), 15000);
+
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
+// The pause -> resume round trip for a full-screen TUI (alternate screen) — the
+// realistic "frozen vim/htop after suspend" case. It exercises the alt-screen
+// branch of the resync: capturePaneHistory must re-enter the alternate screen and
+// repaint the captured frame, or the TUI comes back blank/garbled after resume.
+void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        │                            │
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto sendKeys = [&](const QString &keys) {
+        QProcess p;
+        p.start(tmuxPath,
+                {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, keys, QStringLiteral("Enter")});
+        QVERIFY(p.waitForFinished(5000));
+        QCOMPARE(p.exitCode(), 0);
+    };
+
+    // Enter the alternate screen and paint an initial frame, like a live TUI. We
+    // do NOT exec-replace the shell, so it stays on the alt screen and we can
+    // repaint it while paused.
+    sendKeys(QStringLiteral("printf '\\033[?1049h\\033[2J\\033[3;1HTUI_BEFORE_MARKER'"));
+    QTest::qWait(500);
+
+    // Sanity: the pane really is on the alternate screen (the test premise).
+    QProcess altCheck;
+    altCheck.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("display-message"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-p"),
+                    QStringLiteral("#{alternate_on}")});
+    QVERIFY(altCheck.waitForFinished(5000));
+    QCOMPARE(QString::fromUtf8(altCheck.readAllStandardOutput()).trimmed(), QStringLiteral("1"));
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    Session *paneSession = sessions.first();
+    QVERIFY(paneSession);
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
+    QVERIFY(controller);
+    TmuxGateway *gateway = controller->gateway();
+    QVERIFY(gateway);
+    const int paneId = controller->paneIdForSession(paneSession);
+    QVERIFY(paneId >= 0);
+
+    // kmux recovered the TUI's current frame on attach.
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("TUI_BEFORE_MARKER")), 10000);
+
+    // Pause the pane, then repaint the TUI frame — the paused pane withholds it,
+    // so it must not reach kmux via the live stream.
+    gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                             .flag(QStringLiteral("-A"))
+                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")));
+    QTest::qWait(1000);
+    sendKeys(QStringLiteral("printf '\\033[5;1HTUI_AFTER_MARKER'"));
+    QTest::qWait(1000);
+    QVERIFY2(!readSessionScreenText(paneSession).contains(QStringLiteral("TUI_AFTER_MARKER")),
+             "alt-screen repaint while paused must not reach kmux via the live stream");
+
+    // Deliver the %pause as tmux would asynchronously after a suspend, driving
+    // onPanePaused (resume + resync).
+    gateway->processLine(QByteArray("%pause %") + QByteArray::number(paneId));
+
+    // The resync re-enters the alt screen and repaints the captured frame, so the
+    // content the TUI drew while paused lands on the active (alt) screen — not
+    // behind a blank one (the alt-screen recovery bug). readSessionScreenText
+    // reads the active screen, so seeing the marker means the frame is on the alt
+    // screen where the live TUI is.
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("TUI_AFTER_MARKER")), 15000);
+
+    // ...and the pane is live again: a further repaint flows through (it would be
+    // dropped if the pane were still paused).
+    sendKeys(QStringLiteral("printf '\\033[7;1HTUI_RESUMED_MARKER'"));
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("TUI_RESUMED_MARKER")), 15000);
+
+    const auto allSessions = attach.mw->viewManager()->sessions();
+    for (Session *s : allSessions) {
+        s->closeInNormalWay();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();

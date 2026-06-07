@@ -59,6 +59,25 @@ void TmuxGatewayTest::testNotificationOutsideAnyBlockIsRouted()
     QCOMPARE(spy.first().at(1).toString(), QStringLiteral("other"));
 }
 
+void TmuxGatewayTest::testExtendedOutputParsedAsOutput()
+{
+    // Once a control client sets the pause-after flag, tmux replaces %output
+    // with %extended-output (inserting an "age" field before a " : " delimiter).
+    // The gateway must treat it as pane output and decode the value after the
+    // delimiter — otherwise enabling flow control makes kmux blind to all pane
+    // output. The value is octal-escaped exactly like %output.
+    TmuxGateway gateway([](const QByteArray &) {});
+
+    QSignalSpy spy(&gateway, &TmuxGateway::outputReceived);
+    QVERIFY(spy.isValid());
+
+    gateway.processLine("%extended-output %3 0 : hello\\015\\012");
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.first().at(0).toInt(), 3);
+    QCOMPARE(spy.first().at(1).toByteArray(), QByteArray("hello\r\n"));
+}
+
 void TmuxGatewayTest::testResponseInsideClientOriginatedBlockIsCaptured()
 {
     // Make sure routing notifications inside server-originated blocks

@@ -151,6 +151,7 @@ private Q_SLOTS:
     void onSessionChanged(int sessionId, const QString &name);
     void onSessionWindowChanged(int sessionId, int windowId);
     void onPaneModeChanged(int paneId);
+    void onPanePaused(int paneId);
     void onExit(const QString &reason);
 
 private:
@@ -166,6 +167,9 @@ private:
     void handleListWindowsResponse(bool success, const QString &response);
     void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
     void queryPrefixBindings();
+    // Enable tmux control-mode flow control (pause-after) so a suspended/stalled
+    // client can't wedge the server. Idempotent; safe to call on every init.
+    void enableFlowControl();
 
     TmuxGateway *_gateway;
     ViewManager *_viewManager;
@@ -193,6 +197,7 @@ private:
     int _sessionId = -1;
     State _state = State::Idle;
     int _activePaneId = -1;
+    bool _flowControlEnabled = false;
 };
 
 } // namespace Konsole

@@ -48,8 +48,11 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     connect(_gateway, &TmuxGateway::sessionChanged, this, &TmuxController::onSessionChanged);
     connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::onSessionWindowChanged);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
-    connect(_gateway, &TmuxGateway::panePaused, _paneManager, &TmuxPaneManager::pausePane);
-    connect(_gateway, &TmuxGateway::paneContinued, _paneManager, &TmuxPaneManager::continuePane);
+    // tmux pauses a pane (control-mode flow control) when our client falls more
+    // than pause-after seconds behind — e.g. the laptop slept over --rsh. We
+    // resume it and resync its contents (see onPanePaused). %continue then
+    // arrives once tmux resumes; it needs no action of its own.
+    connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
     connect(_gateway, &TmuxGateway::paneModeChanged, this, &TmuxController::onPaneModeChanged);
     // Unsuppress output when pane state recovery completes
     connect(_stateRecovery, &TmuxPaneStateRecovery::paneRecoveryComplete, _paneManager, &TmuxPaneManager::unsuppressOutput);
@@ -86,6 +89,11 @@ TmuxController::~TmuxController()
 void TmuxController::initialize()
 {
     setState(State::Initializing);
+
+    // Opt into control-mode flow control before anything else, so a stalled or
+    // suspended client can't wedge the server (see enableFlowControl).
+    enableFlowControl();
+
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows"))
                               .format(QStringLiteral("#{window_id} #{window_name} #{window_layout}")),
                           [this](bool success, const QString &response) {
@@ -397,6 +405,64 @@ int TmuxController::activePaneId() const
 int TmuxController::paneIdForSession(Session *session) const
 {
     return _paneManager->paneIdForSession(session);
+}
+
+void TmuxController::enableFlowControl()
+{
+    if (_flowControlEnabled) {
+        return;
+    }
+
+    // Seconds a pane may fall behind in control mode before tmux pauses it (and
+    // notifies us with %pause). Without this flag tmux has no way to shed a
+    // backlog when our client stops reading — e.g. the laptop suspends over
+    // --rsh — and instead buffers pane output unbounded (ballooning the server
+    // toward OOM) or stops reading the pane's pty (freezing the app in it).
+    // Overridable via KMUX_PAUSE_AFTER (mainly to let tests force a tight bound);
+    // a value <= 0 disables flow control entirely — an escape hatch, and the way
+    // the regression test exercises the pre-fix behaviour.
+    int pauseAfter = 5;
+    if (qEnvironmentVariableIsSet("KMUX_PAUSE_AFTER")) {
+        bool ok = false;
+        const int v = qEnvironmentVariableIntValue("KMUX_PAUSE_AFTER", &ok);
+        if (ok) {
+            pauseAfter = v;
+        }
+    }
+    if (pauseAfter <= 0) {
+        return;
+    }
+    _flowControlEnabled = true;
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                              .flag(QStringLiteral("-f"))
+                              .arg(QStringLiteral("pause-after=%1").arg(pauseAfter)));
+}
+
+void TmuxController::onPanePaused(int paneId)
+{
+    // tmux paused this pane because our control client fell more than
+    // pause-after seconds behind — typically the machine suspended (laptop sleep
+    // over --rsh) or the link stalled. Output produced while paused is dropped
+    // by the server, so by the time we read this %pause we have drained
+    // everything up to the pause point and the link is healthy again. Resume the
+    // pane and resync its current contents: a bare resumed stream would
+    // otherwise paint onto a screen missing whatever was dropped.
+    if (!_paneManager->hasPane(paneId)) {
+        return;
+    }
+    const int windowId = windowIdForPane(paneId);
+
+    // Drop live output locally until the capture-pane snapshot is injected, so
+    // the resumed stream can't interleave with the resync. paneRecoveryComplete
+    // unsuppresses (wired in the constructor).
+    _paneManager->suppressOutput(paneId);
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                              .flag(QStringLiteral("-A"))
+                              .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":continue")));
+    if (windowId >= 0) {
+        _stateRecovery->queryPaneStates(windowId);
+    }
+    _stateRecovery->capturePaneHistory(paneId);
 }
 
 int TmuxController::windowIdForPane(int paneId) const

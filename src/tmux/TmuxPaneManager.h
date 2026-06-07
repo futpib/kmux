@@ -29,8 +29,6 @@ public:
     void destroyAllPaneSessions();
 
     void deliverOutput(int paneId, const QByteArray &data);
-    void pausePane(int paneId);
-    void continuePane(int paneId);
 
     void suppressOutput(int paneId);
     void suppressAllOutput();
@@ -50,9 +48,7 @@ Q_SIGNALS:
 private:
     TmuxGateway *_gateway;
     QMap<int, Session *> _paneToSession;
-    QSet<int> _pausedPanes;
     QSet<int> _suppressedPanes;
-    QMap<int, QByteArray> _pauseBuffers;
 };
 
 } // namespace Konsole
