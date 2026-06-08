@@ -62,6 +62,13 @@ private:
     void populateModel();
     void triggerBinding(const TmuxPrefixBinding &binding);
     bool tryTriggerByKey(const QKeyEvent *event);
+    // Dispatch a single post-prefix keystroke: trigger the matching binding,
+    // send-prefix on a prefix re-press, or close on Escape/unknown. Shared by
+    // keyPressEvent and the application-wide event filter.
+    void handleKey(QKeyEvent *event);
+    // True if obj is a widget in the palette's own top-level window — used to
+    // scope the qApp event filter to our window.
+    bool isForOurWindow(QObject *obj) const;
     // True when `event` is a re-press of the prefix key whose only difference
     // from the real prefix chord is one or more *missing* prefix modifiers — the
     // shape of the Wayland modifier-state race that drops Ctrl from the first key

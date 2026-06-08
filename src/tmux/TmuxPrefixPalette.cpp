@@ -17,6 +17,7 @@
 #include <KLocalizedString>
 
 #include <QAction>
+#include <QApplication>
 #include <QHeaderView>
 #include <QKeyCombination>
 #include <QKeyEvent>
@@ -54,7 +55,12 @@ TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *c
         _prefixToken = _controller->prefixToken();
     }
 
-    window()->installEventFilter(this);
+    // Filter the whole application (scoped to our window in eventFilter) rather
+    // than just window(): the keystroke after the prefix is delivered to whatever
+    // widget holds focus — often the terminal pane, not the palette, especially
+    // on Wayland — and a filter on window() never sees events sent to child
+    // widgets. This is what makes C-b C-b reach us regardless of focus.
+    qApp->installEventFilter(this);
 
     auto *layout = new QVBoxLayout();
     layout->setSpacing(0);
@@ -345,42 +351,90 @@ bool TmuxPrefixPalette::event(QEvent *event)
     return QFrame::event(event);
 }
 
-void TmuxPrefixPalette::keyPressEvent(QKeyEvent *event)
+namespace
+{
+bool isModifierKey(int key)
+{
+    return key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta;
+}
+} // namespace
+
+void TmuxPrefixPalette::handleKey(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
-        event->accept();
         hide();
         deleteLater();
         return;
     }
-    // Pure modifier presses (no text, no base key) — ignore so the user can
-    // still type e.g. C-o (first the Ctrl press alone arrives).
-    if (event->key() == Qt::Key_Control || event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt || event->key() == Qt::Key_Meta) {
-        QFrame::keyPressEvent(event);
-        return;
-    }
     if (tryTriggerByKey(event)) {
-        event->accept();
         return;
     }
-    // Unknown key — close the palette; matches tmux behaviour (unknown key
-    // after prefix is a no-op that leaves prefix mode).
-    event->accept();
+    // Unknown key — close the palette; matches tmux behaviour (an unknown key
+    // after the prefix is a no-op that leaves prefix mode).
     hide();
     deleteLater();
 }
 
+void TmuxPrefixPalette::keyPressEvent(QKeyEvent *event)
+{
+    // Real keys are normally intercepted by the qApp filter (focus-independent);
+    // this is the fallback for when the palette itself is the focus widget. Pure
+    // modifier presses are ignored so the user can still type e.g. C-o (the bare
+    // Ctrl press arrives first).
+    if (isModifierKey(event->key())) {
+        QFrame::keyPressEvent(event);
+        return;
+    }
+    event->accept();
+    handleKey(event);
+}
+
+bool TmuxPrefixPalette::isForOurWindow(QObject *obj) const
+{
+    auto *w = qobject_cast<QWidget *>(obj);
+    return w != nullptr && w->window() == window();
+}
+
 bool TmuxPrefixPalette::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::FocusOut && obj == this) {
-        hide();
-        deleteLater();
-        return true;
+    const QEvent::Type type = event->type();
+
+    // The keystroke after the prefix is delivered to whatever widget holds focus
+    // — often the terminal pane, not the palette (the compositor can leave focus
+    // there, notably on Wayland). Intercept it here so C-b C-b reaches us
+    // regardless of focus, scoped to our own top-level window.
+    if (isForOurWindow(obj)) {
+        if (type == QEvent::ShortcutOverride) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if (!isModifierKey(ke->key())) {
+                // Stop the window's shortcuts (notably the prefix QAction, which
+                // would just reopen the palette) from swallowing the key; let it
+                // arrive as a KeyPress we handle below.
+                event->accept();
+                return true;
+            }
+        } else if (type == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if (!isModifierKey(ke->key())) {
+                handleKey(ke);
+                return true; // consume — the focused widget must not also see it
+            }
+        } else if (type == QEvent::MouseButtonPress) {
+            // A click outside the palette dismisses it. (Replaces the old
+            // FocusOut close, which never fired: the filter was on window() but
+            // the branch checked obj == this.)
+            auto *w = qobject_cast<QWidget *>(obj);
+            if (w != nullptr && w != this && !isAncestorOf(w)) {
+                hide();
+                deleteLater();
+            }
+        }
     }
-    if (window() == obj && event->type() == QEvent::Resize) {
+
+    if (type == QEvent::Resize && obj == window()) {
         updateViewGeometry();
     }
-    return QWidget::eventFilter(obj, event);
+    return QFrame::eventFilter(obj, event);
 }
 
 void TmuxPrefixPalette::updateViewGeometry()

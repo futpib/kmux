@@ -6939,6 +6939,91 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPress
     delete attach.mw.data();
 }
 
+// REPRO of the C-b C-b failure the modifier-drop fix did NOT address: the second
+// prefix press is lost when the palette isn't the focus widget. The palette
+// captures the next key only via keyboard FOCUS — no keyboard grab, and the
+// eventFilter ignores key events — so if focus is on the terminal pane when the
+// second C-b arrives (the Wayland focus race), the prefix QAction fires again and
+// reopens the palette instead of sending the literal prefix. Every other palette
+// test injects the second key straight into the palette object, bypassing focus,
+// which is why they pass; here we send it through realistic routing after
+// simulating the focus slip. Guards the qApp-level key capture in
+// TmuxPrefixPalette that makes the next-key handling focus-independent.
+void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Raw-mode pane so a delivered prefix byte (0x02) lands in outFile with no
+    // Enter needed (which could be swallowed by a reopened palette).
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/ctrlb-prefix-unfocused.bin");
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName,
+                    QStringLiteral("stty raw -echo; printf '\\033[?1049h'; exec cat > %1").arg(outFile), QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+    QCOMPARE(sendKeys.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+
+    // First C-b — opens the palette with focus.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QVERIFY(palette->hasFocus());
+
+    // Simulate the Wayland focus race: focus slips back to the terminal pane just
+    // after the palette opens. (On the user's session the compositor does this on
+    // its own; we force it so the failure is deterministic.)
+    Session *paneSession = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(paneSession);
+    const auto views = paneSession->views();
+    QVERIFY(!views.isEmpty());
+    auto *display = views.first();
+    display->setFocus(Qt::OtherFocusReason);
+    QTest::qWait(200);
+
+    // Second C-b — delivered to the focused widget (the pane), as a real keypress
+    // would be. The palette must still capture it and dispatch send-prefix.
+    QTest::keyClick(display, Qt::Key_B, Qt::ControlModifier);
+
+    auto readFile = [&]() -> QByteArray {
+        QFile f(outFile);
+        if (!f.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return f.readAll();
+    };
+    // The literal prefix (0x02) reaches the pane, and the palette closes rather
+    // than being reopened by the prefix QAction.
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 8000);
+    QVERIFY(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr);
+
+    delete attach.mw.data();
+}
+
 // End-to-end: a silently hung control link (ssh that stops forwarding bytes but
 // keeps the fd open) is invisible at the process level — no EOF, so the bridge's
 // process-exit teardown never fires. The gateway's command-timeout detector is
