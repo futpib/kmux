@@ -404,6 +404,37 @@ int Application::newInstance()
                 windowGuard->activateWindow();
             }
         });
+
+        // The window above is only shown once tmux handshakes. If the rsh
+        // wrapper or tmux instead dies during startup (bad ssh host, remote
+        // tmux missing, wrapper exits non-zero), ready() never fires — and
+        // without this the process would idle forever with no visible
+        // window. Report the failure and quit non-zero so the launching
+        // shell sees an error instead of a hang.
+        connect(bridge, &TmuxProcessBridge::startupFailed, this, [windowGuard](const QString &reason) {
+            qCritical().noquote() << QStringLiteral("kmux: tmux session failed to start:") << reason;
+
+            // Tear down the never-shown window for this failed launch.
+            if (windowGuard) {
+                windowGuard->deleteLater();
+            }
+
+            // Only quit the whole app when no other window survived — a
+            // second --rsh invocation into an existing instance shouldn't
+            // take down already-running windows. memberList() tracks every
+            // live KMainWindow.
+            const auto windows = KMainWindow::memberList();
+            bool othersAlive = false;
+            for (KMainWindow *w : windows) {
+                if (w != windowGuard) {
+                    othersAlive = true;
+                    break;
+                }
+            }
+            if (!othersAlive) {
+                QCoreApplication::exit(1);
+            }
+        });
     }
 
     return 1;

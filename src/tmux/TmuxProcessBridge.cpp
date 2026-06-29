@@ -120,6 +120,9 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     connect(_process, &QProcess::finished, this, &TmuxProcessBridge::onProcessFinished);
 
     connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
+    connect(_gateway, &TmuxGateway::ready, this, [this]() {
+        _ready = true;
+    });
     connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxProcessBridge::teardown);
     // A silently hung control link (e.g. dropped ssh) is invisible at the
@@ -237,6 +240,22 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
     }
     qWarning() << "TmuxProcessBridge: process finished, exitCode=" << exitCode << "exitStatus=" << exitStatus << "drained=" << total << "bytes"
                << "readBuffer=" << _readBuffer.left(500);
+
+    // If the process died before the gateway ever handshook, this is a
+    // startup failure, not a teardown: tmux never came up, so there is no
+    // session to clean and — critically — no ready() will ever fire to
+    // release a deferred window->show(). Surfacing startupFailed() lets the
+    // launcher report the error and quit instead of idling forever.
+    if (!_ready) {
+        QString detail = QString::fromUtf8(_readBuffer.trimmed());
+        if (detail.isEmpty()) {
+            detail = exitStatus == QProcess::CrashExit ? QStringLiteral("process crashed") : QStringLiteral("no output");
+        }
+        const QString reason = QStringLiteral("exit code %1 (%2)").arg(exitCode).arg(detail);
+        Q_EMIT startupFailed(reason);
+        return;
+    }
+
     teardown();
 }
 

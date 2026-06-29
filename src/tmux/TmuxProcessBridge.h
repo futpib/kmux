@@ -64,6 +64,14 @@ Q_SIGNALS:
     /// protocol is live. Callers use this to hold back UI that would
     /// otherwise steal focus from a still-prompting rsh (ssh password).
     void ready();
+    /// Emitted when the subprocess exits before ready() ever fired — i.e.
+    /// the rsh wrapper or tmux died during startup (bad ssh host, remote
+    /// tmux missing, wrapper exited non-zero, …). @p reason carries the
+    /// exit code and any stderr/stdout the process emitted. Without this,
+    /// a launch whose deferred-show is gated on ready() would idle forever
+    /// with no window. Distinct from disconnected(), which fires on a
+    /// teardown of an already-established session.
+    void startupFailed(const QString &reason);
 
 private:
     void onReadyRead();
@@ -79,6 +87,10 @@ private:
     TmuxController *_controller = nullptr;
     QSocketNotifier *_readNotifier = nullptr;
     int _socketFd = -1;
+    // True once the gateway emitted ready(). Distinguishes a startup
+    // failure (process exits before this) from a normal post-handshake
+    // teardown in onProcessFinished().
+    bool _ready = false;
     QByteArray _readBuffer;
     QString _tmuxPath;
     QStringList _tmuxArgs;
