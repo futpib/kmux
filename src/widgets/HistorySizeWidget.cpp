@@ -13,7 +13,11 @@
 #include <QButtonGroup>
 #include <QWhatsThis>
 
+#include <KLocalization>
 #include <KLocalizedString>
+
+// Qt
+#include <QSpinBox>
 
 // Konsole
 #include "ui_HistorySizeWidget.h"
@@ -29,7 +33,7 @@ HistorySizeWidget::HistorySizeWidget(QWidget *parent)
 
     // focus and select the spinner automatically when appropriate
     _ui->fixedSizeHistoryButton->setFocusProxy(_ui->historyLineSpinner);
-    connect(_ui->fixedSizeHistoryButton, &QRadioButton::clicked, _ui->historyLineSpinner, &KPluralHandlingSpinBox::selectAll);
+    connect(_ui->fixedSizeHistoryButton, &QRadioButton::clicked, _ui->historyLineSpinner, &QSpinBox::selectAll);
 
     auto modeGroup = new QButtonGroup(this);
     modeGroup->addButton(_ui->noHistoryButton);
@@ -37,13 +41,11 @@ HistorySizeWidget::HistorySizeWidget(QWidget *parent)
     modeGroup->addButton(_ui->unlimitedHistoryButton);
     connect(modeGroup, static_cast<void (QButtonGroup::*)(QAbstractButton *)>(&QButtonGroup::buttonClicked), this, &Konsole::HistorySizeWidget::buttonClicked);
 
-    _ui->historyLineSpinner->setSuffix(ki18ncp("@label:textbox Unit of scrollback", " line", " lines"));
+    // %v is the spin box value; the leading space separates it from the number.
+    KLocalization::setupSpinBoxFormatString(_ui->historyLineSpinner, ki18ncp("@label:textbox Unit of scrollback", "%v line", "%v lines"));
     setLineCount(HistorySizeWidget::DefaultLineCount);
 
-    connect(_ui->historyLineSpinner,
-            static_cast<void (KPluralHandlingSpinBox::*)(int)>(&KPluralHandlingSpinBox::valueChanged),
-            this,
-            &Konsole::HistorySizeWidget::historySizeChanged);
+    connect(_ui->historyLineSpinner, &QSpinBox::valueChanged, this, &Konsole::HistorySizeWidget::historySizeChanged);
 
     auto warningButtonSizePolicy = _ui->fixedSizeHistoryWarningButton->sizePolicy();
     warningButtonSizePolicy.setRetainSizeWhenHidden(true);

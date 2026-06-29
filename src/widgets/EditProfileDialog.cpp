@@ -29,6 +29,7 @@
 #include <KCodecAction>
 #include <KColorButton>
 #include <KIconDialog>
+#include <KLocalization>
 #include <KLocalizedString>
 #include <KWindowSystem>
 
@@ -544,15 +545,16 @@ void EditProfileDialog::setupGeneralPage(const Profile::Ptr &profile)
         }
     }
 
-    // initial terminal size
+    // initial terminal size. %v is the spin box value; the leading space
+    // before the unit separates it from the number.
     const auto colsSuffix =
-        ki18ncp("Suffix of the number of columns (N columns). The leading space is needed to separate it from the number value.", " column", " columns");
+        ki18ncp("Format of the number of columns (N columns). %v is the value; the leading space separates it from the number.", "%v column", "%v columns");
     const auto rowsSuffix =
-        ki18ncp("Suffix of the number of rows (N rows). The leading space is needed to separate it from the number value.", " row", " rows");
+        ki18ncp("Format of the number of rows (N rows). %v is the value; the leading space separates it from the number.", "%v row", "%v rows");
     _generalUi->terminalColumnsEntry->setValue(profile->terminalColumns());
     _generalUi->terminalRowsEntry->setValue(profile->terminalRows());
-    _generalUi->terminalColumnsEntry->setSuffix(colsSuffix);
-    _generalUi->terminalRowsEntry->setSuffix(rowsSuffix);
+    KLocalization::setupSpinBoxFormatString(_generalUi->terminalColumnsEntry, colsSuffix);
+    KLocalization::setupSpinBoxFormatString(_generalUi->terminalRowsEntry, rowsSuffix);
     // make width of initial terminal size spinboxes equal
     const int sizeEntryWidth = qMax(maxSpinBoxWidth(_generalUi->terminalColumnsEntry, colsSuffix), maxSpinBoxWidth(_generalUi->terminalRowsEntry, rowsSuffix));
     _generalUi->terminalColumnsEntry->setFixedWidth(sizeEntryWidth);
@@ -708,8 +710,8 @@ void EditProfileDialog::setupTabsPage(const Profile::Ptr &profile)
     // tab monitoring
     const int silenceSeconds = profile->silenceSeconds();
     _tabsUi->silenceSecondsSpinner->setValue(silenceSeconds);
-    auto suffix = ki18ncp("Unit of time", " second", " seconds");
-    _tabsUi->silenceSecondsSpinner->setSuffix(suffix);
+    auto suffix = ki18ncp("Unit of time. %v is the value; the leading space separates it from the number.", "%v second", "%v seconds");
+    KLocalization::setupSpinBoxFormatString(_tabsUi->silenceSecondsSpinner, suffix);
     int silenceCheckBoxWidth = maxSpinBoxWidth(_generalUi->terminalColumnsEntry, suffix);
     _tabsUi->silenceSecondsSpinner->setFixedWidth(silenceCheckBoxWidth);
 
@@ -2154,13 +2156,17 @@ void EditProfileDialog::setupAdvancedPage(const Profile::Ptr &profile)
     setupButtonGroup(lineNums, profile);
 }
 
-int EditProfileDialog::maxSpinBoxWidth(const KPluralHandlingSpinBox *spinBox, const KLocalizedString &suffix)
+int EditProfileDialog::maxSpinBoxWidth(const QSpinBox *spinBox, const KLocalizedString &suffix)
 {
     static const int cursorWidth = 2;
 
+    // The format string carries a literal "%v" value placeholder (consumed by
+    // KLocalization::setupSpinBoxFormatString); strip it so the width estimate
+    // covers only the displayed prefix/suffix text, not the placeholder.
+    const QString placeholder = QStringLiteral("%v");
     const QFontMetrics fm(spinBox->fontMetrics());
-    const QString plural = suffix.subs(2).toString();
-    const QString singular = suffix.subs(1).toString();
+    const QString plural = suffix.subs(2).toString().remove(placeholder);
+    const QString singular = suffix.subs(1).toString().remove(placeholder);
     const QString min = QString::number(spinBox->minimum());
     const QString max = QString::number(spinBox->maximum());
     const int pluralWidth = fm.boundingRect(plural).width();

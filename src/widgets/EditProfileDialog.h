@@ -27,9 +27,9 @@
 #include "LabelsAligner.h"
 #include "keyboardtranslator/KeyboardTranslatorManager.h"
 
-class KPluralHandlingSpinBox;
 class KLocalizedString;
 class QItemSelectionModel;
+class QSpinBox;
 class QTextCodec;
 
 namespace Ui
@@ -283,7 +283,7 @@ private:
 
     void setMessageGeneralPage(const QString &msg);
 
-    int maxSpinBoxWidth(const KPluralHandlingSpinBox *spinBox, const KLocalizedString &suffix);
+    int maxSpinBoxWidth(const QSpinBox *spinBox, const KLocalizedString &suffix);
 
     // Returns the name of the colorScheme used in the current profile
     const QString currentColorSchemeName() const;
