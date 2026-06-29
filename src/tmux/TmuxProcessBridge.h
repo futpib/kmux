@@ -92,6 +92,11 @@ private:
     // teardown in onProcessFinished().
     bool _ready = false;
     QByteArray _readBuffer;
+    // Raw stdout accumulated while still pre-handshake. _readBuffer is
+    // drained line-by-line into the gateway, so it can't be relied on for
+    // a startup-failure diagnostic; this keeps an untouched copy (e.g. the
+    // wrapper's error message) to report. Cleared once ready() fires.
+    QByteArray _startupOutput;
     QString _tmuxPath;
     QStringList _tmuxArgs;
     QStringList _command;

@@ -122,6 +122,7 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
     connect(_gateway, &TmuxGateway::ready, this, [this]() {
         _ready = true;
+        _startupOutput.clear(); // diagnostic buffer is only needed pre-handshake
     });
     connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxProcessBridge::teardown);
@@ -205,6 +206,9 @@ void TmuxProcessBridge::onReadyRead()
         ssize_t n = read(_socketFd, buf, sizeof(buf));
         if (n > 0) {
             _readBuffer.append(buf, n);
+            if (!_ready) {
+                _startupOutput.append(buf, n);
+            }
         } else {
             if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
                 if (_readNotifier) {
@@ -233,6 +237,9 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
         ssize_t n = read(_socketFd, buf, sizeof(buf));
         if (n > 0) {
             _readBuffer.append(buf, n);
+            if (!_ready) {
+                _startupOutput.append(buf, n);
+            }
             total += n;
         } else {
             break;
@@ -247,11 +254,26 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
     // release a deferred window->show(). Surfacing startupFailed() lets the
     // launcher report the error and quit instead of idling forever.
     if (!_ready) {
-        QString detail = QString::fromUtf8(_readBuffer.trimmed());
-        if (detail.isEmpty()) {
-            detail = exitStatus == QProcess::CrashExit ? QStringLiteral("process crashed") : QStringLiteral("no output");
+        // Surface both streams of the failing command so the user can see
+        // *why* it failed (e.g. ssh's "Could not resolve hostname" on stderr,
+        // or a wrapper's message on stdout). stdout came through the socket
+        // into _startupOutput; stderr is captured separately by QProcess.
+        const QString out = QString::fromUtf8(_startupOutput).trimmed();
+        const QString err = _process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString();
+
+        QString reason = QStringLiteral("exit code %1").arg(exitCode);
+        if (exitStatus == QProcess::CrashExit) {
+            reason += QStringLiteral(" (process crashed)");
         }
-        const QString reason = QStringLiteral("exit code %1 (%2)").arg(exitCode).arg(detail);
+        if (!out.isEmpty()) {
+            reason += QStringLiteral("\n  stdout: %1").arg(out);
+        }
+        if (!err.isEmpty()) {
+            reason += QStringLiteral("\n  stderr: %1").arg(err);
+        }
+        if (out.isEmpty() && err.isEmpty()) {
+            reason += QStringLiteral(" (no output)");
+        }
         Q_EMIT startupFailed(reason);
         return;
     }
