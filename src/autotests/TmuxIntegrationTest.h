@@ -75,6 +75,7 @@ private Q_SLOTS:
     void testTmuxAttachNoSessions();
     void testAttachMultipleWindows();
     void testNewWindowCreatesTab();
+    void testBackgroundNewWindowFocusesNewTab();
     void testCloseWindowFromTmuxRemovesTab();
     void testCloseWindowTabFromKonsole();
     void testRenameWindowFromTmuxUpdatesTab();

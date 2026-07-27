@@ -4193,6 +4193,106 @@ void TmuxIntegrationTest::testNewWindowCreatesTab()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testBackgroundNewWindowFocusesNewTab()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌────────────────────────────┐
+        │cmd: bash --norc --noprofile│
+        │                            │
+        │                            │
+        └────────────────────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    auto *originalSplitter = container->viewSplitterAt(container->currentIndex());
+    QVERIFY(originalSplitter);
+    auto *originalDisplay = originalSplitter->activeTerminalDisplay();
+    QVERIFY(originalDisplay);
+    const int originalPaneId = controller->paneIdForSession(originalDisplay->sessionController()->session());
+    QVERIFY(originalPaneId >= 0);
+    const int originalWindowId = controller->windowIdForPane(originalPaneId);
+    QVERIFY(originalWindowId >= 0);
+
+    originalDisplay->setFocus(Qt::OtherFocusReason);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(originalDisplay), 5000);
+
+    // Simulate a background process creating a detached tmux window. kmux
+    // responds to %window-add by showing a new tab even though tmux keeps the
+    // original window active. Keyboard focus must follow the visible tab.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("new-window"),
+                     QStringLiteral("-d"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("bash --norc --noprofile")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowCount(), 2, 10000);
+
+    int newTabIndex = -1;
+    const auto &windowTabs = controller->windowToTabIndex();
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        if (it.key() != originalWindowId) {
+            newTabIndex = it.value();
+            break;
+        }
+    }
+    QVERIFY(newTabIndex >= 0);
+
+    // The visual switch already works in the buggy implementation.
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), newTabIndex, 5000);
+    auto *newSplitter = container->viewSplitterAt(newTabIndex);
+    QVERIFY(newSplitter);
+    auto *newDisplay = newSplitter->activeTerminalDisplay();
+    QVERIFY(newDisplay);
+    const int newPaneId = controller->paneIdForSession(newDisplay->sessionController()->session());
+    QVERIFY(newPaneId >= 0);
+    QVERIFY(newPaneId != originalPaneId);
+
+    // Let the notification burst and queued focus events settle. The
+    // regression leaves the new tab visible but asynchronously restores
+    // keyboard focus to the original display.
+    QTest::qWait(250);
+    QCOMPARE(container->currentIndex(), newTabIndex);
+    QVERIFY(newDisplay->isVisible());
+    QVERIFY(!originalDisplay->isVisible());
+
+    // Qt sends keyboard input to focusWidget(). If this remains
+    // originalDisplay, typing in the visible new tab is delivered to the
+    // hidden original pane.
+    QVERIFY2(QApplication::focusWidget() != originalDisplay, "The new tab is visible, but keyboard focus remained on the hidden original pane");
+    QCOMPARE(QApplication::focusWidget(), static_cast<QWidget *>(newDisplay));
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
 {
     const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();

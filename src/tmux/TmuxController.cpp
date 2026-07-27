@@ -510,6 +510,13 @@ const QMap<int, int> &TmuxController::windowToTabIndex() const
     return _windowToTabIndex;
 }
 
+bool TmuxController::isWindowVisible(int windowId) const
+{
+    TabbedViewContainer *container = _viewManager->activeContainer();
+    const int tabIndex = _windowToTabIndex.value(windowId, -1);
+    return container && tabIndex >= 0 && container->currentIndex() == tabIndex;
+}
+
 bool TmuxController::shouldShowWindow(int windowId) const
 {
     if (_hiddenWindows.contains(windowId)) {
@@ -779,11 +786,14 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
         // splitters runs setFocusProxy during queued event delivery and can
         // steal focus from the pane we just focused, so retry after the event
         // loop drains.
-        if (_activePaneId >= 0 && _windowPanes.value(windowId).contains(_activePaneId)) {
+        // Layout updates arrive for background windows too. Rebuilding a
+        // hidden tab must not move keyboard focus into it; otherwise the
+        // visible tab keeps being drawn while typing goes to the old pane.
+        if (isWindowVisible(windowId) && _activePaneId >= 0 && _windowPanes.value(windowId).contains(_activePaneId)) {
             const int targetPaneId = _activePaneId;
             focusPane(targetPaneId);
             QTimer::singleShot(0, this, [this, windowId, targetPaneId]() {
-                if (_activePaneId == targetPaneId && _windowPanes.value(windowId).contains(targetPaneId)) {
+                if (isWindowVisible(windowId) && _activePaneId == targetPaneId && _windowPanes.value(windowId).contains(targetPaneId)) {
                     focusPane(targetPaneId);
                 }
             });

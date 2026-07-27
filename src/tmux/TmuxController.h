@@ -157,6 +157,7 @@ private Q_SLOTS:
 private:
     void setState(State newState);
     bool shouldSuppressResize() const;
+    bool isWindowVisible(int windowId) const;
     static bool parseListWindowsLine(const QString &line, int &windowId, QString &windowName, QString &layout);
 
     void applyWindowLayout(int windowId, const TmuxLayoutNode &layout);
