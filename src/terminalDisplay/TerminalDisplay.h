@@ -671,6 +671,7 @@ private:
     void setAutoCopySelectedText(bool enabled);
     void setCopyTextAsHTML(bool enabled);
     void setMiddleClickPasteMode(Enum::MiddleClickPasteModeEnum mode);
+    void setRightClickPasteMode(Enum::RightClickPasteModeEnum mode);
 
     /**
      * Sets the display's contents margins.
@@ -747,6 +748,7 @@ private:
     bool _autoCopySelectedText = false;
     bool _copyTextAsHTML = true;
     Enum::MiddleClickPasteModeEnum _middleClickPasteMode = Enum::PasteFromX11Selection;
+    Enum::RightClickPasteModeEnum _rightClickPasteMode = Enum::RightClickPasteDisabled;
 
     QString _wordCharacters;
     TerminalBell _bell{Enum::NotifyBell};

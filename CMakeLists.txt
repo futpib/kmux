@@ -2,7 +2,7 @@
 
 # KDE Application Version, managed by release script
 set(RELEASE_SERVICE_VERSION_MAJOR "26")
-set(RELEASE_SERVICE_VERSION_MINOR "07")
+set(RELEASE_SERVICE_VERSION_MINOR "11")
 set(RELEASE_SERVICE_VERSION_MICRO "70")
 set(RELEASE_SERVICE_VERSION "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}.${RELEASE_SERVICE_VERSION_MICRO}")
 
@@ -141,6 +141,18 @@ endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT HAIKU)
     option(WITH_X11 "Build with X11 integration" ON)
+
+    option(WITH_LIBSSH "Build with libssh support for resolving SSH configuration" ON)
+    if(WITH_LIBSSH)
+        find_package(libssh 0.9.8 REQUIRED CONFIG)
+        set_package_properties(libssh PROPERTIES DESCRIPTION "the SSH library"
+                               URL "https://www.libssh.org/"
+                               TYPE OPTIONAL
+                               PURPOSE "Needed to resolve SSH configuration"
+                              )
+
+        set(HAVE_LIBSSH 1)
+    endif()
 endif()
 
 # Check for function GETPWUID

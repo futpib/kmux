@@ -315,6 +315,7 @@ void QuickCommandsWidget::runShellCheck()
 
     QTemporaryFile file;
     if (!file.open()) {
+        qCWarning(KonsoleDebug) << "Failed to open temporary file";
         return;
     }
 

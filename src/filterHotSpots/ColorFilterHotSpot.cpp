@@ -8,6 +8,9 @@
 
 #include <QApplication>
 #include <QBuffer>
+#include <QClipboard>
+#include <QDrag>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPixmap>
@@ -27,6 +30,83 @@ ColorFilterHotSpot::ColorFilterHotSpot(int startLine, int startColumn, int endLi
     , _color(color)
 {
     setType(Color);
+}
+
+QMimeData *ColorFilterHotSpot::createMimeData() const
+{
+    auto *mimeData = new QMimeData();
+    mimeData->setColorData(_color);
+    mimeData->setText(_color.name());
+    return mimeData;
+}
+
+QPixmap ColorFilterHotSpot::createPixmap(int extent, int checkBoardUnitExtent, PixmapOption pixmapOption) const
+{
+    const QRect square(0, 0, extent, extent);
+
+    QPixmap pix(square.size());
+    QPainter paint(&pix);
+
+    // Add a nice checkerboard pattern for translucent colors.
+    if (_color.alpha() < 255) {
+        paint.save();
+
+        // Checkerboard pattern
+        static const char *const checkerboardXpm[] = {
+            "2 2 2 1", // 2x2, 2 colors, 1 char/pixel
+            ". c #FFFFFF", // Qt::white
+            "X c #C0C0C0", // Qt::lightGray
+            // pixels
+            "X.",
+            ".X",
+        };
+        const QPixmap texture(checkerboardXpm);
+
+        QBrush brush(texture);
+        brush.setTransform(QTransform::fromScale(checkBoardUnitExtent, checkBoardUnitExtent));
+        paint.setBrush(brush);
+        paint.setPen(Qt::NoPen);
+        paint.drawRect(square);
+
+        paint.restore();
+    }
+
+    paint.fillRect(square, _color);
+
+    if (pixmapOption == PixmapOption::DrawFrame) {
+        paint.drawRect(0, 0, extent - 1, extent - 1);
+    }
+
+    return pix;
+}
+
+QList<QAction *> ColorFilterHotSpot::actions()
+{
+    auto *action = new QAction(i18nc("@action:inmenu", "Copy Color"), this);
+    action->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy")));
+    connect(action, &QAction::triggered, this, [this] {
+        auto *mimeData = createMimeData();
+        QApplication::clipboard()->setMimeData(mimeData);
+    });
+    return {action};
+}
+
+bool ColorFilterHotSpot::hasDragOperation() const
+{
+    return true;
+}
+
+void ColorFilterHotSpot::startDrag()
+{
+    auto *drag = new QDrag(this);
+
+    auto *mimeData = createMimeData();
+    drag->setMimeData(mimeData);
+
+    const QPixmap preview = createPixmap(24, 12, PixmapOption::DrawFrame);
+    drag->setPixmap(preview);
+
+    drag->exec(Qt::CopyAction);
 }
 
 void ColorFilterHotSpot::mouseEnterEvent(TerminalDisplay *td, QMouseEvent *ev)
@@ -57,24 +137,8 @@ void ColorFilterHotSpot::tooltipRequested()
 
     int sideUnit = 10;
     int sideLength = sideUnit * sideUnit;
-    QRect square(0, 0, sideLength, sideLength);
 
-    QPixmap pix(square.size());
-    QPainter paint(&pix);
-
-    // Add a nice checkerboard pattern for translucent colors.
-    if (_color.alpha() < 255) {
-        // Base background
-        paint.fillRect(square, Qt::lightGray);
-
-        // Checkerboard pattern
-        QBrush brush(Qt::white, Qt::Dense4Pattern);
-        brush.setTransform(QTransform::fromScale(sideUnit, sideUnit));
-        paint.setBrush(brush);
-        paint.drawRect(square);
-    }
-
-    paint.fillRect(square, _color);
+    const QPixmap pix = createPixmap(sideLength, sideUnit, PixmapOption::NoFrame);
 
     QByteArray data;
     QBuffer buffer(&data);

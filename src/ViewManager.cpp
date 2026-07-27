@@ -214,13 +214,13 @@ void ViewManager::setupActions()
     action->setText(i18nc("@action:inmenu", "Expand View"));
     action->setEnabled(false);
     connect(action, &QAction::triggered, this, &ViewManager::expandActiveContainer);
-    collection->setDefaultShortcut(action, Konsole::ACCEL | Qt::Key_BracketRight);
+    collection->setDefaultShortcut(action, static_cast<Qt::Modifiers>(Konsole::ACCEL) | Qt::Key_BracketRight);
     collection->addAction(QStringLiteral("expand-active-view"), action);
     _multiSplitterOnlyActions << action;
 
     action = new QAction(this);
     action->setText(i18nc("@action:inmenu", "Shrink View"));
-    collection->setDefaultShortcut(action, Konsole::ACCEL | Qt::Key_BracketLeft);
+    collection->setDefaultShortcut(action, static_cast<Qt::Modifiers>(Konsole::ACCEL) | Qt::Key_BracketLeft);
     action->setEnabled(false);
     collection->addAction(QStringLiteral("shrink-active-view"), action);
     connect(action, &QAction::triggered, this, &ViewManager::shrinkActiveContainer);
@@ -236,7 +236,7 @@ void ViewManager::setupActions()
 
     // Ctrl+Shift+D is not used as a shortcut by default because it is too close
     // to Ctrl+D - which will terminate the session in many cases
-    collection->setDefaultShortcut(action, Konsole::ACCEL | Qt::Key_H);
+    collection->setDefaultShortcut(action, static_cast<Qt::Modifiers>(Konsole::ACCEL) | Qt::Key_H);
 
     action = collection->addAction(QStringLiteral("detach-tab"));
     action->setEnabled(true);
@@ -426,7 +426,7 @@ void ViewManager::setupActions()
 
     action = new QAction(this);
     action->setText(i18nc("@action:inmenu", "Equal size to all views"));
-    collection->setDefaultShortcut(action, Konsole::ACCEL | Qt::SHIFT | Qt::Key_Backslash);
+    collection->setDefaultShortcut(action, static_cast<Qt::Modifiers>(Konsole::ACCEL) | Qt::SHIFT | Qt::Key_Backslash);
     action->setEnabled(false);
     collection->addAction(QStringLiteral("equal-size-view"), action);
     connect(action, &QAction::triggered, this, &ViewManager::equalSizeAllContainers);

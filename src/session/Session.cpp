@@ -24,7 +24,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
-#include <QFuture>
+#include <QFutureWatcher>
 #include <QKeyEvent>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -1891,10 +1891,19 @@ void Session::handleOsc777(const QStringList &params)
     // Delegate OSC 777 container parsing to ContainerRegistry
     auto info = ContainerRegistry::instance()->containerInfoFromOsc777(params);
     if (info.has_value()) {
-        // Capture current foreground PID as the host PID for OSC 777-detected containers
-        // This allows us to detect when the user exits (foreground returns to host shell)
-        if (info->isValid()) {
-            info->hostPid = _foregroundPid;
+        // Use the session shell's PID as the host sentinel, not _foregroundPid.
+        // _foregroundPid at OSC 777 time is the PGID of the entering tool (e.g. kapsule),
+        // which stays the same throughout the container session — causing an immediate
+        // false-positive exit detection. The session shell PID is what the foreground
+        // actually returns to once the container tool and its children have all exited.
+        //
+        // Exception: when kapsule IS the session shell (menu-based "new tab in container"),
+        // processId() == kapsule's PID == _foregroundPid, so hostPid would trigger
+        // immediately. In that case, skip hostPid and rely on the _enteredViaContainerCommand
+        // guard in updateContainerContext() and OSC 777 pop for context clearing.
+        if (info->isValid() && !_enteredViaContainerCommand) {
+            const int shellPid = processId();
+            info->hostPid = (shellPid > 0) ? shellPid : _foregroundPid;
         }
         setContainerContext(info.value());
     }
@@ -2658,12 +2667,36 @@ QString Session::activationToken(const QString &cookieForRequest) const
     const auto msg = message();
     setDelayedReply(true);
 
-    QWindow *const windowHandle = window->window()->windowHandle();
-    const quint32 launchedSerial = KWaylandExtras::lastInputSerial(windowHandle);
-    KWaylandExtras::xdgActivationToken(windowHandle, launchedSerial, {}).then(KWaylandExtras::self(), [msg](const QString &token) {
+    // we need to filter the response with the request serial
+    const int launchedSerial = KWaylandExtras::self()->lastInputSerial(window->window()->windowHandle());
+#if KWINDOWSYSTEM_VERSION < QT_VERSION_CHECK(6, 19, 0)
+    connect(
+        KWaylandExtras::self(),
+        &KWaylandExtras::xdgActivationTokenArrived,
+        this,
+        [msg, launchedSerial](int tokenSerial, QString token) {
+            // if wrong token, ignore it, but we must always reply to not stall the caller
+            // we use here a SingleShotConnection, we will just be called once!
+            if (tokenSerial != launchedSerial) {
+                token.clear();
+            }
+            auto reply = msg.createReply(token);
+            QDBusConnection::sessionBus().send(reply);
+        },
+        Qt::SingleShotConnection);
+
+    KWaylandExtras::requestXdgActivationToken(window->window()->windowHandle(), launchedSerial, {});
+#else
+    auto *watch = new QFutureWatcher<QString>();
+    watch->setFuture(KWaylandExtras::xdgActivationToken(window->window()->windowHandle(), launchedSerial, {}));
+    connect(watch, &QFutureWatcher<QString>::finished, this, [msg, watch]() {
+        const auto token = watch->result();
         auto reply = msg.createReply(token);
         QDBusConnection::sessionBus().send(reply);
+
+        watch->deleteLater();
     });
+#endif
 
 #endif
 

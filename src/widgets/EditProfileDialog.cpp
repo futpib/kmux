@@ -22,6 +22,7 @@
 #include <QStandardItem>
 #include <QStandardPaths>
 #include <QStringListModel>
+#include <QTabBar>
 #include <QTimer>
 #include <QUrl>
 
@@ -99,6 +100,8 @@ EditProfileDialog::EditProfileDialog(QWidget *parent)
     auto *generalPageWidget = new QWidget(this);
     _generalUi = new Ui::EditProfileGeneralPage();
     _generalUi->setupUi(generalPageWidget);
+    _generalUi->tabWidget->setDocumentMode(true);
+    _generalUi->tabWidget->tabBar()->setExpanding(true);
     _generalPageItem = addPage(generalPageWidget, generalPageName);
     _generalPageItem->setHeader(generalPageName);
     _generalPageItem->setIcon(QIcon::fromTheme(QStringLiteral("utilities-terminal")));
@@ -127,6 +130,8 @@ EditProfileDialog::EditProfileDialog(QWidget *parent)
     auto *appearancePageWidget = new QWidget(this);
     _appearanceUi = new Ui::EditProfileAppearancePage();
     _appearanceUi->setupUi(appearancePageWidget);
+    _appearanceUi->tabWidget->setDocumentMode(true);
+    _appearanceUi->tabWidget->tabBar()->setExpanding(true);
     auto *appearancePageItem = addPage(appearancePageWidget, appearancePageName);
     appearancePageItem->setHeader(appearancePageName);
     appearancePageItem->setIcon(QIcon::fromTheme(QStringLiteral("kcolorchooser"), defaultIcon));
@@ -169,6 +174,8 @@ EditProfileDialog::EditProfileDialog(QWidget *parent)
     auto *mousePageWidget = new QWidget(this);
     _mouseUi = new Ui::EditProfileMousePage();
     _mouseUi->setupUi(mousePageWidget);
+    _mouseUi->tabWidget->setDocumentMode(true);
+    _mouseUi->tabWidget->tabBar()->setExpanding(true);
 
     const auto regExp = QRegularExpression(QStringLiteral(R"(([a-z]*:\/\/;)*([A-Za-z*]:\/\/))"));
     auto validator = new QRegularExpressionValidator(regExp, this);
@@ -1958,6 +1965,15 @@ void EditProfileDialog::setupMousePage(const Profile::Ptr &profile)
     _mouseUi->pasteFromClipboardButton->setChecked(Enum::PasteFromClipboard == middleClickPasteMode);
     connect(_mouseUi->pasteFromClipboardButton, &QPushButton::clicked, this, &EditProfileDialog::pasteFromClipboard);
 
+    // setup right click paste mode
+    const auto rightClickPasteMode = profile->property<int>(Profile::RightClickPasteMode);
+    _mouseUi->rightClickPasteDisabledButton->setChecked(Enum::RightClickPasteDisabled == rightClickPasteMode);
+    connect(_mouseUi->rightClickPasteDisabledButton, &QPushButton::clicked, this, &EditProfileDialog::rightClickPasteDisabled);
+    _mouseUi->rightClickPasteFromClipboardButton->setChecked(Enum::RightClickPasteFromClipboard == rightClickPasteMode);
+    connect(_mouseUi->rightClickPasteFromClipboardButton, &QPushButton::clicked, this, &EditProfileDialog::rightClickPasteFromClipboard);
+    _mouseUi->rightClickPasteFromX11SelectionButton->setChecked(Enum::RightClickPasteFromX11Selection == rightClickPasteMode);
+    connect(_mouseUi->rightClickPasteFromX11SelectionButton, &QPushButton::clicked, this, &EditProfileDialog::rightClickPasteFromX11Selection);
+
     _mouseUi->textEditorCustomBtn->setIcon(QIcon::fromTheme(QStringLiteral("document-edit")));
 
     // interaction options
@@ -2288,6 +2304,21 @@ void EditProfileDialog::pasteFromX11Selection()
 void EditProfileDialog::pasteFromClipboard()
 {
     updateTempProfileProperty(Profile::MiddleClickPasteMode, Enum::PasteFromClipboard);
+}
+
+void EditProfileDialog::rightClickPasteDisabled()
+{
+    updateTempProfileProperty(Profile::RightClickPasteMode, Enum::RightClickPasteDisabled);
+}
+
+void EditProfileDialog::rightClickPasteFromClipboard()
+{
+    updateTempProfileProperty(Profile::RightClickPasteMode, Enum::RightClickPasteFromClipboard);
+}
+
+void EditProfileDialog::rightClickPasteFromX11Selection()
+{
+    updateTempProfileProperty(Profile::RightClickPasteMode, Enum::RightClickPasteFromX11Selection);
 }
 
 void EditProfileDialog::TripleClickModeChanged(int newValue)

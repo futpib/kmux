@@ -344,6 +344,10 @@ target_link_libraries(konsoleprivate
     KF6::BookmarksWidgets
 )
 
+if (HAVE_LIBSSH)
+    target_link_libraries(konsoleprivate PRIVATE ssh)
+endif()
+
 set_target_properties(konsoleprivate PROPERTIES
     VERSION ${RELEASE_SERVICE_VERSION}
 )
@@ -393,6 +397,7 @@ set(konsole_SRCS
 # Sets the icon on Windows and OSX
 ecm_add_app_icon(ICONS_SOURCES ICONS ${ICONS_SRCS})
 
+set(ICONS_SOURCES)
 add_executable(kmux ${konsole_SRCS} ${ICONS_SOURCES})
 target_link_libraries(kmux
   konsoleprivate
@@ -419,6 +424,7 @@ if(APPLE)
 endif()
 
 install(TARGETS kmux ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+install(FILES settings/konsole.kcfg DESTINATION ${KDE_INSTALL_KCFGDIR})
 
 ### Embedded Konsole KPart
 

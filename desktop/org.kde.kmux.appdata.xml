@@ -55,6 +55,7 @@
   <name xml:lang="sv">Terminal</name>
   <name xml:lang="ta">கான்சோல்</name>
   <name xml:lang="tr">kmux</name>
+  <name xml:lang="ug">kmux</name>
   <name xml:lang="uk">kmux</name>
   <name xml:lang="zh-CN">kmux 命令行终端</name>
   <name xml:lang="zh-TW">kmux</name>
@@ -199,6 +200,7 @@
     <p xml:lang="sv">Funktioner:</p>
     <p xml:lang="ta">அம்சங்கள்:</p>
     <p xml:lang="tr">Özellikler:</p>
+    <p xml:lang="ug">ئىقتىدار:</p>
     <p xml:lang="uk">Можливості:</p>
     <p xml:lang="zh-CN">功能特性：</p>
     <p xml:lang="zh-TW">功能：</p>
@@ -254,6 +256,7 @@
       <li xml:lang="sv">Flikar</li>
       <li xml:lang="ta">கீற்றுகள்</li>
       <li xml:lang="tr">Sekmeler</li>
+      <li xml:lang="ug">بەتكۈچ</li>
       <li xml:lang="uk">Вкладки.</li>
       <li xml:lang="zh-CN">标签页</li>
       <li xml:lang="zh-TW">分頁</li>
@@ -464,6 +467,7 @@
       <li xml:lang="sv">Sökning</li>
       <li xml:lang="ta">தேடல்</li>
       <li xml:lang="tr">Arama</li>
+      <li xml:lang="ug">ئىزدەۋاتىدۇ</li>
       <li xml:lang="uk">Пошук.</li>
       <li xml:lang="zh-CN">搜索</li>
       <li xml:lang="zh-TW">搜尋</li>
@@ -522,6 +526,20 @@
       <li xml:lang="zh-TW">儲存輸出</li>
     </ul>
   </description>
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>console</keyword>
+    <keyword>shell</keyword>
+    <keyword>command line</keyword>
+    <keyword>command prompt</keyword>
+    <keyword>cmd</keyword>
+    <keyword>cli</keyword>
+    <keyword>bash</keyword>
+    <keyword>zsh</keyword>
+    <keyword>fish</keyword>
+    <keyword>xterm</keyword>
+    <keyword>tty</keyword>
+  </keywords>
   <launchable type="desktop-id">org.kde.kmux.desktop</launchable>
   <url type="homepage">https://konsole.kde.org/</url>
   <url type="bugtracker">https://bugs.kde.org/enter_bug.cgi?format=guided&amp;product=konsole</url>
@@ -586,6 +604,7 @@
   </provides>
   <update_contact>konsole-devel_AT_kde.org</update_contact>
   <releases>
+    <release version="26.04.3" date="2026-07-02"/>
     <release version="26.04.2" date="2026-06-04"/>
     <release version="26.04.1" date="2026-05-07"/>
     <release version="26.04.0" date="2026-04-16"/>
