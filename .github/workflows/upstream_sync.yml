@@ -27,17 +27,55 @@ jobs:
           pr_title: 'Sync upstream KDE/konsole master'
           pr_commit_msg: 'Merge upstream KDE/konsole master'
           pr_labels: upstream-sync
-          # Close any older open PR carrying the upstream-sync label when a
-          # new sync runs, so at most one sync PR exists at a time. The
-          # branch name embeds the upstream hash, so each sync would
-          # otherwise leave a stale PR + branch behind.
-          is_pr_cleanup: true
           git_remote_pull_params: '--allow-unrelated-histories --no-commit --strategy=recursive'
           is_allow_hooks: true
           hooks: |
             precommit:
               commands:
                 - '! git ls-files --unmerged | read -r _ || { echo "Unresolved merge conflicts"; exit 1; }'
+
+      # actions-template-sync's built-in cleanup missed #24 while closing the
+      # sync PRs immediately before and after it. Do the cleanup explicitly
+      # through the REST API, and narrow it to bot-authored branches using the
+      # action's naming convention. If this run did not create a PR, keep the
+      # newest matching PR so this step is safe and idempotent.
+      - name: Close superseded upstream-sync PRs
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_PR: ${{ steps.sync.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          open_prs="$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=master&per_page=100" \
+              --jq '
+                .[]
+                | select(.user.login == "github-actions[bot]")
+                | select(.head.ref | startswith("chore/template_sync_"))
+                | select([.labels[].name] | index("upstream-sync"))
+                | [.number, .created_at]
+                | @tsv
+              ' \
+              | sort -t $'\t' -k2,2r
+          )"
+
+          keep_pr="$CURRENT_PR"
+          if [[ -z "$keep_pr" && -n "$open_prs" ]]; then
+            keep_pr="${open_prs%%$'\t'*}"
+          fi
+
+          while IFS=$'\t' read -r pr_number _; do
+            if [[ -z "$pr_number" || "$pr_number" == "$keep_pr" ]]; then
+              continue
+            fi
+
+            gh pr close "$pr_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --comment "Automatically closed because a newer upstream-sync PR exists." \
+              --delete-branch
+          done <<< "$open_prs"
 
       - if: success() && steps.sync.outputs.pr_number != ''
         env:
