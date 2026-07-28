@@ -35,6 +35,12 @@ public:
         return *this;
     }
 
+    TmuxCommand &windowSource(int windowId)
+    {
+        _parts.append(QStringLiteral("-s @") + QString::number(windowId));
+        return *this;
+    }
+
     // Scope the command to a specific tmux session (e.g. `list-windows -t $N`
     // for "windows in session N"). Prefer this over allSessions() whenever the
     // caller really wants state for *one* session — tmux's `-a` iterates

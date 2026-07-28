@@ -25,6 +25,8 @@
 #include <QTest>
 #include <QTreeView>
 
+#include <algorithm>
+
 #include "../Application.h"
 #include "../Emulation.h"
 #include "../MainWindow.h"
@@ -248,6 +250,65 @@ static QString readSessionScreenText(Session *session)
     screen->setSelectionEnd(columns, lines - 1, false);
     return screen->selectedText(Screen::PlainText);
     // Don't delete window — Emulation::~Emulation owns it via _windows list
+}
+
+static QList<int> kmuxWindowOrder(TmuxController *controller)
+{
+    QList<QPair<int, int>> indexedWindows;
+    const auto &windowTabs = controller->windowToTabIndex();
+    for (auto it = windowTabs.constBegin(); it != windowTabs.constEnd(); ++it) {
+        indexedWindows.append(qMakePair(it.value(), it.key()));
+    }
+    std::sort(indexedWindows.begin(), indexedWindows.end());
+
+    QList<int> windowIds;
+    windowIds.reserve(indexedWindows.size());
+    for (const auto &[tabIndex, windowId] : std::as_const(indexedWindows)) {
+        Q_UNUSED(tabIndex)
+        windowIds.append(windowId);
+    }
+    return windowIds;
+}
+
+static QList<int> tmuxWindowOrder(const QString &tmuxPath, const TmuxTestDSL::SessionContext &ctx)
+{
+    QProcess process;
+    process.start(tmuxPath,
+                  {QStringLiteral("-S"),
+                   ctx.socketPath,
+                   QStringLiteral("list-windows"),
+                   QStringLiteral("-t"),
+                   ctx.sessionName,
+                   QStringLiteral("-F"),
+                   QStringLiteral("#{window_index} #{window_id}")});
+    if (!process.waitForFinished(5000) || process.exitCode() != 0) {
+        return {};
+    }
+
+    QList<QPair<int, int>> indexedWindows;
+    const QStringList lines = QString::fromUtf8(process.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const QStringList parts = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() != 2 || !parts[1].startsWith(QLatin1Char('@'))) {
+            continue;
+        }
+        bool indexOk = false;
+        bool idOk = false;
+        const int index = parts[0].toInt(&indexOk);
+        const int id = parts[1].mid(1).toInt(&idOk);
+        if (indexOk && idOk) {
+            indexedWindows.append(qMakePair(index, id));
+        }
+    }
+    std::sort(indexedWindows.begin(), indexedWindows.end());
+
+    QList<int> windowIds;
+    windowIds.reserve(indexedWindows.size());
+    for (const auto &[windowIndex, windowId] : std::as_const(indexedWindows)) {
+        Q_UNUSED(windowIndex)
+        windowIds.append(windowId);
+    }
+    return windowIds;
 }
 
 void TmuxIntegrationTest::testTmuxAttachContentRecovery()
@@ -4289,6 +4350,231 @@ void TmuxIntegrationTest::testBackgroundNewWindowFocusesNewTab()
     // hidden original pane.
     QVERIFY2(QApplication::focusWidget() != originalDisplay, "The new tab is visible, but keyboard focus remained on the hidden original pane");
     QCOMPARE(QApplication::focusWidget(), static_cast<QWidget *>(newDisplay));
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTmuxWindowReorderMovesTabs()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    for (int i = 0; i < 2; ++i) {
+        QProcess newWindow;
+        newWindow.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("new-window"),
+                         QStringLiteral("-d"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("sleep 60")});
+        QVERIFY(newWindow.waitForFinished(5000));
+        QCOMPARE(newWindow.exitCode(), 0);
+    }
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    const QList<int> initialOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(initialOrder.size(), 3);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), initialOrder, 10000);
+
+    // Keep the middle window active while the two surrounding windows move.
+    // This isolates tab reordering from tmux's active-window semantics.
+    controller->requestSelectWindow(initialOrder.at(1));
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), controller->windowToTabIndex().value(initialOrder.at(1)), 5000);
+    QWidget *activePage = container->currentWidget();
+    QVERIFY(activePage);
+
+    // Reorder from a separate tmux client. swap-window emits no dedicated
+    // control-mode notification, so kmux must learn the new indexes through
+    // its all-window format subscription.
+    QProcess swap;
+    swap.start(tmuxPath,
+               {QStringLiteral("-S"),
+                ctx.socketPath,
+                QStringLiteral("swap-window"),
+                QStringLiteral("-s"),
+                QStringLiteral("@%1").arg(initialOrder.first()),
+                QStringLiteral("-t"),
+                QStringLiteral("@%1").arg(initialOrder.last())});
+    QVERIFY(swap.waitForFinished(5000));
+    QCOMPARE(swap.exitCode(), 0);
+
+    const QList<int> expectedOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(expectedOrder.size(), 3);
+    QVERIFY(expectedOrder != initialOrder);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), expectedOrder, 10000);
+    QCOMPARE(container->currentWidget(), activePage);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTmuxInsertedWindowUsesIndexOrder()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    QProcess secondWindow;
+    secondWindow.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("new-window"),
+                        QStringLiteral("-d"),
+                        QStringLiteral("-t"),
+                        ctx.sessionName,
+                        QStringLiteral("sleep 60")});
+    QVERIFY(secondWindow.waitForFinished(5000));
+    QCOMPARE(secondWindow.exitCode(), 0);
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    const QList<int> initialOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(initialOrder.size(), 2);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), initialOrder, 10000);
+
+    // Insert before the first tmux index after kmux is already attached.
+    // The old implementation appended every %window-add as the last tab.
+    QProcess insertedWindow;
+    insertedWindow.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("new-window"),
+                          QStringLiteral("-d"),
+                          QStringLiteral("-b"),
+                          QStringLiteral("-t"),
+                          QStringLiteral("@%1").arg(initialOrder.first()),
+                          QStringLiteral("-P"),
+                          QStringLiteral("-F"),
+                          QStringLiteral("#{window_id}"),
+                          QStringLiteral("sleep 60")});
+    QVERIFY(insertedWindow.waitForFinished(5000));
+    QCOMPARE(insertedWindow.exitCode(), 0);
+    const QString newWindowId = QString::fromUtf8(insertedWindow.readAllStandardOutput()).trimmed();
+    QVERIFY(newWindowId.startsWith(QLatin1Char('@')));
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
+    const QList<int> expectedOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(expectedOrder.size(), 3);
+    QCOMPARE(expectedOrder.first(), newWindowId.mid(1).toInt());
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), expectedOrder, 10000);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTabReorderMovesTmuxWindows()
+{
+    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+
+    TmuxTestDSL::SessionContext ctx;
+    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
+        ┌──────────────┐
+        │cmd: sleep 60 │
+        │              │
+        │              │
+        └──────────────┘
+    )")),
+                                  tmuxPath,
+                                  m_tmuxTmpDir.path(),
+                                  ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    });
+
+    for (int i = 0; i < 2; ++i) {
+        QProcess newWindow;
+        newWindow.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("new-window"),
+                         QStringLiteral("-d"),
+                         QStringLiteral("-t"),
+                         ctx.sessionName,
+                         QStringLiteral("sleep 60")});
+        QVERIFY(newWindow.waitForFinished(5000));
+        QCOMPARE(newWindow.exitCode(), 0);
+    }
+
+    TmuxTestDSL::AttachResult attach;
+    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    auto *container = attach.mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
+
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QVERIFY(!sessions.isEmpty());
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(sessions.first());
+    QVERIFY(controller);
+
+    const QList<int> initialOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(initialOrder.size(), 3);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), initialOrder, 10000);
+
+    container->setCurrentIndex(controller->windowToTabIndex().value(initialOrder.first()), Qt::OtherFocusReason);
+    controller->requestSelectWindow(initialOrder.first());
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), controller->windowToTabIndex().value(initialOrder.first()), 5000);
+    QWidget *activePage = container->currentWidget();
+    QVERIFY(activePage);
+
+    // This is the same QTabBar operation used by drag reordering and the
+    // Move Tab Left/Right actions. The visual move should be persisted to
+    // tmux rather than snapping back on the next index notification, and the
+    // selected page must stay selected while its tmux index changes.
+    container->tabBar()->moveTab(0, 1);
+    QList<int> desiredOrder = initialOrder;
+    desiredOrder.move(0, 1);
+    QCOMPARE(kmuxWindowOrder(controller), desiredOrder);
+
+    QTRY_COMPARE_WITH_TIMEOUT(tmuxWindowOrder(tmuxPath, ctx), desiredOrder, 10000);
+    QTest::qWait(1200); // let the subscription echo and reconciliation settle
+    QCOMPARE(kmuxWindowOrder(controller), desiredOrder);
+    QCOMPARE(container->currentWidget(), activePage);
 
     delete attach.mw.data();
 }

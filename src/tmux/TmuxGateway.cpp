@@ -230,6 +230,38 @@ std::optional<TmuxNotification> TmuxGateway::parseNotification(const QByteArray 
         int windowId = parseWindowId(parts[1]);
         return TmuxSessionWindowChangedNotification{sessionId, windowId};
 
+    } else if (line.startsWith("%subscription-changed ")) {
+        // Format:
+        // %subscription-changed <name> <session-id> <window-id>
+        //     <window-index> <pane-id> ... : <value>
+        // Keep the value intact: formats may contain spaces, and future tmux
+        // versions may add fields before the delimiter.
+        QByteArray rest = line.mid(22);
+        int separator = rest.indexOf(" : ");
+        if (separator < 0) {
+            return std::nullopt;
+        }
+        const QList<QByteArray> parts = rest.left(separator).split(' ');
+        if (parts.size() < 5) {
+            return std::nullopt;
+        }
+
+        const int sessionId = parseSessionId(parts[1]);
+        const int windowId = parts[2] == "-" ? -1 : parseWindowId(parts[2]);
+        bool windowIndexOk = false;
+        const int windowIndex = parts[3] == "-" ? -1 : parts[3].toInt(&windowIndexOk);
+        const int paneId = parts[4] == "-" ? -1 : parsePaneId(parts[4]);
+        if (sessionId < 0 || (parts[2] != "-" && windowId < 0) || (parts[3] != "-" && !windowIndexOk) || (parts[4] != "-" && paneId < 0)) {
+            return std::nullopt;
+        }
+
+        return TmuxSubscriptionChangedNotification{QString::fromUtf8(parts[0]),
+                                                   sessionId,
+                                                   windowId,
+                                                   windowIndex,
+                                                   paneId,
+                                                   QString::fromUtf8(rest.mid(separator + 3))};
+
     } else if (line.startsWith("%pause ")) {
         int paneId = parsePaneId(line.mid(7));
         return TmuxPanePausedNotification{paneId};
@@ -302,6 +334,8 @@ void TmuxGateway::handleNotification(const QByteArray &line)
                 Q_EMIT sessionsChanged();
             } else if constexpr (std::is_same_v<T, TmuxSessionWindowChangedNotification>) {
                 Q_EMIT sessionWindowChanged(n.sessionId, n.windowId);
+            } else if constexpr (std::is_same_v<T, TmuxSubscriptionChangedNotification>) {
+                Q_EMIT subscriptionChanged(n.name, n.sessionId, n.windowId, n.windowIndex, n.paneId, n.value);
             } else if constexpr (std::is_same_v<T, TmuxPanePausedNotification>) {
                 Q_EMIT panePaused(n.paneId);
             } else if constexpr (std::is_same_v<T, TmuxPaneContinuedNotification>) {

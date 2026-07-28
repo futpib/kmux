@@ -21,13 +21,24 @@
 #include "widgets/ViewContainer.h"
 #include "widgets/ViewSplitter.h"
 
+#include <QApplication>
 #include <QLoggingCategory>
+#include <QTabBar>
 #include <QTimer>
+
+#include <algorithm>
+#include <limits>
 
 Q_LOGGING_CATEGORY(KonsoleTmuxController, "konsole.tmux.controller", QtWarningMsg)
 
 namespace Konsole
 {
+
+namespace
+{
+constexpr auto tmuxWindowIdProperty = "_kmux_tmux_window_id";
+constexpr auto windowOrderSubscriptionName = "kmux-window-order";
+}
 
 TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent)
     : QObject(parent)
@@ -47,6 +58,7 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     connect(_gateway, &TmuxGateway::windowPaneChanged, this, &TmuxController::onWindowPaneChanged);
     connect(_gateway, &TmuxGateway::sessionChanged, this, &TmuxController::onSessionChanged);
     connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::onSessionWindowChanged);
+    connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::onSubscriptionChanged);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
     // tmux pauses a pane (control-mode flow control) when our client falls more
     // than pause-after seconds behind — e.g. the laptop slept over --rsh. We
@@ -79,6 +91,20 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     _paneTitleTimer = new QTimer(this);
     _paneTitleTimer->setInterval(2000);
     connect(_paneTitleTimer, &QTimer::timeout, this, &TmuxController::refreshPaneTitles);
+
+    _tabOrderReconcileTimer = new QTimer(this);
+    _tabOrderReconcileTimer->setSingleShot(true);
+    connect(_tabOrderReconcileTimer, &QTimer::timeout, this, &TmuxController::reconcileTabOrder);
+
+    _tabOrderSyncTimer = new QTimer(this);
+    _tabOrderSyncTimer->setSingleShot(true);
+    _tabOrderSyncTimer->setInterval(100);
+    connect(_tabOrderSyncTimer, &QTimer::timeout, this, &TmuxController::syncTmuxOrderFromTabs);
+
+    if (auto *container = _viewManager->activeContainer()) {
+        connect(container->tabBar(), &QTabBar::tabMoved, this, &TmuxController::onTabMoved);
+        connect(container, &TabbedViewContainer::viewRemoved, this, &TmuxController::rebuildWindowToTabIndex);
+    }
 }
 
 TmuxController::~TmuxController()
@@ -93,9 +119,9 @@ void TmuxController::initialize()
     // Opt into control-mode flow control before anything else, so a stalled or
     // suspended client can't wedge the server (see enableFlowControl).
     enableFlowControl();
+    enableWindowIndexSubscription();
 
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows"))
-                              .format(QStringLiteral("#{window_id} #{window_name} #{window_layout}")),
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows")).format(QStringLiteral("#{window_id} #{window_index} #{window_name} #{window_layout}")),
                           [this](bool success, const QString &response) {
                               handleListWindowsResponse(success, response);
                           });
@@ -438,6 +464,22 @@ void TmuxController::enableFlowControl()
                               .arg(QStringLiteral("pause-after=%1").arg(pauseAfter)));
 }
 
+void TmuxController::enableWindowIndexSubscription()
+{
+    if (_windowIndexSubscriptionEnabled) {
+        return;
+    }
+    _windowIndexSubscriptionEnabled = true;
+
+    // A window index belongs to the window's link in the attached session,
+    // not to the globally stable @window_id. The all-windows control-mode
+    // subscription reports the session, window ID, and index whenever the
+    // index changes, including changes made by another tmux client.
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                              .flag(QStringLiteral("-B"))
+                              .singleQuotedArg(QStringLiteral("%1:@*:#{window_index}").arg(QLatin1String(windowOrderSubscriptionName))));
+}
+
 void TmuxController::onPanePaused(int paneId)
 {
     // tmux paused this pane because our control client fell more than
@@ -510,10 +552,147 @@ const QMap<int, int> &TmuxController::windowToTabIndex() const
     return _windowToTabIndex;
 }
 
+int TmuxController::windowIdAtTabIndex(int tabIndex) const
+{
+    auto *container = _viewManager->activeContainer();
+    if (!container) {
+        return -1;
+    }
+    auto *splitter = container->viewSplitterAt(tabIndex);
+    if (!splitter) {
+        return -1;
+    }
+
+    bool ok = false;
+    const int windowId = splitter->property(tmuxWindowIdProperty).toInt(&ok);
+    return ok ? windowId : -1;
+}
+
+int TmuxController::tabIndexForWindow(int windowId) const
+{
+    auto *container = _viewManager->activeContainer();
+    if (!container) {
+        return -1;
+    }
+    for (int tabIndex = 0; tabIndex < container->count(); ++tabIndex) {
+        if (windowIdAtTabIndex(tabIndex) == windowId) {
+            return tabIndex;
+        }
+    }
+    return -1;
+}
+
+void TmuxController::rebuildWindowToTabIndex()
+{
+    QMap<int, int> indexes;
+    auto *container = _viewManager->activeContainer();
+    if (container) {
+        for (int tabIndex = 0; tabIndex < container->count(); ++tabIndex) {
+            const int windowId = windowIdAtTabIndex(tabIndex);
+            if (windowId >= 0 && _windowPanes.contains(windowId)) {
+                indexes[windowId] = tabIndex;
+            }
+        }
+    }
+    _windowToTabIndex = std::move(indexes);
+}
+
+void TmuxController::scheduleTabOrderReconcile()
+{
+    if (_tabOrderDirty || _tabOrderSyncInFlight) {
+        return;
+    }
+    _tabOrderReconcileTimer->start(0);
+}
+
+void TmuxController::reconcileTabOrder()
+{
+    if (_tabOrderDirty || _tabOrderSyncInFlight || _reorderingTabs) {
+        return;
+    }
+
+    auto *container = _viewManager->activeContainer();
+    if (!container || container->count() < 2) {
+        rebuildWindowToTabIndex();
+        return;
+    }
+
+    struct WindowTab {
+        int windowId;
+        int windowIndex;
+        int currentTabIndex;
+        QWidget *page;
+    };
+    QList<WindowTab> windowTabs;
+    for (int tabIndex = 0; tabIndex < container->count(); ++tabIndex) {
+        const int windowId = windowIdAtTabIndex(tabIndex);
+        if (windowId < 0 || !_windowPanes.contains(windowId)) {
+            continue;
+        }
+        // Wait until every visible window has an authoritative tmux index.
+        // Mixing known and unknown indexes would make a newly-added tab jump
+        // twice as its list-windows response and subscription arrive.
+        if (!_windowIndexes.contains(windowId)) {
+            return;
+        }
+        windowTabs.append({windowId, _windowIndexes.value(windowId), tabIndex, container->widget(tabIndex)});
+    }
+    if (windowTabs.size() < 2) {
+        rebuildWindowToTabIndex();
+        return;
+    }
+
+    std::stable_sort(windowTabs.begin(), windowTabs.end(), [](const WindowTab &left, const WindowTab &right) {
+        if (left.windowIndex != right.windowIndex) {
+            return left.windowIndex < right.windowIndex;
+        }
+        return left.currentTabIndex < right.currentTabIndex;
+    });
+
+    // Build the complete desired widget order so any non-tmux tabs retain
+    // their existing positions while tmux tabs are permuted among their slots.
+    QList<QWidget *> desiredPages;
+    desiredPages.reserve(container->count());
+    int nextTmuxPage = 0;
+    for (int tabIndex = 0; tabIndex < container->count(); ++tabIndex) {
+        const int windowId = windowIdAtTabIndex(tabIndex);
+        if (windowId >= 0 && _windowPanes.contains(windowId)) {
+            desiredPages.append(windowTabs.at(nextTmuxPage++).page);
+        } else {
+            desiredPages.append(container->widget(tabIndex));
+        }
+    }
+
+    QWidget *activePage = container->currentWidget();
+    QWidget *focusedWidget = QApplication::focusWidget();
+    _reorderingTabs = true;
+    for (int targetIndex = 0; targetIndex < desiredPages.size(); ++targetIndex) {
+        const int currentIndex = container->indexOf(desiredPages.at(targetIndex));
+        if (currentIndex >= 0 && currentIndex != targetIndex) {
+            container->tabBar()->moveTab(currentIndex, targetIndex);
+        }
+    }
+    _reorderingTabs = false;
+    rebuildWindowToTabIndex();
+
+    // QTabBar normally keeps the current page and its focus widget stable
+    // across a move. Restore both by identity if a style/platform changed
+    // either while processing the tabMoved signals.
+    if (activePage && container->currentWidget() != activePage) {
+        const int activeIndex = container->indexOf(activePage);
+        if (activeIndex >= 0) {
+            container->setCurrentIndex(activeIndex, Qt::OtherFocusReason);
+        }
+    }
+    if (focusedWidget && activePage && (focusedWidget == activePage || activePage->isAncestorOf(focusedWidget)) && focusedWidget->isVisible()) {
+        focusedWidget->setFocus(Qt::OtherFocusReason);
+    }
+}
+
 bool TmuxController::isWindowVisible(int windowId) const
 {
     TabbedViewContainer *container = _viewManager->activeContainer();
-    const int tabIndex = _windowToTabIndex.value(windowId, -1);
+    const int tabIndex = tabIndexForWindow(windowId);
     return container && tabIndex >= 0 && container->currentIndex() == tabIndex;
 }
 
@@ -568,45 +747,48 @@ void TmuxController::unhideWindow(int windowId)
     // pane sessions, then trigger state recovery so the tmux-side pane
     // history gets replayed into the new kmux Sessions — otherwise the
     // reappeared tab starts empty despite tmux still holding the content.
-    _gateway->sendCommand(
-        TmuxCommand(QStringLiteral("list-windows")).windowTarget(windowId).format(QStringLiteral("#{window_id} #{window_name} #{window_layout}")),
-        [this, windowId](bool success, const QString &response) {
-            if (!success || response.isEmpty()) {
-                return;
-            }
-            const QString windowIdPrefix = QStringLiteral("@") + QString::number(windowId) + QLatin1Char(' ');
-            const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-            QString line;
-            for (const QString &l : lines) {
-                if (l.startsWith(windowIdPrefix)) {
-                    line = l;
-                    break;
-                }
-            }
-            if (line.isEmpty()) {
-                return;
-            }
-            int wId;
-            QString windowName;
-            QString layout;
-            if (!parseListWindowsLine(line, wId, windowName, layout)) {
-                return;
-            }
-            auto parsed = TmuxLayoutParser::parse(layout);
-            if (!parsed.has_value()) {
-                return;
-            }
-            setState(State::ApplyingLayout);
-            applyWindowLayout(wId, parsed.value());
-            setState(State::Idle);
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows"))
+                              .windowTarget(windowId)
+                              .format(QStringLiteral("#{window_id} #{window_index} #{window_name} #{window_layout}")),
+                          [this, windowId](bool success, const QString &response) {
+                              if (!success || response.isEmpty()) {
+                                  return;
+                              }
+                              const QString windowIdPrefix = QStringLiteral("@") + QString::number(windowId) + QLatin1Char(' ');
+                              const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                              QString line;
+                              for (const QString &l : lines) {
+                                  if (l.startsWith(windowIdPrefix)) {
+                                      line = l;
+                                      break;
+                                  }
+                              }
+                              if (line.isEmpty()) {
+                                  return;
+                              }
+                              int wId;
+                              int windowIndex;
+                              QString windowName;
+                              QString layout;
+                              if (!parseListWindowsLine(line, wId, windowIndex, windowName, layout)) {
+                                  return;
+                              }
+                              auto parsed = TmuxLayoutParser::parse(layout);
+                              if (!parsed.has_value()) {
+                                  return;
+                              }
+                              _windowIndexes[wId] = windowIndex;
+                              setState(State::ApplyingLayout);
+                              applyWindowLayout(wId, parsed.value());
+                              setState(State::Idle);
 
-            _stateRecovery->queryPaneStates(wId);
-            const QList<int> panesInWindow = _windowPanes.value(wId);
-            for (int paneId : panesInWindow) {
-                _paneManager->suppressOutput(paneId);
-                _stateRecovery->capturePaneHistory(paneId);
-            }
-        });
+                              _stateRecovery->queryPaneStates(wId);
+                              const QList<int> panesInWindow = _windowPanes.value(wId);
+                              for (int paneId : panesInWindow) {
+                                  _paneManager->suppressOutput(paneId);
+                                  _stateRecovery->capturePaneHistory(paneId);
+                              }
+                          });
 }
 
 void TmuxController::showOnlyWindow(int windowId)
@@ -641,10 +823,16 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
         _paneManager->createPaneSession(paneId);
     }
 
-    int tabIndex = _windowToTabIndex.value(windowId, -1);
+    int tabIndex = tabIndexForWindow(windowId);
     int newTabIndex = _layoutManager->applyLayout(tabIndex, layout);
     if (newTabIndex >= 0) {
-        _windowToTabIndex[windowId] = newTabIndex;
+        if (auto *container = _viewManager->activeContainer()) {
+            if (auto *splitter = container->viewSplitterAt(newTabIndex)) {
+                splitter->setProperty(tmuxWindowIdProperty, windowId);
+            }
+        }
+        rebuildWindowToTabIndex();
+        scheduleTabOrderReconcile();
     }
 
     // Destroy pane sessions for panes removed from this window
@@ -696,14 +884,16 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
     const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &line : lines) {
         int windowId;
+        int windowIndex;
         QString windowName;
         QString layout;
-        if (!parseListWindowsLine(line, windowId, windowName, layout)) {
+        if (!parseListWindowsLine(line, windowId, windowIndex, windowName, layout)) {
             continue;
         }
 
         auto parsed = TmuxLayoutParser::parse(layout);
         if (parsed.has_value()) {
+            _windowIndexes[windowId] = windowIndex;
             collectPaneDimensions(parsed.value());
             applyWindowLayout(windowId, parsed.value());
             newWindowIds.insert(windowId);
@@ -834,7 +1024,7 @@ void TmuxController::onWindowAdded(int windowId)
     }
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows"))
                               .windowTarget(windowId)
-                              .format(QStringLiteral("#{window_id} #{window_name} #{window_layout}")),
+                              .format(QStringLiteral("#{window_id} #{window_index} #{window_name} #{window_layout}")),
                           [this, windowId](bool success, const QString &response) {
                               if (!success || response.isEmpty()) {
                                   return;
@@ -854,13 +1044,15 @@ void TmuxController::onWindowAdded(int windowId)
                                   return;
                               }
                               int wId;
+                              int windowIndex;
                               QString windowName;
                               QString layout;
-                              if (!parseListWindowsLine(line, wId, windowName, layout)) {
+                              if (!parseListWindowsLine(line, wId, windowIndex, windowName, layout)) {
                                   return;
                               }
                               auto parsed = TmuxLayoutParser::parse(layout);
                               if (parsed.has_value()) {
+                                  _windowIndexes[wId] = windowIndex;
                                   setState(State::ApplyingLayout);
                                   applyWindowLayout(wId, parsed.value());
                                   setState(State::Idle);
@@ -878,7 +1070,9 @@ void TmuxController::onWindowClosed(int windowId)
         }
     }
     _windowToTabIndex.remove(windowId);
+    _windowIndexes.remove(windowId);
     _windowPanes.remove(windowId);
+    rebuildWindowToTabIndex();
 }
 
 void TmuxController::removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds)
@@ -947,7 +1141,7 @@ bool TmuxController::focusPane(int paneId)
 
 void TmuxController::maximizePaneInWindow(int windowId, int paneId)
 {
-    int tabIndex = _windowToTabIndex.value(windowId, -1);
+    int tabIndex = tabIndexForWindow(windowId);
     if (tabIndex < 0) {
         return;
     }
@@ -972,7 +1166,7 @@ void TmuxController::maximizePaneInWindow(int windowId, int paneId)
 
 void TmuxController::clearMaximizeInWindow(int windowId)
 {
-    int tabIndex = _windowToTabIndex.value(windowId, -1);
+    int tabIndex = tabIndexForWindow(windowId);
     if (tabIndex < 0) {
         return;
     }
@@ -1033,7 +1227,7 @@ void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
     // (compositeFocusChanged → viewFocused → controllerChanged →
     // MainWindow::updateWindowCaption); QStackedLayout's own setFocus on
     // the page widget doesn't always reach the inner display.
-    int tabIndex = _windowToTabIndex.value(windowId, -1);
+    int tabIndex = tabIndexForWindow(windowId);
     if (auto *container = _viewManager->activeContainer(); container && tabIndex >= 0) {
         container->setCurrentIndex(tabIndex, Qt::OtherFocusReason);
         if (auto *splitter = qobject_cast<ViewSplitter *>(container->currentWidget())) {
@@ -1074,15 +1268,179 @@ void TmuxController::onSessionWindowChanged(int sessionId, int windowId)
                           });
 }
 
+void TmuxController::onSubscriptionChanged(const QString &name, int sessionId, int windowId, int windowIndex, int paneId, const QString &value)
+{
+    Q_UNUSED(paneId)
+    Q_UNUSED(value)
+    if (name != QLatin1String(windowOrderSubscriptionName) || sessionId != _sessionId || windowId < 0 || windowIndex < 0) {
+        return;
+    }
+
+    _windowIndexes[windowId] = windowIndex;
+    scheduleTabOrderReconcile();
+}
+
+void TmuxController::onTabMoved(int from, int to)
+{
+    Q_UNUSED(from)
+    if (_reorderingTabs) {
+        return;
+    }
+
+    rebuildWindowToTabIndex();
+    const int movedWindowId = windowIdAtTabIndex(to);
+    if (movedWindowId < 0 || !_windowPanes.contains(movedWindowId)) {
+        return;
+    }
+
+    // QTabBar may emit several tabMoved signals while one mouse drag crosses
+    // multiple tabs. Debounce them and synchronize the final permutation.
+    _tabOrderDirty = true;
+    _tabOrderSyncTimer->start();
+}
+
+void TmuxController::syncTmuxOrderFromTabs()
+{
+    if (_tabOrderSyncInFlight || !_tabOrderDirty) {
+        return;
+    }
+
+    rebuildWindowToTabIndex();
+    QList<int> desiredOrder;
+    auto *container = _viewManager->activeContainer();
+    if (!container) {
+        _tabOrderDirty = false;
+        return;
+    }
+    for (int tabIndex = 0; tabIndex < container->count(); ++tabIndex) {
+        const int windowId = windowIdAtTabIndex(tabIndex);
+        if (windowId >= 0 && _windowPanes.contains(windowId)) {
+            desiredOrder.append(windowId);
+        }
+    }
+    if (desiredOrder.size() < 2) {
+        _tabOrderDirty = false;
+        return;
+    }
+
+    for (int windowId : std::as_const(desiredOrder)) {
+        if (!_windowIndexes.contains(windowId)) {
+            _tabOrderSyncInFlight = true;
+            refreshWindowIndexesForTabSync();
+            return;
+        }
+    }
+
+    QList<int> tmuxOrder = desiredOrder;
+    std::stable_sort(tmuxOrder.begin(), tmuxOrder.end(), [this](int left, int right) {
+        const int leftIndex = _windowIndexes.value(left, std::numeric_limits<int>::max());
+        const int rightIndex = _windowIndexes.value(right, std::numeric_limits<int>::max());
+        if (leftIndex != rightIndex) {
+            return leftIndex < rightIndex;
+        }
+        return left < right;
+    });
+
+    QList<QPair<int, int>> swaps;
+    for (int position = 0; position < desiredOrder.size(); ++position) {
+        if (tmuxOrder.at(position) == desiredOrder.at(position)) {
+            continue;
+        }
+        const int sourcePosition = tmuxOrder.indexOf(desiredOrder.at(position), position + 1);
+        if (sourcePosition < 0) {
+            continue;
+        }
+        swaps.append(qMakePair(desiredOrder.at(position), tmuxOrder.at(position)));
+        tmuxOrder.swapItemsAt(position, sourcePosition);
+    }
+
+    _tabOrderDirty = false;
+    if (swaps.isEmpty()) {
+        scheduleTabOrderReconcile();
+        return;
+    }
+
+    const int activeWindowId = windowIdAtTabIndex(container->currentIndex());
+
+    // A sequence of swaps realizes the exact tab permutation and remains
+    // well-defined even when hidden windows occupy indexes between the visible
+    // ones. tmux's -d preserves the source window as current, so use the active
+    // window as the source whenever it participates in a swap. If it does not
+    // participate, omit -d and tmux leaves the current winlink untouched.
+    _tabOrderSyncInFlight = true;
+    for (int i = 0; i < swaps.size(); ++i) {
+        auto [sourceWindowId, targetWindowId] = swaps.at(i);
+        const bool activeWindowMoves = activeWindowId == sourceWindowId || activeWindowId == targetWindowId;
+        if (activeWindowId == targetWindowId) {
+            std::swap(sourceWindowId, targetWindowId);
+        }
+
+        auto callback = (i == swaps.size() - 1) ? TmuxGateway::CommandCallback([this](bool, const QString &) {
+            refreshWindowIndexesForTabSync();
+        })
+                                                : TmuxGateway::CommandCallback();
+        TmuxCommand command(QStringLiteral("swap-window"));
+        if (activeWindowMoves) {
+            command.flag(QStringLiteral("-d"));
+        }
+        _gateway->sendCommand(command.windowSource(sourceWindowId).windowTarget(targetWindowId), std::move(callback));
+    }
+}
+
+void TmuxController::refreshWindowIndexesForTabSync()
+{
+    const int requestedSessionId = _sessionId;
+    if (requestedSessionId < 0) {
+        _tabOrderSyncInFlight = false;
+        return;
+    }
+
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-windows")).sessionTarget(requestedSessionId).format(QStringLiteral("#{window_id} #{window_index}")),
+                          [this, requestedSessionId](bool success, const QString &response) {
+                              if (requestedSessionId != _sessionId) {
+                                  _tabOrderSyncInFlight = false;
+                                  return;
+                              }
+                              if (success) {
+                                  const QStringList lines = response.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                                  for (const QString &line : lines) {
+                                      const QStringList parts = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                                      if (parts.size() != 2 || !parts[0].startsWith(QLatin1Char('@'))) {
+                                          continue;
+                                      }
+                                      bool windowIdOk = false;
+                                      bool windowIndexOk = false;
+                                      const int windowId = parts[0].mid(1).toInt(&windowIdOk);
+                                      const int windowIndex = parts[1].toInt(&windowIndexOk);
+                                      if (windowIdOk && windowIndexOk) {
+                                          _windowIndexes[windowId] = windowIndex;
+                                      }
+                                  }
+                              }
+
+                              _tabOrderSyncInFlight = false;
+                              if (_tabOrderDirty) {
+                                  _tabOrderSyncTimer->start(0);
+                              } else {
+                                  scheduleTabOrderReconcile();
+                              }
+                          });
+}
+
 void TmuxController::cleanup()
 {
     _paneTitleTimer->stop();
     _resizeCoordinator->stop();
     _stateRecovery->clear();
+    _tabOrderReconcileTimer->stop();
+    _tabOrderSyncTimer->stop();
     _paneManager->destroyAllPaneSessions();
     _windowToTabIndex.clear();
+    _windowIndexes.clear();
     _windowPanes.clear();
     _zoomedWindows.clear();
+    _tabOrderDirty = false;
+    _tabOrderSyncInFlight = false;
 }
 
 QKeySequence TmuxController::prefixShortcut() const
@@ -1309,9 +1667,9 @@ bool TmuxController::shouldSuppressResize() const
     return _state == State::ApplyingLayout || _state == State::Initializing;
 }
 
-bool TmuxController::parseListWindowsLine(const QString &line, int &windowId, QString &windowName, QString &layout)
+bool TmuxController::parseListWindowsLine(const QString &line, int &windowId, int &windowIndex, QString &windowName, QString &layout)
 {
-    // Format: "@<id> <window_name> <layout_checksum>,<layout_body>"
+    // Format: "@<id> <index> <window_name> <layout_checksum>,<layout_body>"
     // Window names can contain spaces, so we can't simply split on spaces.
     // The layout is always the last space-separated token (4 hex chars + comma + dimensions).
     int firstSpace = line.indexOf(QLatin1Char(' '));
@@ -1324,12 +1682,22 @@ bool TmuxController::parseListWindowsLine(const QString &line, int &windowId, QS
     }
     windowId = windowIdStr.mid(1).toInt();
 
+    int secondSpace = line.indexOf(QLatin1Char(' '), firstSpace + 1);
+    if (secondSpace < 0) {
+        return false;
+    }
+    bool windowIndexOk = false;
+    windowIndex = line.mid(firstSpace + 1, secondSpace - firstSpace - 1).toInt(&windowIndexOk);
+    if (!windowIndexOk) {
+        return false;
+    }
+
     int lastSpace = line.lastIndexOf(QLatin1Char(' '));
-    if (lastSpace <= firstSpace) {
+    if (lastSpace <= secondSpace) {
         return false;
     }
     layout = line.mid(lastSpace + 1);
-    windowName = line.mid(firstSpace + 1, lastSpace - firstSpace - 1);
+    windowName = line.mid(secondSpace + 1, lastSpace - secondSpace - 1);
     return true;
 }
 

@@ -61,6 +61,15 @@ struct TmuxSessionWindowChangedNotification {
     int windowId;
 };
 
+struct TmuxSubscriptionChangedNotification {
+    QString name;
+    int sessionId;
+    int windowId;
+    int windowIndex;
+    int paneId;
+    QString value;
+};
+
 struct TmuxPanePausedNotification {
     int paneId;
 };
@@ -97,6 +106,7 @@ using TmuxNotification = std::variant<TmuxOutputNotification,
                                       TmuxSessionRenamedNotification,
                                       TmuxSessionsChangedNotification,
                                       TmuxSessionWindowChangedNotification,
+                                      TmuxSubscriptionChangedNotification,
                                       TmuxPanePausedNotification,
                                       TmuxPaneContinuedNotification,
                                       TmuxPaneModeChangedNotification,

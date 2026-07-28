@@ -59,6 +59,7 @@ Q_SIGNALS:
     void sessionRenamed(const QString &name);
     void sessionsChanged();
     void sessionWindowChanged(int sessionId, int windowId);
+    void subscriptionChanged(const QString &name, int sessionId, int windowId, int windowIndex, int paneId, const QString &value);
     void panePaused(int paneId);
     void paneContinued(int paneId);
     void paneModeChanged(int paneId);

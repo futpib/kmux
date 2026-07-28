@@ -150,6 +150,8 @@ private Q_SLOTS:
     void onWindowPaneChanged(int windowId, int paneId);
     void onSessionChanged(int sessionId, const QString &name);
     void onSessionWindowChanged(int sessionId, int windowId);
+    void onSubscriptionChanged(const QString &name, int sessionId, int windowId, int windowIndex, int paneId, const QString &value);
+    void onTabMoved(int from, int to);
     void onPaneModeChanged(int paneId);
     void onPanePaused(int paneId);
     void onExit(const QString &reason);
@@ -158,9 +160,17 @@ private:
     void setState(State newState);
     bool shouldSuppressResize() const;
     bool isWindowVisible(int windowId) const;
-    static bool parseListWindowsLine(const QString &line, int &windowId, QString &windowName, QString &layout);
+    static bool parseListWindowsLine(const QString &line, int &windowId, int &windowIndex, QString &windowName, QString &layout);
 
     void applyWindowLayout(int windowId, const TmuxLayoutNode &layout);
+    int windowIdAtTabIndex(int tabIndex) const;
+    int tabIndexForWindow(int windowId) const;
+    void rebuildWindowToTabIndex();
+    void scheduleTabOrderReconcile();
+    void reconcileTabOrder();
+    void syncTmuxOrderFromTabs();
+    void refreshWindowIndexesForTabSync();
+    void enableWindowIndexSubscription();
     bool focusPane(int paneId);
     void maximizePaneInWindow(int windowId, int paneId);
     void clearMaximizeInWindow(int windowId);
@@ -181,6 +191,7 @@ private:
     TmuxPaneStateRecovery *_stateRecovery;
 
     QMap<int, int> _windowToTabIndex;
+    QMap<int, int> _windowIndexes;
     QMap<int, QList<int>> _windowPanes;
     QSet<int> _zoomedWindows;
     QSet<int> _hiddenWindows;
@@ -193,12 +204,18 @@ private:
     QList<PrefixBinding> _prefixBindings;
 
     QTimer *_paneTitleTimer;
+    QTimer *_tabOrderReconcileTimer;
+    QTimer *_tabOrderSyncTimer;
 
     QString _sessionName;
     int _sessionId = -1;
     State _state = State::Idle;
     int _activePaneId = -1;
     bool _flowControlEnabled = false;
+    bool _windowIndexSubscriptionEnabled = false;
+    bool _reorderingTabs = false;
+    bool _tabOrderDirty = false;
+    bool _tabOrderSyncInFlight = false;
 };
 
 } // namespace Konsole

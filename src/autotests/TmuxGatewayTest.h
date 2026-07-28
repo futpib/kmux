@@ -25,6 +25,7 @@ private Q_SLOTS:
     void testActivityRecoversFromUnresponsive();
     void testUnresponsiveFiresDespitePeriodicResends();
     void testExtendedOutputParsedAsOutput();
+    void testSubscriptionChangedParsed();
 };
 }
 

@@ -78,6 +78,25 @@ void TmuxGatewayTest::testExtendedOutputParsedAsOutput()
     QCOMPARE(spy.first().at(1).toByteArray(), QByteArray("hello\r\n"));
 }
 
+void TmuxGatewayTest::testSubscriptionChangedParsed()
+{
+    TmuxGateway gateway([](const QByteArray &) { });
+
+    QSignalSpy spy(&gateway, &TmuxGateway::subscriptionChanged);
+    QVERIFY(spy.isValid());
+
+    gateway.processLine("%subscription-changed kmux-window-order $7 @12 3 - : index 3");
+
+    QCOMPARE(spy.count(), 1);
+    const QList<QVariant> arguments = spy.takeFirst();
+    QCOMPARE(arguments.at(0).toString(), QStringLiteral("kmux-window-order"));
+    QCOMPARE(arguments.at(1).toInt(), 7);
+    QCOMPARE(arguments.at(2).toInt(), 12);
+    QCOMPARE(arguments.at(3).toInt(), 3);
+    QCOMPARE(arguments.at(4).toInt(), -1);
+    QCOMPARE(arguments.at(5).toString(), QStringLiteral("index 3"));
+}
+
 void TmuxGatewayTest::testResponseInsideClientOriginatedBlockIsCaptured()
 {
     // Make sure routing notifications inside server-originated blocks
