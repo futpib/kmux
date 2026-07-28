@@ -18,14 +18,14 @@
 #include "../tmux/TmuxControllerRegistry.h"
 #include "../tmux/TmuxProcessBridge.h"
 #include "../widgets/ViewContainer.h"
-#include "TmuxTestDSL.h"
+#include "TmuxTestFixture.h"
 
 using namespace Konsole;
 
 void TmuxProcessBridgeTest::initTestCase()
 {
     QVERIFY(m_tmuxTmpDir.isValid());
-    m_tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    m_tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (m_tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }

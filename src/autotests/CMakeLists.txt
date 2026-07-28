@@ -65,28 +65,28 @@ ecm_add_tests(
 )
 
 ecm_add_test(
-    TmuxTestDSL.cpp
+    TmuxTestFixture.cpp
     TmuxPaneStateRecoveryTest.cpp
     TEST_NAME TmuxPaneStateRecoveryTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
 
 ecm_add_test(
-    TmuxTestDSL.cpp
-    TmuxTestDSLTest.cpp
-    TEST_NAME TmuxTestDSLTest
+    TmuxTestFixture.cpp
+    TmuxTestFixtureTest.cpp
+    TEST_NAME TmuxTestFixtureTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
 
 ecm_add_test(
-    TmuxTestDSL.cpp
+    TmuxTestFixture.cpp
     TmuxIntegrationTest.cpp
     TEST_NAME TmuxIntegrationTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts
 )
 
 ecm_add_test(
-    TmuxTestDSL.cpp
+    TmuxTestFixture.cpp
     TmuxProcessBridgeTest.cpp
     TEST_NAME TmuxProcessBridgeTest
     LINK_LIBRARIES ${KONSOLE_TEST_LIBS} KF6::Parts

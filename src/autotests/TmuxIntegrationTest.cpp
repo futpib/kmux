@@ -5,7 +5,7 @@
 */
 
 #include "TmuxIntegrationTest.h"
-#include "TmuxTestDSL.h"
+#include "TmuxTestFixture.h"
 
 #include <KActionCollection>
 #include <KMessageBox>
@@ -86,7 +86,7 @@ void TmuxIntegrationTest::cleanup()
 
 void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -115,7 +115,7 @@ void TmuxIntegrationTest::testTmuxControlModeExitCleanup()
 
 void TmuxIntegrationTest::testClosePaneTabThenGatewayTab()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -153,28 +153,19 @@ void TmuxIntegrationTest::testClosePaneTabThenGatewayTab()
 
 void TmuxIntegrationTest::testTmuxControlModeAttach()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 30 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 30"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Close the pane tab, then destroy the bridge
     Session *paneSession = nullptr;
@@ -193,39 +184,28 @@ void TmuxIntegrationTest::testTmuxControlModeAttach()
 
 void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 30 │cmd: sleep 30 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 30")), TmuxTestFixture::pane(QStringLiteral("sleep 30"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
 
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
-    TmuxTestDSL::assertKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    TmuxTestFixture::assertKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Clean up: close pane sessions, then destroy the bridge
     const auto sessions = attach.mw->viewManager()->sessions();
@@ -270,7 +250,7 @@ static QList<int> kmuxWindowOrder(TmuxController *controller)
     return windowIds;
 }
 
-static QList<int> tmuxWindowOrder(const QString &tmuxPath, const TmuxTestDSL::SessionContext &ctx)
+static QList<int> tmuxWindowOrder(const QString &tmuxPath, const TmuxTestFixture::SessionContext &ctx)
 {
     QProcess process;
     process.start(tmuxPath,
@@ -313,21 +293,12 @@ static QList<int> tmuxWindowOrder(const QString &tmuxPath, const TmuxTestDSL::Se
 
 void TmuxIntegrationTest::testTmuxAttachContentRecovery()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Send a command with Unicode output
@@ -347,8 +318,8 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
     QTest::qWait(500);
 
     // Now attach Konsole via -CC
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -393,24 +364,12 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
 // new output flows again.
 void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        │                            │
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 6);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     auto sendKeys = [&](const QString &keys) {
@@ -421,8 +380,8 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
         QCOMPARE(p.exitCode(), 0);
     };
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     const auto sessions = attach.mw->viewManager()->sessions();
     QVERIFY(!sessions.isEmpty());
@@ -479,24 +438,12 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
 // repaint the captured frame, or the TUI comes back blank/garbled after resume.
 void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        │                            │
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 6);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     auto sendKeys = [&](const QString &keys) {
@@ -521,8 +468,8 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
     QVERIFY(altCheck.waitForFinished(5000));
     QCOMPARE(QString::fromUtf8(altCheck.readAllStandardOutput()).trimmed(), QStringLiteral("1"));
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     const auto sessions = attach.mw->viewManager()->sessions();
     QVERIFY(!sessions.isEmpty());
@@ -576,21 +523,12 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
 
 void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Set a complex PS1 prompt with ANSI colors and Unicode
@@ -629,8 +567,8 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
     QTest::qWait(500);
 
     // Now attach Konsole via -CC
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -681,21 +619,12 @@ void TmuxIntegrationTest::testTmuxAttachComplexPromptRecovery()
 // must be visible on the (active) screen readSessionScreenText reads.
 void TmuxIntegrationTest::testTmuxAttachAlternateScreenRecovery()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Enter the alternate screen and paint a reference frame, then idle so the
@@ -725,8 +654,8 @@ void TmuxIntegrationTest::testTmuxAttachAlternateScreenRecovery()
     QCOMPARE(QString::fromUtf8(altCheck.readAllStandardOutput()).trimmed(), QStringLiteral("1"));
 
     // Now attach kmux via the control-mode bridge — triggers pane state recovery.
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     const auto sessions = attach.mw->viewManager()->sessions();
     QVERIFY(!sessions.isEmpty());
@@ -773,21 +702,12 @@ void TmuxIntegrationTest::testTmuxAttachAlternateScreenRecovery()
 // recovered input line lands on the cursor's row. Off-by-one ⇒ this fails.
 void TmuxIntegrationTest::testTmuxAttachPrimaryScreenRowAlignment()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │columns: 90                 │
-        │lines: 34                   │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 90, 34);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     auto sendLine = [&](const QString &keys) {
@@ -837,8 +757,8 @@ void TmuxIntegrationTest::testTmuxAttachPrimaryScreenRowAlignment()
                             .arg(tmuxCursorY).arg(curParts[1])));
 
     // Attach kmux → pane state recovery replays the frame and restores cursor.
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     const auto sessions = attach.mw->viewManager()->sessions();
     QVERIFY(!sessions.isEmpty());
@@ -897,24 +817,19 @@ void TmuxIntegrationTest::testTmuxAttachPrimaryScreenRowAlignment()
 
 void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Query initial pane sizes
@@ -931,18 +846,12 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
     QCOMPARE(tmuxListPanes.exitCode(), 0);
     QStringList initialWidths = QString::fromUtf8(tmuxListPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'));
     QCOMPARE(initialWidths.size(), 2);
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    // Apply the initial layout to set Konsole widget sizes to match the diagram
-    auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
+    // Apply the initial layout to set Konsole widget sizes to match the layout
+    auto initialLayout = TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))});
+    TmuxTestFixture::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // Find the split pane splitter
     ViewSplitter *paneSplitter = nullptr;
@@ -1087,7 +996,7 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 
     // Kill the tmux session first to avoid layout-change during teardown
     // (cleanup guard handles this, but we want it early)
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1095,21 +1004,12 @@ void TmuxIntegrationTest::testSplitterResizePropagatedToTmux()
 
 void TmuxIntegrationTest::testTmuxPaneTitleInfo()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // cd to /tmp so we have a known directory
@@ -1126,8 +1026,8 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -1178,7 +1078,7 @@ void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()
     // We don't need real SSH for this test: a one-line bash script that
     // drops the host arg and clears locale env vars reproduces the exact
     // condition. Without the `-u` fix this test fails with `_` in tabText.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Mock ssh: $1 is the "host", rest is the command. Strip host, wipe
     // locale, exec the rest. This is what real sshd hands tmux when LC_*
@@ -1200,19 +1100,10 @@ void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()
     QVERIFY(QFile::setPermissions(mockRsh,
                                   QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     QProcess sendOsc;
@@ -1300,21 +1191,12 @@ void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()
 
 void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Make the pane's cwd a known token so we can assert %d expansion.
@@ -1331,8 +1213,8 @@ void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw, 5000));
@@ -1376,21 +1258,12 @@ void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()
 
 void TmuxIntegrationTest::testSshInsideTmuxResolvesUserAndHost()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Replace the bash process in the pane with sh, but argv[0] = "ssh" via
@@ -1417,8 +1290,8 @@ void TmuxIntegrationTest::testSshInsideTmuxResolvesUserAndHost()
     QCOMPARE(sendKeys.exitCode(), 0);
     QTest::qWait(500);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw, 5000));
@@ -1454,21 +1327,12 @@ void TmuxIntegrationTest::testSshInsideTmuxResolvesUserAndHost()
 
 void TmuxIntegrationTest::testWindowNameWithSpaces()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Rename the window to something adversarial: spaces, hex-like tokens, commas, braces
@@ -1478,8 +1342,8 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
     QVERIFY(renameProc.waitForFinished(5000));
     QCOMPARE(renameProc.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -1505,35 +1369,26 @@ void TmuxIntegrationTest::testWindowNameWithSpaces()
     QTRY_VERIFY_WITH_TIMEOUT(!attach.container->tabText(tabIndex).isEmpty(), 5000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -1596,7 +1451,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1604,25 +1459,21 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPane()
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // Create 3 horizontal panes, select pane 0, then split it vertically from Konsole
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │              │
-        │              │              │              │
-        └──────────────┴──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")),
+                                                                   TmuxTestFixture::pane(QStringLiteral("sleep 60")),
+                                                                   TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+                                      tmuxPath,
+                                      m_tmuxTmpDir.path(),
+                                      ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Select the first pane so we know which one is active before attaching
@@ -1632,8 +1483,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     QVERIFY(tmuxSelect.waitForFinished(5000));
     QCOMPARE(tmuxSelect.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for all 3 panes to appear
     ViewSplitter *paneSplitter = nullptr;
@@ -1716,7 +1567,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1724,29 +1575,21 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneComplexLayout()
 
 void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // Create nested layout: [ pane0 | [ pane1 / pane2 ] ]
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        │              ├──────────────┤
-        │              │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60"), 14, 7),
+                                                                   TmuxTestFixture::vertical({TmuxTestFixture::pane(QStringLiteral("sleep 60")),
+                                                                                              TmuxTestFixture::pane(QStringLiteral("sleep 60"))})}),
+                                      tmuxPath,
+                                      m_tmuxTmpDir.path(),
+                                      ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Select the first pane (pane0) so that's what we'll split from Konsole
@@ -1756,8 +1599,8 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     QVERIFY(tmuxSelect.waitForFinished(5000));
     QCOMPARE(tmuxSelect.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for all 3 panes to appear
     ViewSplitter *paneSplitter = nullptr;
@@ -1852,7 +1695,7 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
     QTRY_VERIFY_WITH_TIMEOUT(newDisplay->hasFocus(), 5000);
 
     // Kill the tmux session first
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -1860,35 +1703,24 @@ void TmuxIntegrationTest::testSplitPaneFocusesNewPaneNestedLayout()
 
 void TmuxIntegrationTest::testResizePropagatedToPty()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // 1. Setup tmux session with a two-pane horizontal split running bash
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("bash")), TmuxTestFixture::pane(QStringLiteral("bash"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
 
     // 2. Attach Konsole
-    auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
+    auto initialLayout = TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("bash")), TmuxTestFixture::pane(QStringLiteral("bash"))});
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // Find the two-pane splitter
     ViewSplitter *paneSplitter = nullptr;
@@ -2058,7 +1890,7 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
     QTest::qWait(500);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2066,44 +1898,28 @@ void TmuxIntegrationTest::testResizePropagatedToPty()
 
 void TmuxIntegrationTest::testNestedResizePropagatedToPty()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // 1. Setup tmux session with a nested layout: left pane | [top-right / bottom-right]
     //    All panes run bash so we can check stty size.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │
-        │              │              │
-        │              │              │
-        │              ├──────────────┤
-        │              │cmd: bash     │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+                                                                   TmuxTestFixture::vertical({TmuxTestFixture::pane(QStringLiteral("bash")),
+                                                                                              TmuxTestFixture::pane(QStringLiteral("bash"))})}),
+                                      tmuxPath,
+                                      m_tmuxTmpDir.path(),
+                                      ctx);
 
     // 2. Attach Konsole and apply the same layout
-    auto initialLayout = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │
-        │              │              │
-        │              │              │
-        │              ├──────────────┤
-        │              │cmd: bash     │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
-    TmuxTestDSL::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
+    auto initialLayout = TmuxTestFixture::horizontal(
+        {TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+         TmuxTestFixture::vertical({TmuxTestFixture::pane(QStringLiteral("bash")), TmuxTestFixture::pane(QStringLiteral("bash"))})});
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::applyKonsoleLayout(initialLayout, attach.mw->viewManager());
 
     // 3. Find the top-level splitter (horizontal: left | right-sub-splitter)
     ViewSplitter *topSplitter = nullptr;
@@ -2246,7 +2062,7 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QTest::qWait(500);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2255,7 +2071,7 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
 
 void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -2264,23 +2080,16 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
     // 3-child top-level HSplit where the rightmost child is a nested VSplit.
     // Resizing the handle between center and the right column must propagate
     // correct absolute offsets and cross-axis dimensions to tmux.
-    TmuxTestDSL::SessionContext ctx;
-    auto diagram = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │cmd: bash     │
-        │              │              │              │
-        │              │              │              │
-        │              │              ├──────────────┤
-        │              │              │cmd: bash     │
-        │              │              │              │
-        │              │              │              │
-        └──────────────┴──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
+    TmuxTestFixture::SessionContext ctx;
+    auto layout = TmuxTestFixture::horizontal(
+        {TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+         TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+         TmuxTestFixture::vertical({TmuxTestFixture::pane(QStringLiteral("bash")), TmuxTestFixture::pane(QStringLiteral("bash"))})});
+    TmuxTestFixture::setupTmuxSession(layout, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
-    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager());
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::applyKonsoleLayout(layout, attach.mw->viewManager());
 
     // Find the splitter with 4 displays
     ViewSplitter *topSplitter = nullptr;
@@ -2385,14 +2194,14 @@ void TmuxIntegrationTest::testTopLevelResizeWithNestedChild()
     QVERIFY2(!tmuxLayout.isEmpty(), "tmux should report a valid window layout");
 
     QTest::qWait(500);
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -2405,23 +2214,16 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     // 4-pane nested layout: left | center | [top-right / bottom-right]
     // Resize, then cycle through smaller-client attach/detach,
     // verify the resized layout is preserved after recovery.
-    TmuxTestDSL::SessionContext ctx;
-    auto diagram = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┬──────────────┐
-        │cmd: bash     │cmd: bash     │cmd: bash     │
-        │              │              │              │
-        │              │              │              │
-        │              │              ├──────────────┤
-        │              │              │cmd: bash     │
-        │              │              │              │
-        │              │              │              │
-        └──────────────┴──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::setupTmuxSession(diagram, tmuxPath, m_tmuxTmpDir.path(), ctx);
+    TmuxTestFixture::SessionContext ctx;
+    auto layout = TmuxTestFixture::horizontal(
+        {TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+         TmuxTestFixture::pane(QStringLiteral("bash"), 14, 7),
+         TmuxTestFixture::vertical({TmuxTestFixture::pane(QStringLiteral("bash")), TmuxTestFixture::pane(QStringLiteral("bash"))})});
+    TmuxTestFixture::setupTmuxSession(layout, tmuxPath, m_tmuxTmpDir.path(), ctx);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
-    TmuxTestDSL::applyKonsoleLayout(diagram, attach.mw->viewManager());
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::applyKonsoleLayout(layout, attach.mw->viewManager());
 
     // Find the splitter with 4 displays
     ViewSplitter *topSplitter = nullptr;
@@ -2722,14 +2524,14 @@ void TmuxIntegrationTest::testNestedResizeSurvivesFocusCycle()
     QVERIFY2(recoveredLayout != constrainedLayout, "Layout should differ from constrained state after focus recovery");
 
     QTest::qWait(500);
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -2742,52 +2544,19 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
     // 1. Setup tmux session with a single pane large enough for the test's
     //    initialColumns >= 40 and initialLines >= 12 assertions, plus strict
     //    shrinkage past the stty 40x12 smaller client.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────────────────────────────────┐
-        │cmd: sleep 60                             │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        └──────────────────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 42, 12);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // 2. Attach Konsole via control mode
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // 3. Apply large layout so widgets are sized generously
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────────────────────────────────┐
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        │                                          │
-        └──────────────────────────────────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::pane(QStringLiteral(""), 42, 12);
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // 4. Find the pane display and verify initial state (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -2876,7 +2645,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
     }
 
     // Kill tmux session early to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -2884,7 +2653,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClient()
 
 void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -2896,34 +2665,23 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
 
     // 1. Setup tmux session with two horizontal panes large enough for the
     //    test's initial{Left,Right}Cols >= 20 assertions.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────┬────────────────────┐
-        │cmd: sleep 60       │cmd: sleep 60       │
-        │                    │                    │
-        │                    │                    │
-        └────────────────────┴────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60"), 20, 3), TmuxTestFixture::pane(QStringLiteral("sleep 60"), 20, 3)}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // 2. Attach Konsole via control mode
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // 3. Apply large layout so widgets are sized generously
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────┬────────────────────┐
-        │                    │                    │
-        │                    │                    │
-        │                    │                    │
-        └────────────────────┴────────────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral(""), 20, 3), TmuxTestFixture::pane(QStringLiteral(""), 20, 3)});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // 4. Find the splitter with 2 TerminalDisplay children
     ViewSplitter *paneSplitter = nullptr;
@@ -3018,7 +2776,7 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
     }
 
     // Kill tmux session early to avoid layout-change during teardown
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -3026,25 +2784,16 @@ void TmuxIntegrationTest::testForcedSizeFromSmallerClientMultiPane()
 
 void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // 1. Setup tmux session with a single pane running bash
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // 2. Generate scrollback content
@@ -3080,8 +2829,8 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
     QVERIFY2(getTmuxHistorySize() > 0, "Expected tmux history_size > 0 before attach");
 
     // 4. Attach Konsole
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
@@ -3115,7 +2864,7 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
              qPrintable(QStringLiteral("Expected visible pane to still contain recent output, got: ") + visible));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -3123,25 +2872,16 @@ void TmuxIntegrationTest::testClearScrollbackSyncToTmux()
 
 void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // 1. Setup tmux session with a single pane running bash
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // 2. Generate scrollback content
@@ -3191,8 +2931,8 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
     QVERIFY2(getTmuxHistorySize() > 0, "Expected tmux history_size > 0 before attach");
 
     // 3. Attach Konsole
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     Session *paneSession = nullptr;
     const auto sessions = attach.mw->viewManager()->sessions();
@@ -3219,7 +2959,7 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
              qPrintable(QStringLiteral("Expected all SCROLLBACK_LINE content to be cleared, got: ") + allContent));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
@@ -3227,35 +2967,24 @@ void TmuxIntegrationTest::testClearScrollbackAndResetSyncToTmux()
 
 void TmuxIntegrationTest::testTmuxZoomFromKonsole()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Setup 2-pane tmux session
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -3327,42 +3056,31 @@ void TmuxIntegrationTest::testTmuxZoomFromKonsole()
     QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 5000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testTmuxZoomFromTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Setup 2-pane tmux session
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -3424,43 +3142,32 @@ void TmuxIntegrationTest::testTmuxZoomFromTmux()
     }
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Small 2-pane layout — each pane is only ~20 columns wide, so the zoomed
     // display should clearly expand beyond that when maximized.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -3520,7 +3227,7 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
                             .arg(zoomedLines).arg(zoomedDisplay->lines())));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -3560,36 +3267,25 @@ ViewSplitter *findTwoPaneSplitter(TabbedViewContainer *container)
 // return both to the unzoomed/unmaximized state.
 void TmuxIntegrationTest::testCtrlShiftEBoundToTmuxZoom()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     ViewSplitter *paneSplitter = findTwoPaneSplitter(attach.container);
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
@@ -3622,36 +3318,25 @@ void TmuxIntegrationTest::testCtrlShiftEBoundToTmuxZoom()
 // testCtrlShiftEBoundToTmuxZoom — both sides must agree after the toggle.
 void TmuxIntegrationTest::testTmuxZoomReflectedAsKonsoleMaximize()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     ViewSplitter *paneSplitter = findTwoPaneSplitter(attach.container);
     QVERIFY2(paneSplitter, "Expected a ViewSplitter with 2 TerminalDisplay children");
@@ -3682,35 +3367,24 @@ void TmuxIntegrationTest::testTmuxZoomReflectedAsKonsoleMaximize()
 
 void TmuxIntegrationTest::testBreakPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Setup 2-pane tmux session
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │              │              │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )"));
-    TmuxTestDSL::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
+    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -3771,28 +3445,19 @@ void TmuxIntegrationTest::testBreakPane()
     QCOMPARE(windowCount, 2);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // cd to /tmp so we have a known directory
@@ -3809,8 +3474,8 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session and its controller (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -3871,28 +3536,19 @@ void TmuxIntegrationTest::testSplitPaneInheritsWorkingDirectory()
     }(), 10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // cd to /tmp so we have a known directory
@@ -3909,8 +3565,8 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
     QCOMPARE(sendCd.exitCode(), 0);
     QTest::qWait(500);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     const auto sessions = attach.mw->viewManager()->sessions();
     QVERIFY(!sessions.isEmpty());
@@ -3950,32 +3606,23 @@ void TmuxIntegrationTest::testNewWindowInheritsWorkingDirectory()
     }(), 10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -4025,32 +3672,23 @@ void TmuxIntegrationTest::testOscColorQueryNotLeakedAsKeystrokes()
     QVERIFY2(!leaked, "OSC color query response was leaked back as keystrokes to tmux pane");
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testCyrillicInputPreservesUtf8()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the pane session (all sessions are pane sessions)
     Session *paneSession = nullptr;
@@ -4098,14 +3736,14 @@ void TmuxIntegrationTest::testCyrillicInputPreservesUtf8()
                             .arg(paneContent)));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testTmuxAttachNoSessions()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -4137,22 +3775,13 @@ void TmuxIntegrationTest::testTmuxAttachNoSessions()
 
 void TmuxIntegrationTest::testAttachMultipleWindows()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a tmux session with 1 window, then add a second window via tmux command
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Create a second tmux window before attaching
@@ -4163,8 +3792,8 @@ void TmuxIntegrationTest::testAttachMultipleWindows()
     QCOMPARE(newWindow.exitCode(), 0);
 
     // Attach Konsole
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for both tmux windows to appear as tabs
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -4191,32 +3820,23 @@ void TmuxIntegrationTest::testAttachMultipleWindows()
     }
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testNewWindowCreatesTab()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     auto *container = attach.mw->viewManager()->activeContainer();
     int initialTabCount = container->count();
@@ -4249,32 +3869,23 @@ void TmuxIntegrationTest::testNewWindowCreatesTab()
     QCOMPARE(windowCount, 2);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testBackgroundNewWindowFocusesNewTab()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -4356,21 +3967,12 @@ void TmuxIntegrationTest::testBackgroundNewWindowFocusesNewTab()
 
 void TmuxIntegrationTest::testTmuxWindowReorderMovesTabs()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     for (int i = 0; i < 2; ++i) {
@@ -4387,8 +3989,8 @@ void TmuxIntegrationTest::testTmuxWindowReorderMovesTabs()
         QCOMPARE(newWindow.exitCode(), 0);
     }
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container);
     QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
@@ -4435,21 +4037,12 @@ void TmuxIntegrationTest::testTmuxWindowReorderMovesTabs()
 
 void TmuxIntegrationTest::testTmuxInsertedWindowUsesIndexOrder()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     QProcess secondWindow;
@@ -4464,8 +4057,8 @@ void TmuxIntegrationTest::testTmuxInsertedWindowUsesIndexOrder()
     QVERIFY(secondWindow.waitForFinished(5000));
     QCOMPARE(secondWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container);
     QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
@@ -4510,21 +4103,12 @@ void TmuxIntegrationTest::testTmuxInsertedWindowUsesIndexOrder()
 
 void TmuxIntegrationTest::testTabReorderMovesTmuxWindows()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     for (int i = 0; i < 2; ++i) {
@@ -4541,8 +4125,8 @@ void TmuxIntegrationTest::testTabReorderMovesTmuxWindows()
         QCOMPARE(newWindow.exitCode(), 0);
     }
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container);
     QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
@@ -4581,22 +4165,13 @@ void TmuxIntegrationTest::testTabReorderMovesTmuxWindows()
 
 void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a session, then add a second window
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window
@@ -4607,8 +4182,8 @@ void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
     QCOMPARE(newWindow.exitCode(), 0);
 
     // Attach
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -4644,29 +4219,20 @@ void TmuxIntegrationTest::testCloseWindowFromTmuxRemovesTab()
     QCOMPARE(controller->windowCount(), 1);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testCloseWindowTabFromKonsole()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a session with 1 window, then add a second
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window
@@ -4677,8 +4243,8 @@ void TmuxIntegrationTest::testCloseWindowTabFromKonsole()
     QCOMPARE(newWindow.exitCode(), 0);
 
     // Attach
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -4737,32 +4303,23 @@ void TmuxIntegrationTest::testCloseWindowTabFromKonsole()
         10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container->count() >= 1);
@@ -4816,33 +4373,28 @@ void TmuxIntegrationTest::testRenameWindowFromTmuxUpdatesTab()
     Q_UNUSED(tabTextBefore);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testSwapPaneFromTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a 2-pane horizontal split
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the splitter with 2 displays
     auto *container = attach.mw->viewManager()->activeContainer();
@@ -4914,33 +4466,28 @@ void TmuxIntegrationTest::testSwapPaneFromTmux()
         10000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testSwapPaneFromKonsole()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a 2-pane horizontal split
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Find the splitter with 2 displays
     auto *container = attach.mw->viewManager()->activeContainer();
@@ -5017,29 +4564,20 @@ void TmuxIntegrationTest::testSwapPaneFromKonsole()
     QCOMPARE(paneOrder[1], QLatin1Char('%') + QString::number(leftPaneId));
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testMovePaneFromTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a session with 2 windows, each with 1 pane
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window
@@ -5049,8 +4587,8 @@ void TmuxIntegrationTest::testMovePaneFromTmux()
     QVERIFY(newWindow.waitForFinished(5000));
     QCOMPARE(newWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -5129,22 +4667,13 @@ void TmuxIntegrationTest::testMovePaneFromTmux()
 
 void TmuxIntegrationTest::testMovePaneFromKonsole()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a session with 2 windows, each with 1 pane
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window
@@ -5154,8 +4683,8 @@ void TmuxIntegrationTest::testMovePaneFromKonsole()
     QVERIFY(newWindow.waitForFinished(5000));
     QCOMPARE(newWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -5227,22 +4756,17 @@ void TmuxIntegrationTest::testMovePaneFromKonsole()
 
 void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a 2-pane window + a 1-pane window
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window with 1 pane
@@ -5252,8 +4776,8 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
     QVERIFY(newWindow.waitForFinished(5000));
     QCOMPARE(newWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     auto *container = attach.mw->viewManager()->activeContainer();
@@ -5334,22 +4858,17 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromTmux()
 
 void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Create a 2-pane window + a 1-pane window
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second window with 1 pane
@@ -5359,8 +4878,8 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
     QVERIFY(newWindow.waitForFinished(5000));
     QCOMPARE(newWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Wait for 2 tabs
     auto *container = attach.mw->viewManager()->activeContainer();
@@ -5444,25 +4963,16 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
 {
     // When the user invokes New Tab (Ctrl+T) while focused on a tmux pane,
     // a new tmux window should be created without any confirmation dialog.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -5501,8 +5011,8 @@ QSharedPointer<QCommandLineParser> makeTestAppParser()
 
 // Attach a tmux bridge to a fresh Application-owned MainWindow, so the new
 // MainWindow is wired up with plugin registration and newTmuxWindowRequest
-// routing. Mirrors TmuxTestDSL::attachKonsole but goes through Application.
-void attachKonsoleViaApp(Application &app, const QString &tmuxPath, const TmuxTestDSL::SessionContext &ctx, TmuxTestDSL::AttachResult &result)
+// routing. Mirrors TmuxTestFixture::attachKonsole but goes through Application.
+void attachKonsoleViaApp(Application &app, const QString &tmuxPath, const TmuxTestFixture::SessionContext &ctx, TmuxTestFixture::AttachResult &result)
 {
     MainWindow *mw = app.newMainWindow();
     result.mw = mw;
@@ -5538,21 +5048,12 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     // When the user invokes New Window (Ctrl+Shift+N) while focused on a tmux
     // pane, a new tmux window should be created AND a new kmux MainWindow should
     // open attached to that new tmux window.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Intentionally leaked — ~Application() calls SessionManager::closeAllSessions(),
@@ -5560,7 +5061,7 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPane()
     // handles cleanup at the end.
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -5644,21 +5145,12 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
     // registers plugins on it (menus, widgets, activeViewChanged hooks). We
     // inject a test plugin into PluginManager, trigger the shortcut, and check
     // that the plugin's createWidgetsForMainWindow is called for the new window.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
@@ -5669,7 +5161,7 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
     auto *plugin = new TestPlugin;
     app->pluginManager()->addPlugin(plugin);
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     // Application::newMainWindow → PluginManager::registerMainWindow already
@@ -5704,19 +5196,10 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneSplitsTabs()
     // Tab: one kmux MainWindow for each tmux window, each with exactly one tab.
     // Previously both the original and the new MainWindow ended up showing all
     // tmux windows (so 2 tabs in each).
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
@@ -5726,7 +5209,7 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneSplitsTabs()
     // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -5801,26 +5284,21 @@ void TmuxIntegrationTest::testDetachViewBreaksPane()
 {
     // Ctrl+Shift+H (detach-view action) on a tmux pane should break the pane
     // out into a new tmux window (= new Konsole tab).
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Start with a 2-pane window so there's something to break out
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -5867,19 +5345,10 @@ void TmuxIntegrationTest::testDetachTabFromTmuxCreatesNewKmuxWindow()
     // Detaching a tab in a tmux-attached kmux window should move that tmux
     // window into a new kmux MainWindow, leaving the original window with
     // no tab for it.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         // kill-server covers any additional sessions the implementation may
         // have created on this socket.
@@ -5913,7 +5382,7 @@ void TmuxIntegrationTest::testDetachTabFromTmuxCreatesNewKmuxWindow()
     // Intentionally leaked — see note in testNewMainWindowFromTmuxPane.
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -6008,19 +5477,10 @@ void TmuxIntegrationTest::testDetachTabFromTmuxViaContainerSignal()
     // hotkey goes through ViewManager::detachActiveTab, but the other two
     // emit TabbedViewContainer::detachTab directly, landing in
     // ViewManager::detachTab. Both must take the tmux-aware path.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
@@ -6036,7 +5496,7 @@ void TmuxIntegrationTest::testDetachTabFromTmuxViaContainerSignal()
 
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -6089,19 +5549,10 @@ void TmuxIntegrationTest::testMergeTabBackFromTmux()
     // should move that tmux window's tab back to the canonical MainWindow
     // (picked by "most visible tabs", tie-break to first-registered) and
     // close the detached one.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
@@ -6115,7 +5566,7 @@ void TmuxIntegrationTest::testMergeTabBackFromTmux()
 
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -6169,19 +5620,10 @@ void TmuxIntegrationTest::testMergeTabBackPicksWindowWithMostTabs()
 {
     // When multiple candidate MainWindows are attached to the same tmux
     // session, merge-tab picks the one with the most visible tabs.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
@@ -6199,13 +5641,13 @@ void TmuxIntegrationTest::testMergeTabBackPicksWindowWithMostTabs()
     auto *app = new Application(makeTestAppParser(), {});
 
     // Attach two independent MainWindows to the same tmux session.
-    TmuxTestDSL::AttachResult attachA;
+    TmuxTestFixture::AttachResult attachA;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attachA);
     attachA.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attachA.mw));
     QTRY_COMPARE_WITH_TIMEOUT(attachA.container->count(), 4, 10000);
 
-    TmuxTestDSL::AttachResult attachB;
+    TmuxTestFixture::AttachResult attachB;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attachB);
     attachB.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attachB.mw));
@@ -6297,19 +5739,10 @@ void TmuxIntegrationTest::testMergeTabBackPreservesPaneContent()
     // The content visible in a tmux pane before detach must still be present
     // after merge-back. tmux retains the pane history while we're away; the
     // merge flow has to re-capture it into the freshly created kmux Session.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
@@ -6337,7 +5770,7 @@ void TmuxIntegrationTest::testMergeTabBackPreservesPaneContent()
 
     auto *app = new Application(makeTestAppParser(), {});
 
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::AttachResult attach;
     attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
 
     attach.mw->show();
@@ -6403,25 +5836,16 @@ void TmuxIntegrationTest::testDetachFromTmuxAction()
     // The detach-from-tmux action should exist in the action collection
     // and trigger a tmux detach — the tmux subprocess disconnects but the
     // tmux server keeps running.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6452,19 +5876,10 @@ void TmuxIntegrationTest::testNewTmuxSessionAction()
     // new session on the same server and switch the control client to it. The
     // server should grow from 1 to 2 sessions and the controller's session id
     // should change to the newly created one.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         // kill-server tears down whatever sessions the action created on top
         // of our seed session — we don't know their tmux-assigned names.
@@ -6473,8 +5888,8 @@ void TmuxIntegrationTest::testNewTmuxSessionAction()
         kill.waitForFinished(5000);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6514,27 +5929,18 @@ void TmuxIntegrationTest::testNewTmuxSessionThenSplitPane()
     // collection rather than calling controller->requestSplitPane directly,
     // because the bug we're guarding against lives in the focus / current-
     // session lookup that splitView() does on the way to the controller.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
         QProcess kill;
         kill.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
         kill.waitForFinished(5000);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Rename the seed session to "0" so it lex-sorts *before* the auto-named
     // new session ("1"). This matches what real users see: when kmux launches
@@ -6606,25 +6012,16 @@ void TmuxIntegrationTest::testNewTmuxSessionThenSplitPane()
 // gateway — here, `d` → `detach-client`, which disconnects the control client.
 void TmuxIntegrationTest::testTmuxPrefixPaletteDetach()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6662,21 +6059,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteDetach()
 // window's pane.
 void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Create a second window so there's somewhere to switch to.
@@ -6694,8 +6082,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
         {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(ctx.sessionName)});
     QVERIFY(selectFirst.waitForFinished(5000));
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6745,21 +6133,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteNextWindow()
 // clickable like the Ctrl+B w tree switcher's rows.
 void TmuxIntegrationTest::testTmuxPrefixPaletteRowClickTriggersBinding()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Create a second window so `next-window` has somewhere to go.
@@ -6775,8 +6154,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteRowClickTriggersBinding()
         {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(ctx.sessionName)});
     QVERIFY(selectFirst.waitForFinished(5000));
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6839,25 +6218,16 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeWindow()
     // QAction instead of forwarding `choose-tree -Zw` to tmux. This keeps
     // the chooser experience native — a TmuxTreeSwitcher rather than tmux's
     // own in-pane tree mode, whose UI never reaches a control-mode client.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
@@ -6895,21 +6265,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSe
     // session rows are visible at the top level, every session is collapsed
     // (windows/panes hidden) but expandable, and arrow + Enter navigation
     // switches the controller to the highlighted session.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctxA;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctxA);
+    TmuxTestFixture::SessionContext ctxA;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctxA);
     auto cleanupA = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctxA);
     });
 
     const QString sessionBName = ctxA.sessionName + QStringLiteral("-B");
@@ -6930,8 +6291,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSe
         kill.waitForFinished(5000);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctxA, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7013,25 +6374,16 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
     // and surfaces the human-readable kmux QAction label ("Choose tmux Window")
     // in column 2, so the user sees both the source binding and where it will
     // actually dispatch.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7081,21 +6433,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteShowsActionLabelForChooseTree()
 // the palette swallowed the second C-b, the file would stay empty.
 void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Replace bash with `cat > outFile` so any byte typed into the pane lands
@@ -7115,8 +6458,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToPane()
     QCOMPARE(sendKeys.exitCode(), 0);
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7168,21 +6511,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToPane()
 // assert on a bare "\x02" with no trailing Enter to flush a line buffer.
 void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Turn the pane into a TUI: enter the alternate screen and put the tty in
@@ -7206,8 +6540,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     QCOMPARE(sendKeys.exitCode(), 0);
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7258,21 +6592,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
 // send-prefix, so a bare 0x02 reaches the raw-mode pane.
 void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPressLosesCtrl()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Raw-mode TUI pane (no Enter needed to flush): every delivered byte lands in
@@ -7292,8 +6617,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPress
     QCOMPARE(sendKeys.exitCode(), 0);
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7337,21 +6662,12 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPress
 // TmuxPrefixPalette that makes the next-key handling focus-independent.
 void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌────────────────────────────┐
-        │cmd: bash --norc --noprofile│
-        │                            │
-        │                            │
-        └────────────────────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Raw-mode pane so a delivered prefix byte (0x02) lands in outFile with no
@@ -7365,8 +6681,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
     QCOMPARE(sendKeys.exitCode(), 0);
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -7425,26 +6741,17 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
 // buffered replies flush, and responsive() clears the banner.
 void TmuxIntegrationTest::testRshSilentHangShowsUnresponsiveBanner()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     const QString killPath = QStandardPaths::findExecutable(QStringLiteral("kill"));
     if (killPath.isEmpty()) {
         QSKIP("kill(1) not found.");
     }
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // rsh wrapper: run tmux with its stdout piped through a `cat` relay. The
@@ -7552,8 +6859,8 @@ namespace
 // window 1 has 1 pane. Returns attached kmux and controller, plus the pane IDs.
 struct TreeSwitcherFixture {
     QString tmuxPath;
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::AttachResult attach;
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::AttachResult attach;
     TmuxController *controller = nullptr;
     int w0pane0Id = -1;
     int w0pane1Id = -1;
@@ -7564,17 +6871,12 @@ struct TreeSwitcherFixture {
 
 void setupTreeSwitcherFixture(TreeSwitcherFixture &f, const QString &tmuxTmpDirPath)
 {
-    f.tmuxPath = TmuxTestDSL::findTmuxOrSkip();
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  f.tmuxPath,
-                                  tmuxTmpDirPath,
-                                  f.ctx);
+    f.tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        f.tmuxPath,
+        tmuxTmpDirPath,
+        f.ctx);
     // Add a second window with 1 pane
     QProcess newWindow;
     newWindow.start(
@@ -7590,7 +6892,7 @@ void setupTreeSwitcherFixture(TreeSwitcherFixture &f, const QString &tmuxTmpDirP
         {QStringLiteral("-S"), f.ctx.socketPath, QStringLiteral("select-window"), QStringLiteral("-t"), QStringLiteral("%1:0").arg(f.ctx.sessionName)});
     selectWindow.waitForFinished(5000);
 
-    TmuxTestDSL::attachKonsole(f.tmuxPath, f.ctx, f.attach);
+    TmuxTestFixture::attachKonsole(f.tmuxPath, f.ctx, f.attach);
     f.attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(f.attach.mw));
 
@@ -7667,7 +6969,7 @@ void TmuxIntegrationTest::testTreeSwitcherActivePreselected()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     int activePane = f.controller->activePaneId();
@@ -7693,7 +6995,7 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneSameWindow()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     int activePane = f.controller->activePaneId();
@@ -7730,7 +7032,7 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesPaneDifferentWindow()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     // Active pane is in w0; switch to the pane in w1
@@ -7770,7 +7072,7 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesWindow()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     // Active is in w0; pick the w1 window node
@@ -7806,7 +7108,7 @@ void TmuxIntegrationTest::testTreeSwitcherEscapeClosesNoChange()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     int initialActivePane = f.controller->activePaneId();
@@ -7836,7 +7138,7 @@ void TmuxIntegrationTest::testTreeSwitcherFuzzyFilter()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     // Rename w1 to a searchable name via tmux
@@ -7923,21 +7225,12 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSession()
     // Create a tmux server with 2 sessions. Attach kmux to session A.
     // Use the tree switcher to select a pane in session B; after the switch,
     // kmux should be attached to session B.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctxA;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctxA);
+    TmuxTestFixture::SessionContext ctxA;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctxA);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctxA);
     });
 
     // Create session B on the same socket (same server)
@@ -7961,8 +7254,8 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSession()
     });
 
     // Attach to session A
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctxA, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -8007,21 +7300,12 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSessionWithTwoPanes()
 {
     // Session A has 1 pane, session B has 2 panes. After switching via the
     // tree switcher, the active window of the controller should contain 2 panes.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctxA;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctxA);
+    TmuxTestFixture::SessionContext ctxA;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctxA);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctxA);
     });
 
     // Create session B on the same socket with a first pane
@@ -8057,8 +7341,8 @@ void TmuxIntegrationTest::testTreeSwitcherSwitchesSessionWithTwoPanes()
     QCOMPARE(splitB.exitCode(), 0);
 
     // Attach to session A
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctxA, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -8113,21 +7397,12 @@ void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
     // If the user selects a session that has since been killed on the
     // server (race condition), switch-client should fail gracefully and
     // kmux should remain attached to the current session.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctxA;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctxA);
+    TmuxTestFixture::SessionContext ctxA;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctxA);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctxA);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctxA);
     });
 
     const QString sessionBName = ctxA.sessionName + QStringLiteral("-stale");
@@ -8143,8 +7418,8 @@ void TmuxIntegrationTest::testTreeSwitcherStaleSessionIsNoop()
     QVERIFY(newSessionB.waitForFinished(5000));
     QCOMPARE(newSessionB.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctxA, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctxA, attach);
     attach.mw->show();
     QVERIFY(QTest::qWaitForWindowActive(attach.mw));
 
@@ -8200,7 +7475,7 @@ void TmuxIntegrationTest::testTreeSwitcherActivatePaneAlreadyActiveIsNoop()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     const int activePane = f.controller->activePaneId();
@@ -8230,7 +7505,7 @@ void TmuxIntegrationTest::testTreeSwitcherActivateCurrentWindowIsNoop()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     const int activePane = f.controller->activePaneId();
@@ -8261,7 +7536,7 @@ void TmuxIntegrationTest::testTreeSwitcherActivateCurrentSessionIsNoop()
     TreeSwitcherFixture f;
     setupTreeSwitcherFixture(f, m_tmuxTmpDir.path());
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(f.tmuxPath, f.ctx);
+        TmuxTestFixture::killTmuxSession(f.tmuxPath, f.ctx);
     });
 
     const int activePane = f.controller->activePaneId();
@@ -8299,25 +7574,20 @@ void TmuxIntegrationTest::testClosePaneFromSessionControllerConfirmed()
     // Closing a single pane in a multi-pane window via SessionController::closeSession
     // should show a confirmation dialog. Preset "don't ask again" = PrimaryAction
     // so the close proceeds without blocking the test.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     auto *container = attach.mw->viewManager()->activeContainer();
     ViewSplitter *paneSplitter = nullptr;
@@ -8365,25 +7635,20 @@ void TmuxIntegrationTest::testClosePaneFromSessionControllerCancelled()
 {
     // When "don't ask again" = SecondaryAction (Cancel), closeSession should
     // do nothing — the pane stays.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┬──────────────┐
-        │cmd: sleep 60 │cmd: sleep 60 │
-        │              │              │
-        │              │              │
-        └──────────────┴──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     auto *container = attach.mw->viewManager()->activeContainer();
     ViewSplitter *paneSplitter = nullptr;
@@ -8423,21 +7688,12 @@ void TmuxIntegrationTest::testCloseTabFromContainerConfirmed()
 {
     // When the user clicks the X on a tab (closeTerminalTab path) or uses Ctrl+W,
     // a confirmation dialog appears. Preset "don't ask again" so the close proceeds.
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │              │
-        │              │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
     // Add a second tmux window so we have 2 tabs — closing one shouldn't tear down kmux
@@ -8447,8 +7703,8 @@ void TmuxIntegrationTest::testCloseTabFromContainerConfirmed()
     QVERIFY(newWindow.waitForFinished(5000));
     QCOMPARE(newWindow.exitCode(), 0);
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     auto *container = attach.mw->viewManager()->activeContainer();
     QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
@@ -8473,26 +7729,17 @@ void TmuxIntegrationTest::testCloseTabFromContainerConfirmed()
 void TmuxIntegrationTest::testFractalSplitDownRight8()
 {
     const int depth = 8;
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     // Use a large window so deep splits don't hit tmux minimum pane size
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │columns: 256  │
-        │lines: 64     │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 256, 64);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Show and activate the window so setFocus() works
     attach.mw->show();
@@ -8600,36 +7847,27 @@ void TmuxIntegrationTest::testFractalSplitDownRight8()
     QTRY_VERIFY_WITH_TIMEOUT(deepestBottomRight->hasFocus(), 5000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │columns: 256  │
-        │lines: 64     │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 256, 64);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Enlarge the window so tmux panes remain big enough to split multiple
     // times without hitting tmux's minimum pane size; the default offscreen
@@ -8732,7 +7970,7 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
     QTRY_VERIFY_WITH_TIMEOUT(topRight->hasFocus(), 5000);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }
@@ -8745,29 +7983,20 @@ void TmuxIntegrationTest::testFourEqualPanesTopRightFocused()
 // originally focused pane and not the first-split's right pane.
 void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
 
     // Start with a single pane in a large window so splits don't hit tmux minimum pane size.
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌──────────────┐
-        │cmd: sleep 60 │
-        │columns: 256  │
-        │lines: 64     │
-        └──────────────┘
-    )")),
-                                  tmuxPath,
-                                  m_tmuxTmpDir.path(),
-                                  ctx);
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 256, 64);
     auto cleanup = qScopeGuard([&] {
-        TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
 
-    TmuxTestDSL::AttachResult attach;
-    TmuxTestDSL::attachKonsole(tmuxPath, ctx, attach);
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
     // Enlarge the window so tmux panes remain big enough to split multiple
     // times without hitting tmux's minimum pane size; the default offscreen
@@ -8877,7 +8106,7 @@ void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
     QCOMPARE(bottomDisplay, newBottomDisplay);
 
     // Cleanup
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
 }

@@ -14,7 +14,7 @@
 #include "../Screen.h"
 #include "../ScreenWindow.h"
 #include "../session/VirtualSession.h"
-#include "TmuxTestDSL.h"
+#include "TmuxTestFixture.h"
 
 using namespace Konsole;
 
@@ -137,7 +137,7 @@ void TmuxPaneStateRecoveryTest::testCapturePaneWideMismatch()
 
 void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
 {
-    const QString tmuxPath = TmuxTestDSL::findTmuxOrSkip();
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     if (tmuxPath.isEmpty()) {
         QSKIP("tmux command not found.");
     }
@@ -145,18 +145,9 @@ void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
     QTemporaryDir socketDir;
     QVERIFY(socketDir.isValid());
 
-    // Create a detached tmux session with known dimensions using the DSL
-    TmuxTestDSL::SessionContext ctx;
-    TmuxTestDSL::setupTmuxSession(TmuxTestDSL::parse(QStringLiteral(R"(
-        ┌───────────┐
-        │cmd: cat   │
-        │columns: 80│
-        │lines: 24  │
-        └───────────┘
-    )")),
-                                  tmuxPath,
-                                  socketDir.path(),
-                                  ctx);
+    // Create a detached tmux session with known dimensions.
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("cat"), tmuxPath, socketDir.path(), ctx, 80, 24);
 
     // Send known text to the pane via send-keys
     QProcess sendKeys;
@@ -191,7 +182,7 @@ void TmuxPaneStateRecoveryTest::testCapturePaneFromRealTmux()
     delete session;
 
     // Cleanup tmux session
-    TmuxTestDSL::killTmuxSession(tmuxPath, ctx);
+    TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
 }
 
 QTEST_GUILESS_MAIN(TmuxPaneStateRecoveryTest)
