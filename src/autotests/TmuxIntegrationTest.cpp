@@ -6726,6 +6726,234 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
     delete attach.mw.data();
 }
 
+// An ordinary (non-control-mode) tmux client shares the server with kmux, but
+// its prefix table belongs to that client alone. In particular, C-b w enters
+// tree-mode in the ordinary client. tmux broadcasts %pane-mode-changed to all
+// control clients, so kmux sees the transition too; it must not mistake that
+// broadcast for a request to open its own native tree switcher.
+void TmuxIntegrationTest::testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString scriptPath = QStandardPaths::findExecutable(QStringLiteral("script"));
+    if (scriptPath.isEmpty()) {
+        QSKIP("script command not found.");
+    }
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 80, 23);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Give choose-tree more than one window to display.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("new-window"),
+                     QStringLiteral("-d"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("sleep 60")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+
+    // `script` supplies the pty required by a real interactive tmux attach.
+    // Its stdin remains writable, letting the test type the same C-b w chord as
+    // the external user rather than approximating it with a server command.
+    QProcess ordinaryClient;
+    ordinaryClient.start(scriptPath,
+                         {QStringLiteral("-q"),
+                          QStringLiteral("-c"),
+                          QStringLiteral("stty cols 80 rows 24; TERM=xterm ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath
+                              + QStringLiteral(" attach -t ") + ctx.sessionName,
+                          QStringLiteral("/dev/null")});
+    QVERIFY(ordinaryClient.waitForStarted(5000));
+    auto stopOrdinaryClient = qScopeGuard([&] {
+        ordinaryClient.terminate();
+        if (!ordinaryClient.waitForFinished(3000)) {
+            ordinaryClient.kill();
+            ordinaryClient.waitForFinished(3000);
+        }
+    });
+
+    // Wait until tmux reports both kmux's control-mode client and the ordinary
+    // pty client before typing the chord.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            QProcess clients;
+            clients.start(tmuxPath,
+                          {QStringLiteral("-S"),
+                           ctx.socketPath,
+                           QStringLiteral("list-clients"),
+                           QStringLiteral("-t"),
+                           ctx.sessionName,
+                           QStringLiteral("-F"),
+                           QStringLiteral("#{client_control_mode}")});
+            if (!clients.waitForFinished(3000) || clients.exitCode() != 0) {
+                return false;
+            }
+            const QStringList modes = QString::fromUtf8(clients.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            return modes.contains(QStringLiteral("0")) && modes.contains(QStringLiteral("1"));
+        }(),
+        10000);
+
+    QSignalSpy paneModeChanged(controller->gateway(), &TmuxGateway::paneModeChanged);
+    QCOMPARE(ordinaryClient.write(QByteArray("\x02w", 2)), qint64(2));
+    QVERIFY(ordinaryClient.waitForBytesWritten(3000));
+
+    // Prove the external client's tree-mode transition reached kmux, then give
+    // the asynchronous mode query enough time to settle. The regression is the
+    // absence of a kmux-side drawer despite receiving that broadcast.
+    QTRY_VERIFY_WITH_TIMEOUT(paneModeChanged.count() >= 1, 5000);
+    QTest::qWait(1000);
+    QVERIFY2(attach.mw->findChildren<TmuxTreeSwitcher *>().isEmpty(), "an ordinary tmux client's choose-tree opened a kmux tree switcher");
+
+    delete attach.mw.data();
+}
+
+// Keep the Esc leak independent from the external-tree-mode regression above:
+// this test deliberately opens kmux's native switcher locally, then has a real
+// ordinary tmux client change the shared active window. That notification moves
+// keyboard focus to the newly active TerminalDisplay behind the still-visible
+// drawer. Esc must close the drawer and must never be delivered to the raw TUI.
+void TmuxIntegrationTest::testTreeSwitcherEscapeAfterExternalWindowSwitchDoesNotReachPane()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString scriptPath = QStandardPaths::findExecutable(QStringLiteral("script"));
+    if (scriptPath.isEmpty()) {
+        QSKIP("script command not found.");
+    }
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 80, 23);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    // Window 1 hosts a raw-mode, alternate-screen app. Every byte delivered to
+    // its tty is recorded immediately, which makes a leaked Escape observable
+    // as exactly 0x1b without needing a newline or relying on screen contents.
+    QProcess newWindow;
+    newWindow.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("new-window"),
+                     QStringLiteral("-d"),
+                     QStringLiteral("-P"),
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id}"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("bash --norc --noprofile")});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QCOMPARE(newWindow.exitCode(), 0);
+    const QString tuiPaneToken = QString::fromUtf8(newWindow.readAllStandardOutput()).trimmed();
+    QVERIFY(tuiPaneToken.startsWith(QLatin1Char('%')));
+    bool paneIdOk = false;
+    const int tuiPaneId = tuiPaneToken.mid(1).toInt(&paneIdOk);
+    QVERIFY(paneIdOk);
+
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/tree-switcher-escape.bin");
+    QProcess startTui;
+    startTui.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    tuiPaneToken,
+                    QStringLiteral("stty raw -echo; printf '\\033[?1049h'; exec cat > %1").arg(outFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(startTui.waitForFinished(5000));
+    QCOMPARE(startTui.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->windowCount() >= 2 && controller->sessionForPane(tuiPaneId) != nullptr, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixShortcut().isEmpty() && !controller->prefixBindings().isEmpty(), 10000);
+
+    QProcess ordinaryClient;
+    ordinaryClient.start(scriptPath,
+                         {QStringLiteral("-q"),
+                          QStringLiteral("-c"),
+                          QStringLiteral("stty cols 80 rows 24; TERM=xterm ") + tmuxPath + QStringLiteral(" -S ") + ctx.socketPath
+                              + QStringLiteral(" attach -t ") + ctx.sessionName,
+                          QStringLiteral("/dev/null")});
+    QVERIFY(ordinaryClient.waitForStarted(5000));
+    auto stopOrdinaryClient = qScopeGuard([&] {
+        ordinaryClient.terminate();
+        if (!ordinaryClient.waitForFinished(3000)) {
+            ordinaryClient.kill();
+            ordinaryClient.waitForFinished(3000);
+        }
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&]() {
+            QProcess clients;
+            clients.start(tmuxPath,
+                          {QStringLiteral("-S"),
+                           ctx.socketPath,
+                           QStringLiteral("list-clients"),
+                           QStringLiteral("-t"),
+                           ctx.sessionName,
+                           QStringLiteral("-F"),
+                           QStringLiteral("#{client_control_mode}")});
+            if (!clients.waitForFinished(3000) || clients.exitCode() != 0) {
+                return false;
+            }
+            const QStringList modes = QString::fromUtf8(clients.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            return modes.contains(QStringLiteral("0")) && modes.contains(QStringLiteral("1"));
+        }(),
+        10000);
+
+    // Open kmux's own window chooser through its real prefix-palette path.
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QTest::keyClick(palette, Qt::Key_W);
+    TmuxTreeSwitcher *switcher = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((switcher = attach.mw->findChild<TmuxTreeSwitcher *>()) != nullptr, 5000);
+    QPointer<TmuxTreeSwitcher> switcherGuard(switcher);
+
+    // The ordinary client now performs C-b n. kmux follows the shared session's
+    // active window and focuses window 1's TUI behind the still-visible drawer.
+    QCOMPARE(ordinaryClient.write(QByteArray("\x02n", 2)), qint64(2));
+    QVERIFY(ordinaryClient.waitForBytesWritten(3000));
+    QTRY_COMPARE_WITH_TIMEOUT(controller->activePaneId(), tuiPaneId, 10000);
+    Session *tuiSession = controller->sessionForPane(tuiPaneId);
+    QVERIFY(tuiSession);
+    QVERIFY(!tuiSession->views().isEmpty());
+    auto *tuiDisplay = qobject_cast<TerminalDisplay *>(tuiSession->views().first());
+    QVERIFY(tuiDisplay);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(tuiDisplay), 5000);
+    QVERIFY(switcherGuard && switcherGuard->isVisible());
+
+    // Route Esc as Qt does now that the pane owns focus. A correct drawer-level
+    // capture consumes it and closes the drawer; the raw TUI file remains empty.
+    QTest::keyClick(tuiDisplay, Qt::Key_Escape);
+    QTest::qWait(500);
+    QFile capturedInput(outFile);
+    QVERIFY(capturedInput.open(QIODevice::ReadOnly));
+    QCOMPARE(capturedInput.readAll(), QByteArray());
+    QTRY_VERIFY_WITH_TIMEOUT(!switcherGuard, 5000);
+
+    delete attach.mw.data();
+}
+
 // End-to-end: a silently hung control link (ssh that stops forwarding bytes but
 // keeps the fd open) is invisible at the process level — no EOF, so the bridge's
 // process-exit teardown never fires. The gateway's command-timeout detector is

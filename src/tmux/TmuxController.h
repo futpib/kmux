@@ -152,7 +152,6 @@ private Q_SLOTS:
     void onSessionWindowChanged(int sessionId, int windowId);
     void onSubscriptionChanged(const QString &name, int sessionId, int windowId, int windowIndex, int paneId, const QString &value);
     void onTabMoved(int from, int to);
-    void onPaneModeChanged(int paneId);
     void onPanePaused(int paneId);
     void onExit(const QString &reason);
 

@@ -76,7 +76,12 @@ TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *con
     setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
     setProperty("_breeze_force_frame", true);
 
-    window()->installEventFilter(this);
+    // The active TerminalDisplay can regain focus while the switcher remains
+    // visible when an external tmux client changes the shared active window.
+    // Filter at application scope so Escape is still owned by this drawer and
+    // cannot reach the pane behind it. eventFilter scopes this to our top-level
+    // window; other kmux windows and applications are unaffected.
+    qApp->installEventFilter(this);
 
     auto *layout = new QVBoxLayout();
     layout->setSpacing(0);
@@ -112,9 +117,6 @@ TmuxTreeSwitcher::TmuxTreeSwitcher(ViewManager *viewManager, TmuxController *con
     connect(_treeView, &QTreeView::clicked, this, [this](const QModelIndex &idx) {
         _treeView->setCurrentIndex(idx);
     });
-
-    _inputLine->installEventFilter(this);
-    _treeView->installEventFilter(this);
 
     connect(_inputLine, &QLineEdit::textChanged, this, [this](const QString &text) {
         static_cast<FuzzyFilterProxy *>(_proxyModel)->setPattern(text);
@@ -278,8 +280,23 @@ void TmuxTreeSwitcher::activateCurrent()
 
 bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) {
+    const QEvent::Type type = event->type();
+
+    // Escape closes a visible switcher even if a tmux-driven tab change moved
+    // focus to a TerminalDisplay behind it. Consume ShortcutOverride as well as
+    // KeyPress so neither a window shortcut nor the focused terminal can act on
+    // the same physical key.
+    if (type == QEvent::KeyPress || type == QEvent::ShortcutOverride) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
+        auto *eventWidget = qobject_cast<QWidget *>(obj);
+        if (keyEvent->key() == Qt::Key_Escape && eventWidget != nullptr && eventWidget->window() == window()) {
+            event->accept();
+            if (type == QEvent::KeyPress) {
+                hide();
+                deleteLater();
+            }
+            return true;
+        }
         if (obj == _inputLine) {
             const bool forward = (keyEvent->key() == Qt::Key_Up) || (keyEvent->key() == Qt::Key_Down) || (keyEvent->key() == Qt::Key_PageUp)
                 || (keyEvent->key() == Qt::Key_PageDown) || (keyEvent->key() == Qt::Key_Left) || (keyEvent->key() == Qt::Key_Right);
@@ -297,14 +314,9 @@ bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
                 return true;
             }
         }
-        if (keyEvent->key() == Qt::Key_Escape) {
-            hide();
-            deleteLater();
-            return true;
-        }
     }
 
-    if (event->type() == QEvent::FocusOut) {
+    if (type == QEvent::FocusOut && (obj == _inputLine || obj == _treeView || obj == window())) {
         auto *focusEvent = static_cast<QFocusEvent *>(event);
         // Programmatic focus changes (e.g. TmuxController::focusPane refocusing
         // the active pane after a %layout-change) use Qt::OtherFocusReason and
@@ -336,7 +348,7 @@ bool TmuxTreeSwitcher::eventFilter(QObject *obj, QEvent *event)
             Qt::QueuedConnection);
     }
 
-    if (window() == obj && event->type() == QEvent::Resize) {
+    if (window() == obj && type == QEvent::Resize) {
         updateViewGeometry();
     }
     return QWidget::eventFilter(obj, event);

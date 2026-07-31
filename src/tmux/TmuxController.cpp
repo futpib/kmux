@@ -13,7 +13,6 @@
 #include "TmuxPaneManager.h"
 #include "TmuxPaneStateRecovery.h"
 #include "TmuxResizeCoordinator.h"
-#include "TmuxTreeSwitcher.h"
 
 #include "ViewManager.h"
 #include "session/Session.h"
@@ -65,7 +64,10 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     // resume it and resync its contents (see onPanePaused). %continue then
     // arrives once tmux resumes; it needs no action of its own.
     connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
-    connect(_gateway, &TmuxGateway::paneModeChanged, this, &TmuxController::onPaneModeChanged);
+    // Do not turn %pane-mode-changed into local UI. tmux broadcasts it without
+    // identifying the client that entered the mode, so it commonly belongs to
+    // a separate ordinary `tmux attach`. kmux-owned choose-tree bindings are
+    // intercepted in TmuxPrefixPalette and open TmuxTreeSwitcher directly.
     // Unsuppress output when pane state recovery completes
     connect(_stateRecovery, &TmuxPaneStateRecovery::paneRecoveryComplete, _paneManager, &TmuxPaneManager::unsuppressOutput);
 
@@ -1610,36 +1612,6 @@ void TmuxController::queryPrefixBindings()
         }
         _prefixBindings = std::move(bindings);
         Q_EMIT prefixBindingsChanged();
-    });
-}
-
-void TmuxController::onPaneModeChanged(int paneId)
-{
-    // tmux's control mode only emits this notification when a pane enters or
-    // leaves a mode — the mode's UI is not delivered over the control channel.
-    // Query the pane's current mode and, for ones kmux has a native UI for,
-    // dismiss tmux's mode and open our widget. Unsupported modes are left
-    // running server-side with just a warning until we grow native handlers.
-    TmuxCommand cmd(QStringLiteral("display-message"));
-    cmd.flag(QStringLiteral("-p")).paneTarget(paneId).singleQuotedArg(QStringLiteral("#{pane_mode}"));
-    _gateway->sendCommand(cmd, [this, paneId](bool success, const QString &response) {
-        if (!success) {
-            return;
-        }
-        const QString mode = response.trimmed();
-        if (mode.isEmpty()) {
-            // Mode exited — nothing to do.
-            return;
-        }
-        if (mode == QStringLiteral("tree-mode")) {
-            // Tell tmux to leave its mode so it stops intercepting keystrokes
-            // on that pane, then open our native switcher.
-            _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
-            auto *switcher = new TmuxTreeSwitcher(_viewManager, this);
-            switcher->setFocus();
-            return;
-        }
-        qCWarning(KonsoleTmuxController) << "TODO: tmux pane entered" << mode << "but kmux has no native UI for it yet";
     });
 }
 

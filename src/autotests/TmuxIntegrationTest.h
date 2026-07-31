@@ -66,6 +66,8 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane();
     void testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPressLosesCtrl();
     void testTmuxPrefixPaletteCbCbLostWhenUnfocused();
+    void testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher();
+    void testTreeSwitcherEscapeAfterExternalWindowSwitchDoesNotReachPane();
     void testRshSilentHangShowsUnresponsiveBanner();
     void testBreakPane();
     void testSplitPaneInheritsWorkingDirectory();
