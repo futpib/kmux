@@ -85,6 +85,7 @@ TabbedViewContainer::TabbedViewContainer(ViewManager *connectedViewManager, QWid
     setTabBar(tabBarWidget);
     setDocumentMode(true);
     setMovable(true);
+    tabBar()->setChangeCurrentOnDrag(true);
     // Watch for mouse presses so the resulting setCurrentIndex carries
     // MouseFocusReason — see eventFilter().
     tabBar()->installEventFilter(this);
