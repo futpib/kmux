@@ -43,9 +43,15 @@ public:
     void cleanup();
     void sendClientSize();
 
+    enum class NewWindowPlacement {
+        AtEnd,
+        AfterCurrent
+    };
+
     // Callback receives the new window id, or -1 on failure.
     using NewWindowCallback = std::function<void(int newWindowId)>;
-    void requestNewWindow(const QString &directory = QString(), NewWindowCallback callback = nullptr);
+    void requestNewWindow(const QString &directory = QString(), NewWindowCallback callback = nullptr, NewWindowPlacement placement = NewWindowPlacement::AtEnd);
+    void requestNewWindow(const QString &directory, NewWindowPlacement placement);
     // Create a new detached tmux session on the same server and switch the
     // control client to it. The callback (if provided) receives the new
     // session id, or -1 on failure — it fires after the switch has been

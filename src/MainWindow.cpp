@@ -875,7 +875,10 @@ void MainWindow::newTab()
     if (_pluggedController && _pluggedController->session()) {
         auto *controller = TmuxControllerRegistry::instance()->controllerForSession(_pluggedController->session());
         if (controller) {
-            controller->requestNewWindow(_pluggedController->session()->currentWorkingDirectory());
+            const auto placement = KonsoleSettings::newTabBehavior() == TabbedViewContainer::PutNewTabAfterCurrentTab
+                ? TmuxController::NewWindowPlacement::AfterCurrent
+                : TmuxController::NewWindowPlacement::AtEnd;
+            controller->requestNewWindow(_pluggedController->session()->currentWorkingDirectory(), placement);
             return;
         }
     }

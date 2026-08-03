@@ -93,7 +93,8 @@ private Q_SLOTS:
     void testFractalSplitDownRight8();
     void testFourEqualPanesTopRightFocused();
     void testSplitShortcutFocusInitialSplitAgain();
-    void testNewTabFromTmuxPane();
+    void testNewTabFromTmuxPaneRespectsConfiguredPlacement_data();
+    void testNewTabFromTmuxPaneRespectsConfiguredPlacement();
     void testNewMainWindowFromTmuxPane();
     void testNewMainWindowFromTmuxPaneRegistersPlugins();
     void testNewMainWindowFromTmuxPaneSplitsTabs();
