@@ -188,9 +188,34 @@ TmuxGateway *TmuxController::gateway() const
     return _gateway;
 }
 
-void TmuxController::requestNewWindow(const QString &directory, NewWindowCallback callback)
+void TmuxController::requestNewWindow(const QString &directory, NewWindowPlacement placement)
+{
+    requestNewWindow(directory, nullptr, placement);
+}
+
+void TmuxController::requestNewWindow(const QString &directory, NewWindowCallback callback, NewWindowPlacement placement)
 {
     TmuxCommand cmd(QStringLiteral("new-window"));
+    // kmux keeps its tmux tabs in tmux window-index order. Anchor the new
+    // window explicitly so tmux cannot reuse an earlier numeric gap and move
+    // the resulting tab away from the position selected in Konsole's settings.
+    auto *container = _viewManager->activeContainer();
+    int targetWindowId = -1;
+    if (container) {
+        if (placement == NewWindowPlacement::AfterCurrent) {
+            targetWindowId = windowIdAtTabIndex(container->currentIndex());
+        } else {
+            for (int tabIndex = container->count() - 1; tabIndex >= 0; --tabIndex) {
+                targetWindowId = windowIdAtTabIndex(tabIndex);
+                if (targetWindowId >= 0) {
+                    break;
+                }
+            }
+        }
+    }
+    if (targetWindowId >= 0) {
+        cmd.flag(QStringLiteral("-a")).windowTarget(targetWindowId);
+    }
     if (!directory.isEmpty()) {
         cmd.flag(QStringLiteral("-c")).singleQuotedArg(directory);
     }

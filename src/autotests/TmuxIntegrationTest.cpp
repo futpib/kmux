@@ -5,6 +5,7 @@
 */
 
 #include "TmuxIntegrationTest.h"
+#include "KonsoleSettings.h"
 #include "TmuxTestFixture.h"
 
 #include <KActionCollection>
@@ -4959,10 +4960,23 @@ void TmuxIntegrationTest::testMovePaneFromTwoToOneFromKonsole()
     delete attach.mw.data();
 }
 
-void TmuxIntegrationTest::testNewTabFromTmuxPane()
+void TmuxIntegrationTest::testNewTabFromTmuxPaneRespectsConfiguredPlacement_data()
 {
-    // When the user invokes New Tab (Ctrl+T) while focused on a tmux pane,
-    // a new tmux window should be created without any confirmation dialog.
+    QTest::addColumn<int>("behavior");
+    QTest::addColumn<int>("expectedNewTabIndex");
+
+    QTest::newRow("at-end") << static_cast<int>(TabbedViewContainer::PutNewTabAtTheEnd) << 3;
+    QTest::newRow("after-current") << static_cast<int>(TabbedViewContainer::PutNewTabAfterCurrentTab) << 2;
+}
+
+void TmuxIntegrationTest::testNewTabFromTmuxPaneRespectsConfiguredPlacement()
+{
+    QFETCH(int, behavior);
+    QFETCH(int, expectedNewTabIndex);
+
+    // Leave a gap in tmux's numeric window indexes. A plain `new-window`
+    // reuses that gap, but the corresponding tab must still obey Konsole's
+    // configured placement instead of jumping earlier in the tab bar.
     const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
 
     TmuxTestFixture::SessionContext ctx;
@@ -4970,6 +4984,20 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
     auto cleanup = qScopeGuard([&] {
         TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     });
+
+    for (const int windowIndex : {2, 3}) {
+        QProcess newWindow;
+        newWindow.start(tmuxPath,
+                        {QStringLiteral("-S"),
+                         ctx.socketPath,
+                         QStringLiteral("new-window"),
+                         QStringLiteral("-d"),
+                         QStringLiteral("-t"),
+                         QStringLiteral("%1:%2").arg(ctx.sessionName).arg(windowIndex),
+                         QStringLiteral("sleep 60")});
+        QVERIFY(newWindow.waitForFinished(5000));
+        QCOMPARE(newWindow.exitCode(), 0);
+    }
 
     TmuxTestFixture::AttachResult attach;
     TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
@@ -4979,22 +5007,54 @@ void TmuxIntegrationTest::testNewTabFromTmuxPane()
 
     auto *container = attach.mw->viewManager()->activeContainer();
     QVERIFY(container);
-    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 1, 10000);
-
-    // Trigger the New Tab action (Ctrl+Shift+T)
-    QAction *newTabAction = attach.mw->actionCollection()->action(QStringLiteral("new-tab"));
-    QVERIFY2(newTabAction, "new-tab action not found");
-    newTabAction->trigger();
-
-    // A new tmux tab should appear without any dialog
-    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 3, 10000);
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
-    QCOMPARE(controller->windowCount(), 2);
 
-    // The tab bar should be visible now that there are 2 tabs
-    QTRY_VERIFY_WITH_TIMEOUT(container->tabBar()->isVisible(), 5000);
+    const QList<int> initialOrder = tmuxWindowOrder(tmuxPath, ctx);
+    QCOMPARE(initialOrder.size(), 3);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), initialOrder, 10000);
+
+    controller->requestSelectWindow(initialOrder.at(1));
+    QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), controller->windowToTabIndex().value(initialOrder.at(1)), 5000);
+    const int initialCurrentIndex = container->currentIndex();
+    QCOMPARE(initialCurrentIndex, 1);
+
+    const int previousBehavior = KonsoleSettings::newTabBehavior();
+    auto restoreBehavior = qScopeGuard([previousBehavior] {
+        KonsoleSettings::setNewTabBehavior(previousBehavior);
+    });
+    KonsoleSettings::setNewTabBehavior(behavior);
+    container->setNavigationBehavior(behavior);
+    auto *currentSplitter = container->viewSplitterAt(initialCurrentIndex);
+    QVERIFY(currentSplitter);
+    auto *currentDisplay = currentSplitter->activeTerminalDisplay();
+    QVERIFY(currentDisplay);
+    currentDisplay->setFocus(Qt::OtherFocusReason);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(currentDisplay), 5000);
+
+    // Exercise the real shortcut rather than calling MainWindow::newTab().
+    QAction *newTabAction = attach.mw->actionCollection()->action(QStringLiteral("new-tab"));
+    QVERIFY2(newTabAction, "new-tab action not found");
+    QTest::keyClick(currentDisplay, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
+
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 4, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->windowCount(), 4, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(kmuxWindowOrder(controller), tmuxWindowOrder(tmuxPath, ctx), 10000);
+
+    int newWindowId = -1;
+    for (const int windowId : kmuxWindowOrder(controller)) {
+        if (!initialOrder.contains(windowId)) {
+            QCOMPARE(newWindowId, -1);
+            newWindowId = windowId;
+        }
+    }
+    QVERIFY(newWindowId >= 0);
+
+    const int newTabIndex = controller->windowToTabIndex().value(newWindowId, -1);
+    QVERIFY2(newTabIndex == expectedNewTabIndex,
+             qPrintable(QStringLiteral("Ctrl+Shift+T put the new tab at index %1; preference requires index %2").arg(newTabIndex).arg(expectedNewTabIndex)));
 
     delete attach.mw.data();
 }
