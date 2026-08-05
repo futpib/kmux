@@ -187,7 +187,6 @@ option(ENABLE_PLUGIN_QUICKCOMMANDS "Build the Quick Commands plugin" ON)
 
 add_subdirectory( src )
 add_subdirectory( desktop )
-add_subdirectory( data/icons )
 
 if(KF6DocTools_FOUND)
     add_subdirectory( doc/manual )

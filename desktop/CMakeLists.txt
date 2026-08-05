@@ -8,3 +8,5 @@ install(FILES org.kde.kmux.desktop DESTINATION ${KDE_INSTALL_DATADIR}/kglobalacc
 
 install(FILES kmux.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR})
 install( PROGRAMS kmuxrun.desktop  DESTINATION ${KDE_INSTALL_DATADIR}/kio/servicemenus )
+
+include(${CMAKE_SOURCE_DIR}/data/icons/kmux-icons.cmake)
