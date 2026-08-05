@@ -2,7 +2,7 @@
 Type=Application
 TryExec=kmux
 Exec=kmux
-Icon=utilities-terminal
+Icon=kmux
 Categories=Qt;KDE;System;TerminalEmulator;
 Actions=NewWindow;NewTab;
 X-DocPath=kmux/index.html

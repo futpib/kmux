@@ -1,5 +1,5 @@
 [Global]
-IconName=utilities-terminal
+IconName=kmux
 DesktopEntry=org.kde.kmux
 Comment=kmux
 Comment[af]=kmux

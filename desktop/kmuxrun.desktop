@@ -8,7 +8,7 @@ X-KDE-AuthorizeAction=shell_access
 [Desktop Action runInKmux]
 TryExec=kmux
 Exec=kmux --hold -e %f
-Icon=utilities-terminal
+Icon=kmux
 
 Name=Run In kmux
 Name[ar]=شغل في كونسول

@@ -46,7 +46,7 @@
         "Description[uk]": "Доступ до командного рядка",
         "Description[zh_CN]": "命令行访问",
         "Description[zh_TW]": "指令列",
-        "Icon": "utilities-terminal",
+        "Icon": "kmux",
         "Name": "Terminal Emulator",
         "Name[ar]": "محاكي الطرفية",
         "Name[az]": "Terminal emulyatoru",

@@ -180,7 +180,7 @@ endif()
 
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
 
-file(GLOB ICONS_SRCS "data/icons/*.png")
+file(GLOB ICONS_SRCS "data/icons/*-apps-kmux.png" "data/icons/sc-apps-kmux.svg")
 
 option(ENABLE_PLUGIN_SSHMANAGER "Build the SSHManager plugin" ON)
 option(ENABLE_PLUGIN_QUICKCOMMANDS "Build the Quick Commands plugin" ON)
@@ -194,8 +194,8 @@ endif()
 
 add_subdirectory( tools )
 
-# Conditionally install icons for Linux as they may not be provided by the user theme
-option(INSTALL_ICONS "Install icons" OFF)
+# Install kmux's branded icon unless a distributor packages it separately.
+option(INSTALL_ICONS "Install icons" ON)
 if(INSTALL_ICONS)
     include(ECMInstallIcons)
     ecm_install_icons( ICONS ${ICONS_SRCS} DESTINATION ${KDE_INSTALL_ICONDIR} )

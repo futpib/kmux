@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
 
     migrateRenamedConfigKeys();
 
-    app->setWindowIcon(QIcon::fromTheme(QStringLiteral("utilities-terminal")));
+    app->setWindowIcon(QIcon::fromTheme(QStringLiteral("kmux"), QIcon::fromTheme(QStringLiteral("utilities-terminal"))));
 
     KLocalizedString::setApplicationDomain("kmux");
 
