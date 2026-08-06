@@ -42,13 +42,17 @@ endif()
 # minimal requirements
 
 # See comments in https://invent.kde.org/utilities/konsole/-/commit/9d8e47298c81fc1e47c998eda1b6e980589274eb
-cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16)
 
 set(QT_MIN_VERSION "6.9.0")
 set(KF6_DEP_VERSION "6.19.0")
 
 # Release script will create bugzilla versions
 project(konsole VERSION ${RELEASE_SERVICE_VERSION})
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(ECM ${KF6_DEP_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
@@ -160,17 +164,6 @@ check_symbol_exists(getpwuid "pwd.h" HAVE_GETPWUID)
 
 check_function_exists(malloc_trim HAVE_MALLOC_TRIM)
 
-# See above includes for defaults
-add_definitions(
-  -DQT_NO_FOREACH
-  -DQT_STRICT_ITERATORS
-  -DQT_NO_URL_CAST_FROM_STRING
-)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 # Promote all warnings to errors so they cannot be ignored.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Werror)
@@ -212,15 +205,11 @@ if(KF6DocTools_FOUND)
     kdoctools_install( po )
 endif()
 
-if(ECM_VERSION VERSION_GREATER_EQUAL 5.101.0)
-  install(FILES completions/kmux.zsh RENAME _kmux DESTINATION ${KDE_INSTALL_ZSHAUTOCOMPLETEDIR})
-endif()
+install(FILES completions/kmux.zsh RENAME _kmux DESTINATION ${KDE_INSTALL_ZSHAUTOCOMPLETEDIR})
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 
 # add clang-format target for all our real source files
 file(GLOB_RECURSE ALL_CLANG_FORMAT_SOURCE_FILES *.c *.cpp *.h *.hpp)
 kde_clang_format(${ALL_CLANG_FORMAT_SOURCE_FILES})
-if(ECM_VERSION VERSION_GREATER_EQUAL 5.79.0)
-    kde_configure_git_pre_commit_hook(CHECKS CLANG_FORMAT)
-endif()
+kde_configure_git_pre_commit_hook(CHECKS CLANG_FORMAT)
