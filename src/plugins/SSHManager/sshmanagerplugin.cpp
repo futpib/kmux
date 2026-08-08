@@ -11,7 +11,6 @@
 #include "sshmanagerpluginwidget.h"
 
 #include "ProcessInfo.h"
-#include "konsoledebug.h"
 #include "session/SessionController.h"
 
 #include <QDockWidget>
@@ -27,6 +26,7 @@
 #include <KCrash>
 #include <KLocalizedString>
 #include <KMessageBox>
+#include <KPluginFactory>
 #include <QSettings>
 #include <kcommandbar.h>
 

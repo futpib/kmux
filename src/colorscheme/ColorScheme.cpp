@@ -15,9 +15,10 @@
 #include <QApplication>
 #include <QMetaEnum>
 
-// KDE
+// KF
 #include <KConfig>
 #include <KConfigGroup>
+#include <KLazyLocalizedString>
 #include <KLocalizedString>
 
 // STL

@@ -8,9 +8,9 @@
 #include "ContainerInfo.h"
 #include "DistroboxDetector.h"
 #include "ToolboxDetector.h"
-#include "src/konsoledebug.h"
+#include "konsoledebug.h"
 
-#include "config-konsole.h"
+#include "../config-konsole.h"
 
 #if HAVE_KAPSULE
 #include "KapsuleDetector.h"

@@ -9,8 +9,7 @@
 #define EDITPROFILEDIALOG_H
 
 #include <QtGlobal>
-// KDE
-#include <KNSCore/Entry>
+// KF
 #include <KPageDialog>
 
 // Konsole
@@ -27,6 +26,11 @@
 #include "LabelsAligner.h"
 #include "keyboardtranslator/KeyboardTranslatorManager.h"
 
+namespace KNSCore
+{
+class Entry;
+}
+class KPluralHandlingSpinBox;
 class KLocalizedString;
 class QItemSelectionModel;
 class QSpinBox;

@@ -9,15 +9,13 @@
 #include "TerminalCharacterDecoderTest.h"
 
 // Konsole
+#include "../colorscheme/ColorScheme.h"
 #include "../decoders/HTMLDecoder.h"
 #include "../decoders/PlainTextDecoder.h"
-#include "colorscheme/ColorScheme.h"
 
 // Qt
-#include <QTextStream>
-
-// KDE
 #include <QTest>
+#include <QTextStream>
 
 using namespace Konsole;
 

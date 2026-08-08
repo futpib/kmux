@@ -6,12 +6,10 @@
 
 // Own
 #include "CharacterWidthTest.h"
-
-// KDE
-#include <QTest>
-
 #include "../characters/Character.h"
-#include "konsoleprivate_export.h"
+
+// Qt
+#include <QTest>
 
 using namespace Konsole;
 

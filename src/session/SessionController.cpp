@@ -8,8 +8,8 @@
 // Own
 #include "SessionController.h"
 
+#include "SearchHistoryTask.h"
 #include "profile/ProfileManager.h"
-#include "src/SearchHistoryTask.h"
 #include "terminalDisplay/TerminalColor.h"
 #include "terminalDisplay/TerminalFonts.h"
 #include "widgets/ViewSplitter.h"
@@ -26,7 +26,7 @@
 #include <QStandardPaths>
 #include <QUrl>
 
-// KDE
+// KF
 #include <KActionCollection>
 #include <KActionMenu>
 #include <KCodecAction>
@@ -50,6 +50,7 @@
 #include <KIO/OpenFileManagerWindowJob>
 #include <KIO/OpenUrlJob>
 
+#include <KFileItemActions>
 #include <KFileItemListProperties>
 
 // Konsole

@@ -60,21 +60,12 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
-include(ECMOptionalAddSubdirectory)
-include(ECMInstallIcons)
-include(ECMSetupVersion)
-include(ECMMarkNonGuiExecutable)
-include(ECMGenerateHeaders)
 include(GenerateExportHeader)
 include(FeatureSummary)
 include(ECMQtDeclareLoggingCategory)
 include(KDEClangFormat)
 include(KDEGitCommitHooks)
 include(CheckFunctionExists)
-include(CheckIncludeFiles)
-
-# Allows passing e.g. -DECM_ENABLE_SANITIZERS='address;undefined' to cmake.
-include(ECMEnableSanitizers)
 
 find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED
     Core
@@ -170,9 +161,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_options(/WX)
 endif()
-
-include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-
 file(GLOB ICONS_SRCS "data/icons/*.png")
 
 option(ENABLE_PLUGIN_SSHMANAGER "Build the SSHManager plugin" ON)

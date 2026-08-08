@@ -26,7 +26,7 @@
 #include <QTimer>
 #include <QUrl>
 
-// KDE
+// KF
 #include <KCodecAction>
 #include <KColorButton>
 #include <KIconDialog>
@@ -34,6 +34,7 @@
 #include <KLocalizedString>
 #include <KWindowSystem>
 
+#include <KNSCore/Entry>
 #include <KNSWidgets/Button>
 
 // Konsole

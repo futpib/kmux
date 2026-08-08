@@ -13,11 +13,11 @@
 // Qt
 #include <QDir>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QStringConverter>
 
-// KDE
+// KF
 #include <KLocalizedString>
-#include <QFontDatabase>
 
 // Konsole
 #include "ProfileGroup.h"
@@ -124,7 +124,7 @@ const std::vector<Profile::PropertyInfo> Profile::DefaultProperties = {
 
     // Scrolling
     {HistoryMode, "HistoryMode", SCROLLING_GROUP, Enum::FixedSizeHistory},
-    {HistorySize, "HistorySize", SCROLLING_GROUP, 1000},
+    {HistorySize, "HistorySize", SCROLLING_GROUP, 10000},
     {ScrollBarPosition, "ScrollBarPosition", SCROLLING_GROUP, Enum::ScrollBarRight},
     {ScrollFullPage, "ScrollFullPage", SCROLLING_GROUP, false},
     {HighlightScrolledLines, "HighlightScrolledLines", SCROLLING_GROUP, true},

@@ -1,5 +1,9 @@
+add_library(konsolecolorscheme STATIC)
 
-set(konsole_colorscheme_SRCS
+# Needed to link this static lib to shared libs
+set_target_properties(konsolecolorscheme PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_sources(konsolecolorscheme PRIVATE
     hsluv.c
     ColorScheme.cpp
     ColorSchemeManager.cpp
@@ -9,12 +13,11 @@ set(konsole_colorscheme_SRCS
     RandomizationRange.cpp
 )
 
-ki18n_wrap_ui(konsole_colorscheme_SRCS
+ki18n_wrap_ui(konsolecolorscheme
     ColorSchemeEditor.ui
 )
 
-ecm_qt_declare_logging_category(
-    konsole_colorscheme_SRCS
+ecm_qt_declare_logging_category(konsolecolorscheme
     HEADER colorschemedebug.h
     IDENTIFIER ColorSchemeDebug
     CATEGORY_NAME org.kde.konsole.colorScheme
@@ -22,19 +25,12 @@ ecm_qt_declare_logging_category(
     EXPORT KONSOLE
 )
 
-add_library(konsolecolorscheme
-    STATIC
-    ${konsole_colorscheme_SRCS}
-)
-# Needed to link this static lib to shared libs
-set_target_properties(konsolecolorscheme PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-# generate_export_header(konsolecolorscheme BASE_NAME konsolecolorscheme)
-target_include_directories(konsolecolorscheme
-    PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
-    INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-
-target_link_libraries(
-    konsolecolorscheme
-    ${konsole_LIBS}
+target_link_libraries(konsolecolorscheme
+    PUBLIC
+        Qt::Widgets
+        #TODO: using "CharacterColor.h" frm konsolecharacter in ColorSchemeWallpaper.h
+    PRIVATE
+        KF6::ConfigCore
+        KF6::I18n
+        KF6::WidgetsAddons
 )
