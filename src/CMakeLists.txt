@@ -1,5 +1,3 @@
-# cmake-options : -DCMAKE_DISABLE_FIND_PACKAGE_LibKonq=TRUE or FALSE; default is FALSE
-
 add_definitions(-DTRANSLATION_DOMAIN=\"kmux\")
 
 ### Handle DragonFlyBSD here instead of using __DragonFly__
@@ -9,7 +7,6 @@ else()
   set(HAVE_OS_DRAGONFLYBSD 0)
 endif()
 
-include(CheckIncludeFiles)
 include(ECMAddAppIcon)
 
 configure_file(config-konsole.h.cmake
@@ -92,10 +89,6 @@ add_subdirectory(characters)
 add_subdirectory(decoders)
 add_subdirectory(containers)
 add_subdirectory(plugins)
-set(ptyqt_srcs)
-if(WIN32)
-    set(ptyqt_srcs ptyqt/iptyprocess.cpp ptyqt/conptyprocess.cpp)
-endif()
 
 add_library(konsoleprivate)
 
@@ -187,8 +180,6 @@ target_sources(konsoleprivate PRIVATE
     profile/ProfileManager.cpp
     profile/ProfileModel.cpp
 
-    ${ptyqt_srcs} # windows conpty backend
-
     ${sessionadaptors_SRCS}
     session/Session.cpp
     session/VirtualSession.cpp
@@ -227,6 +218,14 @@ target_sources(konsoleprivate PRIVATE
     ../desktop/konsole.qrc
 )
 
+if(WIN32)
+    # windows conpty backend
+    target_sources(konsoleprivate PRIVATE
+        ptyqt/iptyprocess.cpp
+        ptyqt/conptyprocess.cpp
+    )
+endif()
+
 kconfig_add_kcfg_files(konsoleprivate settings/KonsoleSettings.kcfgc)
 
 ki18n_wrap_ui(konsoleprivate
@@ -253,9 +252,7 @@ ki18n_wrap_ui(konsoleprivate
     widgets/RenameTabWidget.ui
 )
 
-generate_export_header(konsoleprivate BASE_NAME konsoleprivate)
-
-find_package(ZLIB)
+generate_export_header(konsoleprivate)
 
 if(KONSOLE_HAVE_XKBCOMMON)
     target_compile_definitions(konsoleprivate PUBLIC HAVE_XKBCOMMON)
@@ -296,7 +293,6 @@ target_link_libraries(konsoleprivate
 if (HAVE_LIBSSH)
     target_link_libraries(konsoleprivate PRIVATE ssh)
 endif()
-set(konsole_LIBS)
 
 if(NOT WIN32)
     target_link_libraries(konsoleprivate PRIVATE KF6::Pty)
@@ -335,7 +331,7 @@ add_library(konsoleapp
     delegates/ProfileShortcutDelegate.cpp
 )
 
-generate_export_header(konsoleapp BASE_NAME konsoleapp)
+generate_export_header(konsoleapp)
 
 target_compile_definitions(konsoleapp PRIVATE -DRELEASE_SERVICE_VERSION="${RELEASE_SERVICE_VERSION}")
 
