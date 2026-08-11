@@ -41,8 +41,8 @@ HistorySizeWidget::HistorySizeWidget(QWidget *parent)
     modeGroup->addButton(_ui->unlimitedHistoryButton);
     connect(modeGroup, static_cast<void (QButtonGroup::*)(QAbstractButton *)>(&QButtonGroup::buttonClicked), this, &Konsole::HistorySizeWidget::buttonClicked);
 
-    // %v is the spin box value; the leading space separates it from the number.
-    KLocalization::setupSpinBoxFormatString(_ui->historyLineSpinner, ki18ncp("@label:textbox Unit of scrollback", "%v line", "%v lines"));
+    auto formatString = ki18ncp("@item number of lines", "%v line", "%v lines");
+    KLocalization::setupSpinBoxFormatString(_ui->historyLineSpinner, formatString);
     setLineCount(HistorySizeWidget::DefaultLineCount);
 
     connect(_ui->historyLineSpinner, &QSpinBox::valueChanged, this, &Konsole::HistorySizeWidget::historySizeChanged);

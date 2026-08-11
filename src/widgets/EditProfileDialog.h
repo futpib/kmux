@@ -30,7 +30,7 @@ namespace KNSCore
 {
 class Entry;
 }
-class KPluralHandlingSpinBox;
+class QSpinBox;
 class KLocalizedString;
 class QItemSelectionModel;
 class QSpinBox;
