@@ -1083,6 +1083,16 @@ void TmuxController::onWindowAdded(int windowId)
                                   setState(State::ApplyingLayout);
                                   applyWindowLayout(wId, parsed.value());
                                   setState(State::Idle);
+
+                                  // applyWindowLayout makes a newly-added tab visible. Keep
+                                  // tmux's active window in sync before advertising its size:
+                                  // with multiple attached clients, window-size=latest ignores
+                                  // a per-window size until one client has selected a window
+                                  // created detached by an external process.
+                                  if (isWindowVisible(wId)) {
+                                      requestSelectWindow(wId);
+                                      _resizeCoordinator->sendClientSize();
+                                  }
                               }
                           });
 }
