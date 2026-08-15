@@ -3912,8 +3912,8 @@ void TmuxIntegrationTest::testBackgroundNewWindowFocusesNewTab()
     QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget *>(originalDisplay), 5000);
 
     // Simulate a background process creating a detached tmux window. kmux
-    // responds to %window-add by showing a new tab even though tmux keeps the
-    // original window active. Keyboard focus must follow the visible tab.
+    // responds to %window-add by showing a new tab and synchronizing tmux's
+    // active window with it. Keyboard focus must follow the visible tab.
     QProcess newWindow;
     newWindow.start(tmuxPath,
                     {QStringLiteral("-S"),
