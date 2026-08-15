@@ -285,7 +285,6 @@ target_link_libraries(konsoleprivate
         Qt::Multimedia
         Qt::PrintSupport
         Qt::Xml
-        ZLIB::ZLIB
         ICU::uc
         ICU::i18n
 )
