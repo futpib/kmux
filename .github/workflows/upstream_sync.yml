@@ -19,7 +19,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      # KDE's localization bot updates po/ frequently. Leave those commits
+      # pending until an upstream change outside the localization tree arrives.
+      - name: Check for non-localization upstream changes
+        id: upstream_changes
+        run: |
+          set -euo pipefail
+
+          upstream_ref=refs/remotes/template-upstream/master
+          git fetch --no-tags --force \
+            https://github.com/KDE/konsole.git \
+            "master:$upstream_ref"
+
+          if ! merge_base="$(git merge-base HEAD "$upstream_ref")"; then
+            echo "No common history with upstream; a sync is required."
+            echo "sync_required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Pending upstream paths:"
+          git diff --name-only "$merge_base" "$upstream_ref" --
+
+          if git diff --quiet "$merge_base" "$upstream_ref" --; then
+            echo "Already synchronized with upstream."
+            echo "sync_required=false" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$merge_base" "$upstream_ref" -- \
+            | awk '$0 !~ /^po\// { found = 1 } END { exit !found }'
+          then
+            echo "Non-localization changes found; a sync is required."
+            echo "sync_required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only localization changes found; skipping the sync PR."
+            echo "sync_required=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - id: sync
+        if: steps.upstream_changes.outputs.sync_required == 'true'
         uses: AndreasAugustin/actions-template-sync@8a0f668b83c32a0f673353086d74f12b8853d4f5 # v2.5.3
         with:
           source_repo_path: KDE/konsole
