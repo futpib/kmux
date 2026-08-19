@@ -26,32 +26,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          upstream_ref=refs/remotes/template-upstream/master
-          git fetch --no-tags --force \
-            https://github.com/KDE/konsole.git \
-            "master:$upstream_ref"
-
-          if ! merge_base="$(git merge-base HEAD "$upstream_ref")"; then
-            echo "No common history with upstream; a sync is required."
-            echo "sync_required=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Pending upstream paths:"
-          git diff --name-only "$merge_base" "$upstream_ref" --
-
-          if git diff --quiet "$merge_base" "$upstream_ref" --; then
-            echo "Already synchronized with upstream."
-            echo "sync_required=false" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "$merge_base" "$upstream_ref" -- \
-            | awk '$0 !~ /^po\// { found = 1 } END { exit !found }'
-          then
-            echo "Non-localization changes found; a sync is required."
-            echo "sync_required=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Only localization changes found; skipping the sync PR."
-            echo "sync_required=false" >> "$GITHUB_OUTPUT"
-          fi
+          sync_required="$(
+            ./scripts/check-upstream-sync-required.sh \
+              "$GITHUB_WORKSPACE" \
+              "$GITHUB_SHA" \
+              https://github.com/KDE/konsole.git \
+              master
+          )"
+          echo "sync_required=$sync_required" >> "$GITHUB_OUTPUT"
 
       - id: sync
         if: steps.upstream_changes.outputs.sync_required == 'true'
@@ -68,6 +50,33 @@ jobs:
             precommit:
               commands:
                 - '! git ls-files --unmerged | read -r _ || { echo "Unresolved merge conflicts"; exit 1; }'
+
+      - name: Verify required sync produced an open PR
+        if: steps.upstream_changes.outputs.sync_required == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BRANCH: ${{ steps.sync.outputs.pr_branch }}
+          PR_NUMBER: ${{ steps.sync.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$PR_NUMBER" ]]; then
+            exit 0
+          fi
+
+          if [[ -n "$PR_BRANCH" ]]; then
+            open_pr_count="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=master&head=${GITHUB_REPOSITORY_OWNER}:${PR_BRANCH}&per_page=2" \
+                --jq length
+            )"
+            if (( open_pr_count > 0 )); then
+              exit 0
+            fi
+          fi
+
+          echo "A non-localization sync was required, but actions-template-sync produced no open PR." >&2
+          exit 1
 
       # actions-template-sync's built-in cleanup missed #24 while closing the
       # sync PRs immediately before and after it. Do the cleanup explicitly
