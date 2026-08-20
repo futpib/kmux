@@ -93,6 +93,8 @@ private:
     void teardownTransport();
     void beginReconnect();
     void onHandshakeTimeout();
+    void onTtyPasswordHint();
+    void scheduleTtyPasswordHint();
     void onReconnectHandshakeFailed(const QString &reason);
     bool shouldAutoReconnect() const;
     static bool looksLikeSessionGone(const QString &reason);
@@ -106,6 +108,7 @@ private:
     TmuxController *_controller = nullptr;
     QSocketNotifier *_readNotifier = nullptr;
     QTimer *_handshakeTimer = nullptr;
+    QTimer *_ttyHintTimer = nullptr;
     int _socketFd = -1;
     // True once the gateway emitted ready(). Distinguishes a startup
     // failure (process exits before this) from a normal post-handshake

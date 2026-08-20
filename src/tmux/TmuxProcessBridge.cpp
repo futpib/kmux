@@ -41,11 +41,15 @@ TmuxProcessBridge::TmuxProcessBridge(ViewManager *viewManager, QObject *parent)
     _handshakeTimer = new QTimer(this);
     _handshakeTimer->setSingleShot(true);
     connect(_handshakeTimer, &QTimer::timeout, this, &TmuxProcessBridge::onHandshakeTimeout);
+    _ttyHintTimer = new QTimer(this);
+    _ttyHintTimer->setSingleShot(true);
+    connect(_ttyHintTimer, &QTimer::timeout, this, &TmuxProcessBridge::onTtyPasswordHint);
 }
 
 TmuxProcessBridge::~TmuxProcessBridge()
 {
     _handshakeTimer->stop();
+    _ttyHintTimer->stop();
     _ignoringProcessFinished = true;
     _reconnectInProgress = false;
     if (_process) {
@@ -186,6 +190,9 @@ void TmuxProcessBridge::connectGatewayBridgeSignals()
         _startupOutput.clear();
         if (_handshakeTimer) {
             _handshakeTimer->stop();
+        }
+        if (_ttyHintTimer) {
+            _ttyHintTimer->stop();
         }
         if (_controller) {
             _controller->clearExplicitDetach();
@@ -347,6 +354,7 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 void TmuxProcessBridge::teardown()
 {
     _handshakeTimer->stop();
+    _ttyHintTimer->stop();
     _reconnectInProgress = false;
     if (_controller) {
         _controller->cleanup();
@@ -357,6 +365,7 @@ void TmuxProcessBridge::teardown()
 void TmuxProcessBridge::teardownTransport()
 {
     _handshakeTimer->stop();
+    _ttyHintTimer->stop();
     _ignoringProcessFinished = true;
     if (_readNotifier) {
         _readNotifier->setEnabled(false);
@@ -438,6 +447,7 @@ void TmuxProcessBridge::beginReconnect()
     if (_handshakeTimeoutMs > 0 && !hasControllingTty()) {
         _handshakeTimer->start(_handshakeTimeoutMs);
     }
+    scheduleTtyPasswordHint();
 }
 
 void TmuxProcessBridge::onHandshakeTimeout()
@@ -445,6 +455,7 @@ void TmuxProcessBridge::onHandshakeTimeout()
     if (_ready) {
         return;
     }
+    _ttyHintTimer->stop();
     qCWarning(KonsoleTmuxBridge) << "tmux reconnect handshake timed out after" << _handshakeTimeoutMs << "ms";
     if (_process && _process->state() != QProcess::NotRunning) {
         _process->kill();
@@ -453,11 +464,32 @@ void TmuxProcessBridge::onHandshakeTimeout()
     onReconnectHandshakeFailed(QStringLiteral("handshake timed out"));
 }
 
+void TmuxProcessBridge::scheduleTtyPasswordHint()
+{
+    _ttyHintTimer->stop();
+    if (_rshCommand.isEmpty() || !hasControllingTty()) {
+        return;
+    }
+    // Key/ControlPersist handshakes usually finish in well under this; a
+    // password prompt will not. Delay so we don't flash the hint on the
+    // common success path.
+    _ttyHintTimer->start(2000);
+}
+
+void TmuxProcessBridge::onTtyPasswordHint()
+{
+    if (!_reconnectInProgress || _ready) {
+        return;
+    }
+    setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::ReconnectingCheckTty);
+}
+
 void TmuxProcessBridge::onReconnectHandshakeFailed(const QString &reason)
 {
     qCWarning(KonsoleTmuxBridge) << "tmux reconnect failed:" << reason;
     _reconnectInProgress = false;
     _handshakeTimer->stop();
+    _ttyHintTimer->stop();
 
     if (looksLikeSessionGone(reason)) {
         teardown();
@@ -498,6 +530,9 @@ bool TmuxProcessBridge::shouldAutoReconnect() const
 
 bool TmuxProcessBridge::hasControllingTty()
 {
+    if (qEnvironmentVariableIntValue("KMUX_ASSUME_CONTROLLING_TTY") > 0) {
+        return true;
+    }
     const int fd = ::open("/dev/tty", O_RDONLY | O_NOCTTY);
     if (fd < 0) {
         return false;

@@ -129,6 +129,7 @@ private Q_SLOTS:
     void testDetachedWindowReconnectKeepsShowOnlyWindow();
     void testSiblingWindowUnaffectedByReconnect();
     void testNamelessLaunchReconnectsViaLearnedSessionName();
+    void testReconnectBannerHintsTtyPassword();
 
 private:
     QTemporaryDir m_tmuxTmpDir;

@@ -424,6 +424,7 @@ public:
         Hidden,
         Unresponsive,
         Reconnecting,
+        ReconnectingCheckTty,
         Disconnected,
     };
     void setTmuxConnectionBanner(TmuxConnectionBanner banner);

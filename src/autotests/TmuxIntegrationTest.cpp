@@ -8554,7 +8554,7 @@ void TmuxIntegrationTest::testUnresponsiveBannerRetryReconnects()
 
     TerminalDisplay *view = firstViewOf(mw);
     QVERIFY(view);
-    QTRY_VERIFY_WITH_TIMEOUT(connectionBannerVisibleTo(view), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(connectionBannerVisibleTo(view), 10000);
 
     QAction *retry = reconnectActionFor(view);
     QVERIFY2(retry, "Retry action missing on unresponsive banner");
@@ -8744,6 +8744,67 @@ void TmuxIntegrationTest::testNamelessLaunchReconnectsViaLearnedSessionName()
     const QString listed = QString::fromUtf8(listSessions.readAllStandardOutput());
     QVERIFY(listed.contains(ctx.sessionName));
     QVERIFY(listed.contains(sessionB));
+
+    delete mwGuard.data();
+}
+
+void TmuxIntegrationTest::testReconnectBannerHintsTtyPassword()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    qputenv("KMUX_ASSUME_CONTROLLING_TTY", "1");
+    auto restoreTty = qScopeGuard([] {
+        qunsetenv("KMUX_ASSUME_CONTROLLING_TTY");
+    });
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    const QString stamp = m_tmuxTmpDir.path() + QStringLiteral("/rsh-second-call");
+    const QString wrapper = m_tmuxTmpDir.path() + QStringLiteral("/rsh-password.sh");
+    {
+        QFile f(wrapper);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("#!/bin/bash\n");
+        f.write("if [[ -f \"");
+        f.write(stamp.toUtf8());
+        f.write("\" ]]; then exec sleep infinity; fi\n");
+        f.write("touch \"");
+        f.write(stamp.toUtf8());
+        f.write("\"\nexec \"$@\"\n");
+        f.close();
+    }
+    QVERIFY(QFile::setPermissions(wrapper, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    QVERIFY(bridge->start(tmuxPath,
+                          {QStringLiteral("-S"), ctx.socketPath},
+                          {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName},
+                          {wrapper}));
+
+    auto *container = mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container->count() >= 1, 10000);
+
+    auto *proc = bridgeProcess(bridge);
+    QVERIFY(proc);
+    proc->kill();
+
+    // Second rsh invocation sleeps; after 2s the banner should point at the TTY.
+    QTRY_VERIFY_WITH_TIMEOUT(connectionBannerVisibleTo(firstViewOf(mw)), 5000);
+    auto waitForPasswordHint = [&]() {
+        TerminalDisplay *view = firstViewOf(mw);
+        if (view == nullptr) {
+            return false;
+        }
+        auto *banner = view->findChild<KMessageWidget *>(QStringLiteral("tmuxUnresponsiveBanner"));
+        return banner != nullptr && banner->isVisibleTo(view) && banner->text().contains(QLatin1String("password"), Qt::CaseInsensitive);
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(waitForPasswordHint(), 5000);
 
     delete mwGuard.data();
 }

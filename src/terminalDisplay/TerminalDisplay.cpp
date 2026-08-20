@@ -2871,6 +2871,10 @@ void TerminalDisplay::setTmuxConnectionBanner(TmuxConnectionBanner banner)
         text = i18n("Reconnecting to tmux…");
         showRetry = false;
         break;
+    case TmuxConnectionBanner::ReconnectingCheckTty:
+        text = i18n("Reconnecting to tmux… ssh/rsh may be waiting for a password in the terminal that launched kmux.");
+        showRetry = false;
+        break;
     case TmuxConnectionBanner::Disconnected:
         text = i18n("The tmux connection dropped.");
         showRetry = true;
