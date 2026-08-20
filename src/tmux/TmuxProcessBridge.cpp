@@ -6,9 +6,11 @@
 
 #include "TmuxProcessBridge.h"
 
+#include "TmuxConnectionBanner.h"
 #include "TmuxController.h"
 #include "TmuxControllerRegistry.h"
 #include "TmuxGateway.h"
+#include "TmuxReconnectPolicy.h"
 
 #include "ViewManager.h"
 #include "session/Session.h"
@@ -29,29 +31,23 @@ Q_LOGGING_CATEGORY(KonsoleTmuxBridge, "konsole.tmux.bridge", QtWarningMsg)
 namespace Konsole
 {
 
-namespace
-{
-constexpr int maxLocalAutoReconnects = 5;
-}
-
 TmuxProcessBridge::TmuxProcessBridge(ViewManager *viewManager, QObject *parent)
     : QObject(parent)
     , _viewManager(viewManager)
 {
-    _handshakeTimer = new QTimer(this);
-    _handshakeTimer->setSingleShot(true);
-    connect(_handshakeTimer, &QTimer::timeout, this, &TmuxProcessBridge::onHandshakeTimeout);
-    _ttyHintTimer = new QTimer(this);
-    _ttyHintTimer->setSingleShot(true);
-    connect(_ttyHintTimer, &QTimer::timeout, this, &TmuxProcessBridge::onTtyPasswordHint);
+    _policy = new TmuxReconnectPolicy(this);
+    connect(_policy, &TmuxReconnectPolicy::bannerChanged, this, &TmuxProcessBridge::setViewsConnectionBanner);
+    connect(_policy, &TmuxReconnectPolicy::reconnectRequested, this, &TmuxProcessBridge::spawnReconnectClient);
+    connect(_policy, &TmuxReconnectPolicy::killProcessRequested, this, &TmuxProcessBridge::killControlProcess);
+    connect(_policy, &TmuxReconnectPolicy::teardownRequested, this, &TmuxProcessBridge::teardownSession);
+    connect(_policy, &TmuxReconnectPolicy::firstLaunchFailed, this, &TmuxProcessBridge::startupFailed);
 }
 
 TmuxProcessBridge::~TmuxProcessBridge()
 {
-    _handshakeTimer->stop();
-    _ttyHintTimer->stop();
+    disconnect(_policy, nullptr, this, nullptr);
+    _policy->abort();
     _ignoringProcessFinished = true;
-    _reconnectInProgress = false;
     if (_process) {
         disconnect(_process, nullptr, this, nullptr);
         if (_process->state() != QProcess::NotRunning) {
@@ -76,6 +72,7 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
     _tmuxArgs = tmuxArgs;
     _command = command;
     _rshCommand = rshCommand;
+    _policy->setHasRsh(!_rshCommand.isEmpty());
 
     if (!spawnProcess(command)) {
         return false;
@@ -156,8 +153,7 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
 
     _readBuffer.clear();
     _startupOutput.clear();
-    _ready = false;
-    _gotExitNotification = false;
+    _policy->onSpawnStarted();
     return true;
 }
 
@@ -181,36 +177,18 @@ void TmuxProcessBridge::connectGatewayBridgeSignals()
 {
     connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
     connect(_gateway, &TmuxGateway::ready, this, [this]() {
-        _ready = true;
-        _reconnectInProgress = false;
-        _reconnectRequested = false;
-        _manualReconnect = false;
-        _autoReconnectAttempts = 0;
-        _gotExitNotification = false;
         _startupOutput.clear();
-        if (_handshakeTimer) {
-            _handshakeTimer->stop();
-        }
-        if (_ttyHintTimer) {
-            _ttyHintTimer->stop();
-        }
         if (_controller) {
             _controller->clearExplicitDetach();
         }
-        setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Hidden);
+        _policy->onReady();
     });
     connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, [this](const QString &) {
-        _gotExitNotification = true;
+        _policy->onExitNotification();
     });
-    connect(_gateway, &TmuxGateway::unresponsive, this, [this]() {
-        setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Unresponsive);
-    });
-    connect(_gateway, &TmuxGateway::responsive, this, [this]() {
-        if (!_reconnectInProgress) {
-            setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Hidden);
-        }
-    });
+    connect(_gateway, &TmuxGateway::unresponsive, _policy, &TmuxReconnectPolicy::onUnresponsive);
+    connect(_gateway, &TmuxGateway::responsive, _policy, &TmuxReconnectPolicy::onResponsive);
 }
 
 TmuxController *TmuxProcessBridge::controller() const
@@ -240,12 +218,19 @@ QStringList TmuxProcessBridge::rshCommand() const
 
 void TmuxProcessBridge::setHandshakeTimeoutMs(int ms)
 {
-    _handshakeTimeoutMs = ms;
+    _policy->setHandshakeTimeoutMs(ms);
 }
 
 QString TmuxProcessBridge::learnedSessionName() const
 {
     return _controller ? _controller->sessionName() : QString();
+}
+
+void TmuxProcessBridge::syncPolicySessionFacts()
+{
+    _policy->setHasSessionName(!learnedSessionName().isEmpty());
+    _policy->setExplicitDetach(_controller && _controller->explicitDetach());
+    _policy->setHasRsh(!_rshCommand.isEmpty());
 }
 
 void TmuxProcessBridge::onReadyRead()
@@ -255,7 +240,7 @@ void TmuxProcessBridge::onReadyRead()
         ssize_t n = read(_socketFd, buf, sizeof(buf));
         if (n > 0) {
             _readBuffer.append(buf, n);
-            if (!_ready) {
+            if (!_policy->isReady()) {
                 _startupOutput.append(buf, n);
             }
         } else {
@@ -279,29 +264,8 @@ void TmuxProcessBridge::onReadyRead()
     }
 }
 
-void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+QString TmuxProcessBridge::processExitReason(int exitCode, QProcess::ExitStatus exitStatus) const
 {
-    if (_ignoringProcessFinished) {
-        return;
-    }
-
-    char buf[4096];
-    ssize_t total = 0;
-    for (;;) {
-        ssize_t n = read(_socketFd, buf, sizeof(buf));
-        if (n > 0) {
-            _readBuffer.append(buf, n);
-            if (!_ready) {
-                _startupOutput.append(buf, n);
-            }
-            total += n;
-        } else {
-            break;
-        }
-    }
-    qWarning() << "TmuxProcessBridge: process finished, exitCode=" << exitCode << "exitStatus=" << exitStatus << "drained=" << total << "bytes"
-               << "readBuffer=" << _readBuffer.left(500);
-
     const QString out = QString::fromUtf8(_startupOutput).trimmed();
     const QString err = _process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString();
     QString reason = QStringLiteral("exit code %1").arg(exitCode);
@@ -317,45 +281,38 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
     if (out.isEmpty() && err.isEmpty()) {
         reason += QStringLiteral(" (no output)");
     }
-
-    if (!_ready) {
-        if (_reconnectInProgress) {
-            onReconnectHandshakeFailed(reason);
-            return;
-        }
-        Q_EMIT startupFailed(reason);
-        return;
-    }
-
-    if (_reconnectRequested) {
-        _reconnectRequested = false;
-        beginReconnect();
-        return;
-    }
-
-    const QString sessionName = learnedSessionName();
-    const bool explicitDetach = _controller && _controller->explicitDetach();
-    // %exit is a client-side goodbye: prefix-d, Detach from tmux, last pane
-    // exited, kill-session. Do not reconnect — that would fight a deliberate
-    // detach. Transport drops have no %exit and take the path below.
-    if (explicitDetach || _gotExitNotification || sessionName.isEmpty()) {
-        teardown();
-        return;
-    }
-
-    if (shouldAutoReconnect()) {
-        beginReconnect();
-        return;
-    }
-
-    setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Disconnected);
+    return reason;
 }
 
-void TmuxProcessBridge::teardown()
+void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    _handshakeTimer->stop();
-    _ttyHintTimer->stop();
-    _reconnectInProgress = false;
+    if (_ignoringProcessFinished) {
+        return;
+    }
+
+    char buf[4096];
+    ssize_t total = 0;
+    for (;;) {
+        ssize_t n = read(_socketFd, buf, sizeof(buf));
+        if (n > 0) {
+            _readBuffer.append(buf, n);
+            if (!_policy->isReady()) {
+                _startupOutput.append(buf, n);
+            }
+            total += n;
+        } else {
+            break;
+        }
+    }
+    qWarning() << "TmuxProcessBridge: process finished, exitCode=" << exitCode << "exitStatus=" << exitStatus << "drained=" << total << "bytes"
+               << "readBuffer=" << _readBuffer.left(500);
+
+    syncPolicySessionFacts();
+    _policy->onProcessFinished(processExitReason(exitCode, exitStatus));
+}
+
+void TmuxProcessBridge::teardownSession()
+{
     if (_controller) {
         _controller->cleanup();
     }
@@ -364,8 +321,6 @@ void TmuxProcessBridge::teardown()
 
 void TmuxProcessBridge::teardownTransport()
 {
-    _handshakeTimer->stop();
-    _ttyHintTimer->stop();
     _ignoringProcessFinished = true;
     if (_readNotifier) {
         _readNotifier->setEnabled(false);
@@ -397,164 +352,45 @@ void TmuxProcessBridge::teardownTransport()
         _process = nullptr;
     }
     _ignoringProcessFinished = false;
-    _ready = false;
     _readBuffer.clear();
 }
 
 void TmuxProcessBridge::requestReconnect()
 {
-    if (_reconnectInProgress) {
-        return;
-    }
-    if (learnedSessionName().isEmpty()) {
-        return;
-    }
-    _manualReconnect = true;
-    _autoReconnectAttempts = 0;
-    if (_process && _process->state() != QProcess::NotRunning) {
-        _reconnectRequested = true;
-        _process->kill();
-        return;
-    }
-    beginReconnect();
+    syncPolicySessionFacts();
+    const bool running = _process && _process->state() != QProcess::NotRunning;
+    _policy->requestReconnect(running);
 }
 
-void TmuxProcessBridge::beginReconnect()
+void TmuxProcessBridge::spawnReconnectClient()
 {
     const QString sessionName = learnedSessionName();
     if (sessionName.isEmpty() || _controller == nullptr) {
-        teardown();
+        teardownSession();
         return;
     }
-
-    _reconnectInProgress = true;
-    ++_autoReconnectAttempts;
-    setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Reconnecting);
 
     teardownTransport();
 
     const QStringList attachCmd = {QStringLiteral("attach-session"), QStringLiteral("-t"), sessionName};
     if (!spawnProcess(attachCmd)) {
-        onReconnectHandshakeFailed(QStringLiteral("failed to spawn tmux client"));
+        _policy->onHandshakeFailed(QStringLiteral("failed to spawn tmux client"));
         return;
     }
     createGateway(false);
-    // First launch already waits forever so an --rsh ssh password prompt can
-    // sit on the controlling TTY. Reconnect must do the same when we still
-    // have that TTY — otherwise the 8s handshake timer kills ssh mid-prompt.
-    // No TTY (.desktop / daemon) keeps the deadline so a hung client cannot
-    // sit on "Reconnecting…" forever.
-    if (_handshakeTimeoutMs > 0 && !hasControllingTty()) {
-        _handshakeTimer->start(_handshakeTimeoutMs);
-    }
-    scheduleTtyPasswordHint();
+    _policy->armReconnectWatchdogs();
 }
 
-void TmuxProcessBridge::onHandshakeTimeout()
+void TmuxProcessBridge::killControlProcess()
 {
-    if (_ready) {
-        return;
-    }
-    _ttyHintTimer->stop();
-    qCWarning(KonsoleTmuxBridge) << "tmux reconnect handshake timed out after" << _handshakeTimeoutMs << "ms";
     if (_process && _process->state() != QProcess::NotRunning) {
         _process->kill();
         return;
     }
-    onReconnectHandshakeFailed(QStringLiteral("handshake timed out"));
+    _policy->onHandshakeFailed(QStringLiteral("handshake timed out"));
 }
 
-void TmuxProcessBridge::scheduleTtyPasswordHint()
-{
-    _ttyHintTimer->stop();
-    if (_rshCommand.isEmpty() || !hasControllingTty()) {
-        return;
-    }
-    // Key/ControlPersist handshakes usually finish in well under this; a
-    // password prompt will not. Delay so we don't flash the hint on the
-    // common success path.
-    _ttyHintTimer->start(2000);
-}
-
-void TmuxProcessBridge::onTtyPasswordHint()
-{
-    if (!_reconnectInProgress || _ready) {
-        return;
-    }
-    setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::ReconnectingCheckTty);
-}
-
-void TmuxProcessBridge::onReconnectHandshakeFailed(const QString &reason)
-{
-    qCWarning(KonsoleTmuxBridge) << "tmux reconnect failed:" << reason;
-    _reconnectInProgress = false;
-    _handshakeTimer->stop();
-    _ttyHintTimer->stop();
-
-    if (looksLikeSessionGone(reason)) {
-        teardown();
-        return;
-    }
-
-    if (shouldAutoReconnect()) {
-        setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Reconnecting);
-        scheduleAutoReconnect();
-        return;
-    }
-
-    setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner::Disconnected);
-}
-
-void TmuxProcessBridge::scheduleAutoReconnect()
-{
-    const int shift = qBound(0, _autoReconnectAttempts - 1, 3);
-    const int delayMs = 1000 * (1 << shift);
-    QTimer::singleShot(delayMs, this, [this]() {
-        if (_ready || learnedSessionName().isEmpty()) {
-            return;
-        }
-        beginReconnect();
-    });
-}
-
-bool TmuxProcessBridge::shouldAutoReconnect() const
-{
-    if (_manualReconnect || learnedSessionName().isEmpty()) {
-        return false;
-    }
-    if (!_rshCommand.isEmpty()) {
-        return _autoReconnectAttempts == 0;
-    }
-    return _autoReconnectAttempts < maxLocalAutoReconnects;
-}
-
-bool TmuxProcessBridge::hasControllingTty()
-{
-    if (qEnvironmentVariableIntValue("KMUX_ASSUME_CONTROLLING_TTY") > 0) {
-        return true;
-    }
-    const int fd = ::open("/dev/tty", O_RDONLY | O_NOCTTY);
-    if (fd < 0) {
-        return false;
-    }
-    ::close(fd);
-    return true;
-}
-
-bool TmuxProcessBridge::looksLikeSessionGone(const QString &reason)
-{
-    const QString lower = reason.toLower();
-    return lower.contains(QLatin1String("no sessions")) || lower.contains(QLatin1String("no current target"))
-        || lower.contains(QLatin1String("can't find session")) || lower.contains(QLatin1String("no such session"))
-        || lower.contains(QLatin1String("session not found"));
-}
-
-void TmuxProcessBridge::setViewsTmuxUnresponsive(bool unresponsive)
-{
-    setViewsConnectionBanner(unresponsive ? TerminalDisplay::TmuxConnectionBanner::Unresponsive : TerminalDisplay::TmuxConnectionBanner::Hidden);
-}
-
-void TmuxProcessBridge::setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner banner)
+void TmuxProcessBridge::setViewsConnectionBanner(TmuxConnectionBanner banner)
 {
     if (_viewManager == nullptr) {
         return;
