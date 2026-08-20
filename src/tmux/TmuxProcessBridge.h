@@ -61,7 +61,8 @@ public:
 
     /// Kill a hung/dead client and attach-session to the learned session name.
     void requestReconnect();
-    /// Handshake deadline for reconnect attempts (not first launch). 0 disables.
+    /// Handshake deadline for reconnect attempts when there is no controlling
+    /// TTY (not first launch; not interactive password prompts). 0 disables.
     void setHandshakeTimeoutMs(int ms);
 
 Q_SIGNALS:
@@ -95,6 +96,7 @@ private:
     void onReconnectHandshakeFailed(const QString &reason);
     bool shouldAutoReconnect() const;
     static bool looksLikeSessionGone(const QString &reason);
+    static bool hasControllingTty();
     QString learnedSessionName() const;
     void scheduleAutoReconnect();
 

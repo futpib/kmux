@@ -430,7 +430,12 @@ void TmuxProcessBridge::beginReconnect()
         return;
     }
     createGateway(false);
-    if (_handshakeTimeoutMs > 0) {
+    // First launch already waits forever so an --rsh ssh password prompt can
+    // sit on the controlling TTY. Reconnect must do the same when we still
+    // have that TTY — otherwise the 8s handshake timer kills ssh mid-prompt.
+    // No TTY (.desktop / daemon) keeps the deadline so a hung client cannot
+    // sit on "Reconnecting…" forever.
+    if (_handshakeTimeoutMs > 0 && !hasControllingTty()) {
         _handshakeTimer->start(_handshakeTimeoutMs);
     }
 }
@@ -489,6 +494,16 @@ bool TmuxProcessBridge::shouldAutoReconnect() const
         return _autoReconnectAttempts == 0;
     }
     return _autoReconnectAttempts < maxLocalAutoReconnects;
+}
+
+bool TmuxProcessBridge::hasControllingTty()
+{
+    const int fd = ::open("/dev/tty", O_RDONLY | O_NOCTTY);
+    if (fd < 0) {
+        return false;
+    }
+    ::close(fd);
+    return true;
 }
 
 bool TmuxProcessBridge::looksLikeSessionGone(const QString &reason)
