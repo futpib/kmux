@@ -24,6 +24,8 @@ class TmuxPaneManager : public QObject
 public:
     explicit TmuxPaneManager(TmuxGateway *gateway, QObject *parent = nullptr);
 
+    void setGateway(TmuxGateway *gateway);
+
     Session *createPaneSession(int paneId);
     void destroyPaneSession(int paneId);
     void destroyAllPaneSessions();

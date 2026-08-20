@@ -19,14 +19,17 @@ namespace Konsole
 
 class TmuxGateway;
 class TmuxController;
+class TmuxReconnectPolicy;
 class ViewManager;
+enum class TmuxConnectionBanner;
 
 /**
  * Spawns tmux in plain control mode (-C) as a QProcess and wires
  * its stdout/stdin to TmuxGateway and TmuxController.
  *
  * No PTY, no Session, no terminal emulation — the tmux subprocess
- * is completely hidden from the user.
+ * is completely hidden from the user. Drop/retry policy lives in
+ * TmuxReconnectPolicy.
  */
 class KONSOLEPRIVATE_EXPORT TmuxProcessBridge : public QObject
 {
@@ -57,6 +60,12 @@ public:
     QStringList command() const;
     QStringList rshCommand() const;
 
+    /// Kill a hung/dead client and attach-session to the learned session name.
+    void requestReconnect();
+    /// Handshake deadline for reconnect attempts when there is no controlling
+    /// TTY (not first launch; not interactive password prompts). 0 disables.
+    void setHandshakeTimeoutMs(int ms);
+
 Q_SIGNALS:
     void disconnected();
     /// Emitted once the tmux client sends its first %begin line — i.e. the
@@ -76,21 +85,25 @@ Q_SIGNALS:
 private:
     void onReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void teardown();
-    // Show/hide the "tmux not responding" banner on every pane of this
-    // bridge's window, driven by TmuxGateway::unresponsive()/responsive().
-    void setViewsTmuxUnresponsive(bool unresponsive);
+    void teardownSession();
+    void setViewsConnectionBanner(TmuxConnectionBanner banner);
+    void connectGatewayBridgeSignals();
+    void createGateway(bool bindController);
+    bool spawnProcess(const QStringList &command);
+    void teardownTransport();
+    void spawnReconnectClient();
+    void killControlProcess();
+    void syncPolicySessionFacts();
+    QString processExitReason(int exitCode, QProcess::ExitStatus exitStatus) const;
+    QString learnedSessionName() const;
 
     ViewManager *_viewManager;
+    TmuxReconnectPolicy *_policy = nullptr;
     QProcess *_process = nullptr;
     TmuxGateway *_gateway = nullptr;
     TmuxController *_controller = nullptr;
     QSocketNotifier *_readNotifier = nullptr;
     int _socketFd = -1;
-    // True once the gateway emitted ready(). Distinguishes a startup
-    // failure (process exits before this) from a normal post-handshake
-    // teardown in onProcessFinished().
-    bool _ready = false;
     QByteArray _readBuffer;
     // Raw stdout accumulated while still pre-handshake. _readBuffer is
     // drained line-by-line into the gateway, so it can't be relied on for
@@ -101,6 +114,7 @@ private:
     QStringList _tmuxArgs;
     QStringList _command;
     QStringList _rshCommand;
+    bool _ignoringProcessFinished = false;
 };
 
 } // namespace Konsole

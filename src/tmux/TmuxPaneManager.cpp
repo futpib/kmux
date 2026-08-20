@@ -24,6 +24,11 @@ TmuxPaneManager::TmuxPaneManager(TmuxGateway *gateway, QObject *parent)
 {
 }
 
+void TmuxPaneManager::setGateway(TmuxGateway *gateway)
+{
+    _gateway = gateway;
+}
+
 Session *TmuxPaneManager::createPaneSession(int paneId)
 {
     if (_paneToSession.contains(paneId)) {

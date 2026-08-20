@@ -6,9 +6,11 @@
 
 #include "TmuxProcessBridge.h"
 
+#include "TmuxConnectionBanner.h"
 #include "TmuxController.h"
 #include "TmuxControllerRegistry.h"
 #include "TmuxGateway.h"
+#include "TmuxReconnectPolicy.h"
 
 #include "ViewManager.h"
 #include "session/Session.h"
@@ -33,14 +35,26 @@ TmuxProcessBridge::TmuxProcessBridge(ViewManager *viewManager, QObject *parent)
     : QObject(parent)
     , _viewManager(viewManager)
 {
+    _policy = new TmuxReconnectPolicy(this);
+    connect(_policy, &TmuxReconnectPolicy::bannerChanged, this, &TmuxProcessBridge::setViewsConnectionBanner);
+    connect(_policy, &TmuxReconnectPolicy::reconnectRequested, this, &TmuxProcessBridge::spawnReconnectClient);
+    connect(_policy, &TmuxReconnectPolicy::killProcessRequested, this, &TmuxProcessBridge::killControlProcess);
+    connect(_policy, &TmuxReconnectPolicy::teardownRequested, this, &TmuxProcessBridge::teardownSession);
+    connect(_policy, &TmuxReconnectPolicy::firstLaunchFailed, this, &TmuxProcessBridge::startupFailed);
 }
 
 TmuxProcessBridge::~TmuxProcessBridge()
 {
-    if (_process && _process->state() != QProcess::NotRunning) {
-        qWarning() << "TmuxProcessBridge: destructor terminating tmux process";
-        _process->terminate();
-        _process->waitForFinished(3000);
+    disconnect(_policy, nullptr, this, nullptr);
+    _policy->abort();
+    _ignoringProcessFinished = true;
+    if (_process) {
+        disconnect(_process, nullptr, this, nullptr);
+        if (_process->state() != QProcess::NotRunning) {
+            qWarning() << "TmuxProcessBridge: destructor terminating tmux process";
+            _process->terminate();
+            _process->waitForFinished(3000);
+        }
     }
     if (_controller) {
         _controller->cleanup();
@@ -54,11 +68,27 @@ TmuxProcessBridge::~TmuxProcessBridge()
 
 bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxArgs, const QStringList &command, const QStringList &rshCommand)
 {
-    QString resolvedTmuxPath = tmuxPath;
+    _tmuxPath = tmuxPath;
+    _tmuxArgs = tmuxArgs;
+    _command = command;
+    _rshCommand = rshCommand;
+    _policy->setHasRsh(!_rshCommand.isEmpty());
+
+    if (!spawnProcess(command)) {
+        return false;
+    }
+    createGateway(true);
+    TmuxControllerRegistry::instance()->registerController(_controller);
+    return true;
+}
+
+bool TmuxProcessBridge::spawnProcess(const QStringList &command)
+{
+    QString resolvedTmuxPath = _tmuxPath;
     QString executable;
     QStringList leadingArgs;
 
-    if (rshCommand.isEmpty()) {
+    if (_rshCommand.isEmpty()) {
         if (resolvedTmuxPath.isEmpty()) {
             resolvedTmuxPath = QStandardPaths::findExecutable(QStringLiteral("tmux"));
         }
@@ -72,106 +102,93 @@ bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxAr
         if (resolvedTmuxPath.isEmpty()) {
             resolvedTmuxPath = QStringLiteral("tmux");
         }
-        executable = rshCommand.first();
-        leadingArgs = rshCommand.mid(1);
+        executable = _rshCommand.first();
+        leadingArgs = _rshCommand.mid(1);
         leadingArgs << resolvedTmuxPath;
     }
 
     _tmuxPath = resolvedTmuxPath;
-    _tmuxArgs = tmuxArgs;
-    _command = command;
-    _rshCommand = rshCommand;
 
-    // Create a socketpair for tmux's stdout. Sockets have flow control
-    // (backpressure) unlike pipes, so tmux's non-blocking writes won't
-    // get EAGAIN/EPIPE when the buffer is momentarily full.
     int fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
         return false;
     }
-    _socketFd = fds[0]; // parent reads from this end
-    int childFd = fds[1]; // child writes to this end (becomes stdout)
+    _socketFd = fds[0];
+    int childFd = fds[1];
 
-    // Set parent end non-blocking for QSocketNotifier
     fcntl(_socketFd, F_SETFL, fcntl(_socketFd, F_GETFL) | O_NONBLOCK);
 
     _process = new QProcess(this);
     _process->setProcessChannelMode(QProcess::ForwardedOutputChannel);
 
-    // In the child process, replace stdout with our socket
     _process->setChildProcessModifier([childFd, fds]() {
         dup2(childFd, STDOUT_FILENO);
         ::close(childFd);
         ::close(fds[0]);
     });
 
-    _gateway = new TmuxGateway(TmuxGateway::WriteCallback([this](const QByteArray &data) {
-                                   if (_process && _process->state() == QProcess::Running) {
-                                       _process->write(data);
-                                   }
-                               }),
-                               this);
-
-    _controller = new TmuxController(_gateway, _viewManager, this);
-
-    // Read from our socket, not from QProcess's stdout
     _readNotifier = new QSocketNotifier(_socketFd, QSocketNotifier::Read, this);
     connect(_readNotifier, &QSocketNotifier::activated, this, &TmuxProcessBridge::onReadyRead);
     connect(_process, &QProcess::finished, this, &TmuxProcessBridge::onProcessFinished);
 
-    connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
-    connect(_gateway, &TmuxGateway::ready, this, [this]() {
-        _ready = true;
-        _startupOutput.clear(); // diagnostic buffer is only needed pre-handshake
-    });
-    connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
-    connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxProcessBridge::teardown);
-    // A silently hung control link (e.g. dropped ssh) is invisible at the
-    // process level — no EOF, so teardown never fires. The gateway's
-    // command-timeout detector is the only signal; surface it as an inline
-    // banner on every pane and clear it when traffic resumes.
-    connect(_gateway, &TmuxGateway::unresponsive, this, [this]() {
-        setViewsTmuxUnresponsive(true);
-    });
-    connect(_gateway, &TmuxGateway::responsive, this, [this]() {
-        setViewsTmuxUnresponsive(false);
-    });
-
-    TmuxControllerRegistry::instance()->registerController(_controller);
-
     QStringList args = leadingArgs;
-    args << tmuxArgs;
+    args << _tmuxArgs;
     if (KonsoleTmuxBridge().isDebugEnabled()) {
         args << QStringLiteral("-vvvv");
-        // tmux's -v writes tmux-{client,server}-<PID>.log into its CWD,
-        // which would otherwise be wherever the user launched kmux —
-        // typically a project tree, where the files are noise. Park
-        // them under $XDG_STATE_HOME/kmux/tmux-logs/ instead.
         const QString logDir = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + QStringLiteral("/kmux/tmux-logs");
         if (QDir().mkpath(logDir)) {
             _process->setWorkingDirectory(logDir);
         }
     }
-    // `-u` forces tmux to set CLIENT_UTF8 unconditionally. Without it tmux
-    // probes LC_ALL/LC_CTYPE/LANG for "UTF-8" and, when none match (e.g.
-    // when invoked over `--rsh ssh ...` to a host whose sshd doesn't
-    // forward LC_*), runs `utf8_sanitize` on every control-mode response
-    // — turning non-ASCII bytes into `_`. That mangles `#{pane_title}`
-    // (and anything else with multi-byte chars) before we ever see it.
-    // The control-mode protocol is UTF-8 capable, but it's opt-in.
     args << QStringLiteral("-u");
     args << QStringLiteral("-C");
     args << command;
     _process->start(executable, args);
 
-    // Close the child's end in the parent after fork
     ::close(childFd);
 
     if (!_process->waitForStarted(5000)) {
         return false;
     }
 
+    _readBuffer.clear();
+    _startupOutput.clear();
+    _policy->onSpawnStarted();
     return true;
+}
+
+void TmuxProcessBridge::createGateway(bool bindController)
+{
+    _gateway = new TmuxGateway(TmuxGateway::WriteCallback([this](const QByteArray &data) {
+                                   if (_process && _process->state() == QProcess::Running) {
+                                       _process->write(data);
+                                   }
+                               }),
+                               this);
+    if (bindController) {
+        _controller = new TmuxController(_gateway, _viewManager, this);
+    } else if (_controller) {
+        _controller->rebindGateway(_gateway);
+    }
+    connectGatewayBridgeSignals();
+}
+
+void TmuxProcessBridge::connectGatewayBridgeSignals()
+{
+    connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
+    connect(_gateway, &TmuxGateway::ready, this, [this]() {
+        _startupOutput.clear();
+        if (_controller) {
+            _controller->clearExplicitDetach();
+        }
+        _policy->onReady();
+    });
+    connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
+    connect(_gateway, &TmuxGateway::exitReceived, this, [this](const QString &) {
+        _policy->onExitNotification();
+    });
+    connect(_gateway, &TmuxGateway::unresponsive, _policy, &TmuxReconnectPolicy::onUnresponsive);
+    connect(_gateway, &TmuxGateway::responsive, _policy, &TmuxReconnectPolicy::onResponsive);
 }
 
 TmuxController *TmuxProcessBridge::controller() const
@@ -199,6 +216,23 @@ QStringList TmuxProcessBridge::rshCommand() const
     return _rshCommand;
 }
 
+void TmuxProcessBridge::setHandshakeTimeoutMs(int ms)
+{
+    _policy->setHandshakeTimeoutMs(ms);
+}
+
+QString TmuxProcessBridge::learnedSessionName() const
+{
+    return _controller ? _controller->sessionName() : QString();
+}
+
+void TmuxProcessBridge::syncPolicySessionFacts()
+{
+    _policy->setHasSessionName(!learnedSessionName().isEmpty());
+    _policy->setExplicitDetach(_controller && _controller->explicitDetach());
+    _policy->setHasRsh(!_rshCommand.isEmpty());
+}
+
 void TmuxProcessBridge::onReadyRead()
 {
     char buf[4096];
@@ -206,7 +240,7 @@ void TmuxProcessBridge::onReadyRead()
         ssize_t n = read(_socketFd, buf, sizeof(buf));
         if (n > 0) {
             _readBuffer.append(buf, n);
-            if (!_ready) {
+            if (!_policy->isReady()) {
                 _startupOutput.append(buf, n);
             }
         } else {
@@ -224,20 +258,45 @@ void TmuxProcessBridge::onReadyRead()
         QByteArray line = _readBuffer.left(pos);
         _readBuffer.remove(0, pos + 1);
         qCDebug(KonsoleTmuxBridge) << "<<" << line;
-        _gateway->processLine(line);
+        if (_gateway) {
+            _gateway->processLine(line);
+        }
     }
+}
+
+QString TmuxProcessBridge::processExitReason(int exitCode, QProcess::ExitStatus exitStatus) const
+{
+    const QString out = QString::fromUtf8(_startupOutput).trimmed();
+    const QString err = _process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString();
+    QString reason = QStringLiteral("exit code %1").arg(exitCode);
+    if (exitStatus == QProcess::CrashExit) {
+        reason += QStringLiteral(" (process crashed)");
+    }
+    if (!out.isEmpty()) {
+        reason += QStringLiteral("\n  stdout: %1").arg(out);
+    }
+    if (!err.isEmpty()) {
+        reason += QStringLiteral("\n  stderr: %1").arg(err);
+    }
+    if (out.isEmpty() && err.isEmpty()) {
+        reason += QStringLiteral(" (no output)");
+    }
+    return reason;
 }
 
 void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    // Drain any remaining data from the socket before tearing down
+    if (_ignoringProcessFinished) {
+        return;
+    }
+
     char buf[4096];
     ssize_t total = 0;
     for (;;) {
         ssize_t n = read(_socketFd, buf, sizeof(buf));
         if (n > 0) {
             _readBuffer.append(buf, n);
-            if (!_ready) {
+            if (!_policy->isReady()) {
                 _startupOutput.append(buf, n);
             }
             total += n;
@@ -248,40 +307,11 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
     qWarning() << "TmuxProcessBridge: process finished, exitCode=" << exitCode << "exitStatus=" << exitStatus << "drained=" << total << "bytes"
                << "readBuffer=" << _readBuffer.left(500);
 
-    // If the process died before the gateway ever handshook, this is a
-    // startup failure, not a teardown: tmux never came up, so there is no
-    // session to clean and — critically — no ready() will ever fire to
-    // release a deferred window->show(). Surfacing startupFailed() lets the
-    // launcher report the error and quit instead of idling forever.
-    if (!_ready) {
-        // Surface both streams of the failing command so the user can see
-        // *why* it failed (e.g. ssh's "Could not resolve hostname" on stderr,
-        // or a wrapper's message on stdout). stdout came through the socket
-        // into _startupOutput; stderr is captured separately by QProcess.
-        const QString out = QString::fromUtf8(_startupOutput).trimmed();
-        const QString err = _process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString();
-
-        QString reason = QStringLiteral("exit code %1").arg(exitCode);
-        if (exitStatus == QProcess::CrashExit) {
-            reason += QStringLiteral(" (process crashed)");
-        }
-        if (!out.isEmpty()) {
-            reason += QStringLiteral("\n  stdout: %1").arg(out);
-        }
-        if (!err.isEmpty()) {
-            reason += QStringLiteral("\n  stderr: %1").arg(err);
-        }
-        if (out.isEmpty() && err.isEmpty()) {
-            reason += QStringLiteral(" (no output)");
-        }
-        Q_EMIT startupFailed(reason);
-        return;
-    }
-
-    teardown();
+    syncPolicySessionFacts();
+    _policy->onProcessFinished(processExitReason(exitCode, exitStatus));
 }
 
-void TmuxProcessBridge::teardown()
+void TmuxProcessBridge::teardownSession()
 {
     if (_controller) {
         _controller->cleanup();
@@ -289,7 +319,78 @@ void TmuxProcessBridge::teardown()
     Q_EMIT disconnected();
 }
 
-void TmuxProcessBridge::setViewsTmuxUnresponsive(bool unresponsive)
+void TmuxProcessBridge::teardownTransport()
+{
+    _ignoringProcessFinished = true;
+    if (_readNotifier) {
+        _readNotifier->setEnabled(false);
+        _readNotifier->setParent(nullptr);
+        _readNotifier->deleteLater();
+        _readNotifier = nullptr;
+    }
+    if (_socketFd >= 0) {
+        close(_socketFd);
+        _socketFd = -1;
+    }
+    if (_gateway) {
+        disconnect(_gateway, nullptr, this, nullptr);
+        if (_controller) {
+            disconnect(_gateway, nullptr, _controller, nullptr);
+        }
+        _gateway->setParent(nullptr);
+        _gateway->deleteLater();
+        _gateway = nullptr;
+    }
+    if (_process) {
+        disconnect(_process, nullptr, this, nullptr);
+        if (_process->state() != QProcess::NotRunning) {
+            _process->kill();
+            _process->waitForFinished(2000);
+        }
+        _process->setParent(nullptr);
+        _process->deleteLater();
+        _process = nullptr;
+    }
+    _ignoringProcessFinished = false;
+    _readBuffer.clear();
+}
+
+void TmuxProcessBridge::requestReconnect()
+{
+    syncPolicySessionFacts();
+    const bool running = _process && _process->state() != QProcess::NotRunning;
+    _policy->requestReconnect(running);
+}
+
+void TmuxProcessBridge::spawnReconnectClient()
+{
+    const QString sessionName = learnedSessionName();
+    if (sessionName.isEmpty() || _controller == nullptr) {
+        teardownSession();
+        return;
+    }
+
+    teardownTransport();
+
+    const QStringList attachCmd = {QStringLiteral("attach-session"), QStringLiteral("-t"), sessionName};
+    if (!spawnProcess(attachCmd)) {
+        _policy->onHandshakeFailed(QStringLiteral("failed to spawn tmux client"));
+        return;
+    }
+    createGateway(false);
+    _policy->armReconnectWatchdogs();
+}
+
+void TmuxProcessBridge::killControlProcess()
+{
+    if (_process && _process->state() != QProcess::NotRunning) {
+        _process->kill();
+        return;
+    }
+    _policy->onHandshakeFailed(QStringLiteral("handshake timed out"));
+}
+
+void TmuxProcessBridge::setViewsConnectionBanner(TmuxConnectionBanner banner)
 {
     if (_viewManager == nullptr) {
         return;
@@ -298,7 +399,8 @@ void TmuxProcessBridge::setViewsTmuxUnresponsive(bool unresponsive)
     for (Session *session : sessions) {
         const auto views = session->views();
         for (TerminalDisplay *view : views) {
-            view->setTmuxUnresponsive(unresponsive);
+            view->setTmuxConnectionBanner(banner);
+            connect(view, &TerminalDisplay::tmuxReconnectRequested, this, &TmuxProcessBridge::requestReconnect, Qt::UniqueConnection);
         }
     }
 }

@@ -208,6 +208,7 @@ target_sources(konsoleprivate PRIVATE
     tmux/TmuxController.cpp
     tmux/TmuxControllerRegistry.cpp
     tmux/TmuxProcessBridge.cpp
+    tmux/TmuxReconnectPolicy.cpp
     tmux/TmuxTreeModel.cpp
     tmux/TmuxTreeSwitcher.cpp
     tmux/TmuxPrefixPalette.cpp

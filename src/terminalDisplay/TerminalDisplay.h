@@ -22,6 +22,7 @@
 #include "ScrollState.h"
 #include "colorscheme/ColorScheme.h"
 #include "konsoleprivate_export.h"
+#include "tmux/TmuxConnectionBanner.h"
 #include "widgets/TerminalHeaderBar.h"
 
 #include "TerminalBell.h"
@@ -419,6 +420,7 @@ public:
     // only user-visible signal) and hide it again when traffic resumes. Uses
     // the same lazily-created KMessageWidget mechanism as the read-only banner.
     void setTmuxUnresponsive(bool unresponsive);
+    void setTmuxConnectionBanner(TmuxConnectionBanner banner);
 
     void setSelectMode(bool readonly);
 
@@ -510,6 +512,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void requestToggleExpansion();
     void requestMoveToNewTab(TerminalDisplay *display);
+    void tmuxReconnectRequested();
 
     /**
      * Emitted when the user presses a key whilst the terminal widget has focus.

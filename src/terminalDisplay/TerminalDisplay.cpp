@@ -2832,23 +2832,65 @@ void TerminalDisplay::updateReadOnlyState(bool readonly)
 
 void TerminalDisplay::setTmuxUnresponsive(bool unresponsive)
 {
-    if (unresponsive) {
-        // Lazily create the banner the first time the link goes quiet.
-        if (_tmuxUnresponsiveMessageWidget == nullptr) {
-            _tmuxUnresponsiveMessageWidget = createMessageWidget(i18n("The tmux connection is not responding — it may have dropped."));
-            // objectName lets the autotests findChild this specific banner
-            // (there can be more than one KMessageWidget on a display).
-            _tmuxUnresponsiveMessageWidget->setObjectName(QStringLiteral("tmuxUnresponsiveBanner"));
-            _tmuxUnresponsiveMessageWidget->setMessageType(KMessageWidget::Warning);
-            _tmuxUnresponsiveMessageWidget->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
-            // Non-dismissable: it auto-clears when the link recovers, and a
-            // stale "dismissed" banner would misrepresent a still-dead link.
-            _tmuxUnresponsiveMessageWidget->setCloseButtonVisible(false);
+    setTmuxConnectionBanner(unresponsive ? TmuxConnectionBanner::Unresponsive : TmuxConnectionBanner::Hidden);
+}
+
+void TerminalDisplay::setTmuxConnectionBanner(TmuxConnectionBanner banner)
+{
+    if (banner == TmuxConnectionBanner::Hidden) {
+        if (_tmuxUnresponsiveMessageWidget != nullptr) {
+            _tmuxUnresponsiveMessageWidget->animatedHide();
         }
-        _tmuxUnresponsiveMessageWidget->animatedShow();
-    } else if (_tmuxUnresponsiveMessageWidget != nullptr) {
-        _tmuxUnresponsiveMessageWidget->animatedHide();
+        return;
     }
+
+    if (_tmuxUnresponsiveMessageWidget == nullptr) {
+        _tmuxUnresponsiveMessageWidget = createMessageWidget(QString());
+        // objectName lets the autotests findChild this specific banner
+        // (there can be more than one KMessageWidget on a display).
+        _tmuxUnresponsiveMessageWidget->setObjectName(QStringLiteral("tmuxUnresponsiveBanner"));
+        _tmuxUnresponsiveMessageWidget->setMessageType(KMessageWidget::Warning);
+        _tmuxUnresponsiveMessageWidget->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
+        // Non-dismissable: it auto-clears when the link recovers, and a
+        // stale "dismissed" banner would misrepresent a still-dead link.
+        _tmuxUnresponsiveMessageWidget->setCloseButtonVisible(false);
+        auto *retry = new QAction(i18n("Retry"), _tmuxUnresponsiveMessageWidget);
+        retry->setObjectName(QStringLiteral("tmuxReconnectAction"));
+        connect(retry, &QAction::triggered, this, &TerminalDisplay::tmuxReconnectRequested);
+        _tmuxUnresponsiveMessageWidget->addAction(retry);
+    }
+
+    QString text;
+    bool showRetry = false;
+    switch (banner) {
+    case TmuxConnectionBanner::Unresponsive:
+        text = i18n("The tmux connection is not responding — it may have dropped.");
+        showRetry = true;
+        break;
+    case TmuxConnectionBanner::Reconnecting:
+        text = i18n("Reconnecting to tmux…");
+        showRetry = false;
+        break;
+    case TmuxConnectionBanner::ReconnectingCheckTty:
+        text = i18n("Reconnecting to tmux… ssh/rsh may be waiting for a password in the terminal that launched kmux.");
+        showRetry = false;
+        break;
+    case TmuxConnectionBanner::Disconnected:
+        text = i18n("The tmux connection dropped.");
+        showRetry = true;
+        break;
+    case TmuxConnectionBanner::Hidden:
+        break;
+    }
+    _tmuxUnresponsiveMessageWidget->setText(text);
+    const auto actions = _tmuxUnresponsiveMessageWidget->actions();
+    for (QAction *action : actions) {
+        if (action->objectName() == QLatin1String("tmuxReconnectAction")) {
+            action->setVisible(showRetry);
+            action->setEnabled(showRetry);
+        }
+    }
+    _tmuxUnresponsiveMessageWidget->animatedShow();
 }
 
 #define SELECT_BY_MODIFIERS                                                                                                                                    \

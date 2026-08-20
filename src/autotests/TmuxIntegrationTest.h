@@ -123,6 +123,13 @@ private Q_SLOTS:
     void testClosePaneFromSessionControllerCancelled();
     void testCloseTabFromContainerConfirmed();
     void testTabTextPreservesEmojiOverMockRshStrippingLocale();
+    void testTransportDeathAutoReconnects();
+    void testUnresponsiveBannerRetryReconnects();
+    void testKillSessionDoesNotInventNewSession();
+    void testDetachedWindowReconnectKeepsShowOnlyWindow();
+    void testSiblingWindowUnaffectedByReconnect();
+    void testNamelessLaunchReconnectsViaLearnedSessionName();
+    void testReconnectBannerHintsTtyPassword();
 
 private:
     QTemporaryDir m_tmuxTmpDir;

@@ -43,6 +43,8 @@ class TmuxPaneStateRecovery : public QObject
 public:
     TmuxPaneStateRecovery(TmuxGateway *gateway, TmuxPaneManager *paneManager, QObject *parent = nullptr);
 
+    void setGateway(TmuxGateway *gateway);
+
     void queryPaneStates(int windowId);
     void setPaneDimensions(int paneId, int width, int height);
     void capturePaneHistory(int paneId);

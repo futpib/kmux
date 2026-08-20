@@ -42,6 +42,13 @@ public:
     void initialize();
     void cleanup();
     void sendClientSize();
+    // Swap the control-mode transport after a drop. Keeps pane sessions, the
+    // learned session name, and hide/showOnlyWindow restrictions so reconnect
+    // can reattach without closing the MainWindow or duplicating tabs.
+    void rebindGateway(TmuxGateway *gateway);
+    bool explicitDetach() const;
+    void clearExplicitDetach();
+    int restrictedWindowId() const;
 
     enum class NewWindowPlacement {
         AtEnd,
@@ -186,6 +193,7 @@ private:
     // Enable tmux control-mode flow control (pause-after) so a suspended/stalled
     // client can't wedge the server. Idempotent; safe to call on every init.
     void enableFlowControl();
+    void connectGatewaySignals();
 
     TmuxGateway *_gateway;
     ViewManager *_viewManager;
@@ -221,6 +229,7 @@ private:
     bool _reorderingTabs = false;
     bool _tabOrderDirty = false;
     bool _tabOrderSyncInFlight = false;
+    bool _explicitDetach = false;
 };
 
 } // namespace Konsole
