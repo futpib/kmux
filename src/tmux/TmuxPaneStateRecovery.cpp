@@ -23,6 +23,11 @@ TmuxPaneStateRecovery::TmuxPaneStateRecovery(TmuxGateway *gateway, TmuxPaneManag
 {
 }
 
+void TmuxPaneStateRecovery::setGateway(TmuxGateway *gateway)
+{
+    _gateway = gateway;
+}
+
 namespace
 {
 TmuxFormatSpec paneStateSpec()

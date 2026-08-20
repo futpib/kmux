@@ -11,6 +11,7 @@
 #include <KActionCollection>
 #include <KMessageBox>
 #include <KMessageWidget>
+#include <QAction>
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
@@ -8397,6 +8398,354 @@ void TmuxIntegrationTest::testSplitShortcutFocusInitialSplitAgain()
     TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
+}
+
+namespace
+{
+QProcess *bridgeProcess(TmuxProcessBridge *bridge)
+{
+    return bridge ? bridge->findChild<QProcess *>() : nullptr;
+}
+
+bool connectionBannerVisibleTo(TerminalDisplay *view)
+{
+    if (view == nullptr) {
+        return false;
+    }
+    auto *banner = view->findChild<KMessageWidget *>(QStringLiteral("tmuxUnresponsiveBanner"));
+    return banner != nullptr && banner->isVisibleTo(view);
+}
+
+QAction *reconnectActionFor(TerminalDisplay *view)
+{
+    if (view == nullptr) {
+        return nullptr;
+    }
+    auto *banner = view->findChild<KMessageWidget *>(QStringLiteral("tmuxUnresponsiveBanner"));
+    if (banner == nullptr) {
+        return nullptr;
+    }
+    const auto actions = banner->actions();
+    for (QAction *action : actions) {
+        if (action->objectName() == QLatin1String("tmuxReconnectAction")) {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
+TerminalDisplay *firstViewOf(MainWindow *mw)
+{
+    if (mw == nullptr || mw->viewManager()->sessions().isEmpty()) {
+        return nullptr;
+    }
+    const auto views = mw->viewManager()->sessions().first()->views();
+    return views.isEmpty() ? nullptr : views.first();
+}
+} // namespace
+
+void TmuxIntegrationTest::testTransportDeathAutoReconnects()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    QPointer<MainWindow> mwGuard(attach.mw);
+
+    QProcess sendKeys;
+    sendKeys.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("echo RECONNECT_MARKER"),
+                    QStringLiteral("Enter")});
+    QVERIFY(sendKeys.waitForFinished(5000));
+
+    Session *paneSession = attach.mw->viewManager()->sessions().first();
+    QVERIFY(paneSession);
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("RECONNECT_MARKER")), 10000);
+
+    auto *proc = bridgeProcess(attach.bridge);
+    QVERIFY(proc);
+    const QString sessionName = attach.bridge->controller()->sessionName();
+    QVERIFY(!sessionName.isEmpty());
+    proc->kill();
+
+    QTRY_VERIFY_WITH_TIMEOUT(mwGuard && attach.mw->viewManager()->sessions().count() >= 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!connectionBannerVisibleTo(firstViewOf(attach.mw)), 10000);
+
+    QCOMPARE(attach.bridge->controller()->sessionName(), sessionName);
+    paneSession = attach.mw->viewManager()->sessions().first();
+    QVERIFY(paneSession);
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("RECONNECT_MARKER")), 10000);
+
+    QProcess listSessions;
+    listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
+    QVERIFY(listSessions.waitForFinished(5000));
+    QCOMPARE(listSessions.exitCode(), 0);
+    QVERIFY(QString::fromUtf8(listSessions.readAllStandardOutput()).contains(ctx.sessionName));
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testUnresponsiveBannerRetryReconnects()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString killPath = QStandardPaths::findExecutable(QStringLiteral("kill"));
+    if (killPath.isEmpty()) {
+        QSKIP("kill(1) not found.");
+    }
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    const QString pidFile = m_tmuxTmpDir.path() + QStringLiteral("/retry-relay.pid");
+    const QString wrapper = m_tmuxTmpDir.path() + QStringLiteral("/retry-rsh.sh");
+    {
+        QFile f(wrapper);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("#!/bin/bash\n\"$@\" | { echo $BASHPID > \"");
+        f.write(pidFile.toUtf8());
+        f.write("\"; exec cat; }\n");
+        f.close();
+    }
+    QVERIFY(QFile::setPermissions(wrapper, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    QVERIFY(bridge->start(tmuxPath,
+                          {QStringLiteral("-S"), ctx.socketPath},
+                          {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName},
+                          {wrapper}));
+
+    auto *container = mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container->count() >= 1, 10000);
+
+    auto *controller = bridge->controller();
+    QVERIFY(controller);
+    TmuxGateway *gateway = controller->gateway();
+    QVERIFY(gateway);
+    gateway->setCommandTimeoutMs(600);
+
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(pidFile), 10000);
+    qint64 relayPid = 0;
+    {
+        QFile f(pidFile);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        relayPid = QString::fromUtf8(f.readAll()).trimmed().toLongLong();
+    }
+    QVERIFY(relayPid > 0);
+
+    QCOMPARE(QProcess::execute(killPath, {QStringLiteral("-STOP"), QString::number(relayPid)}), 0);
+    gateway->sendCommand(TmuxCommand(QStringLiteral("display-message")));
+
+    TerminalDisplay *view = firstViewOf(mw);
+    QVERIFY(view);
+    QTRY_VERIFY_WITH_TIMEOUT(connectionBannerVisibleTo(view), 5000);
+
+    QAction *retry = reconnectActionFor(view);
+    QVERIFY2(retry, "Retry action missing on unresponsive banner");
+    QVERIFY(retry->isEnabled());
+    retry->trigger();
+
+    QTRY_VERIFY_WITH_TIMEOUT(mwGuard && mw->viewManager()->sessions().count() >= 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!connectionBannerVisibleTo(firstViewOf(mw)), 10000);
+    QCOMPARE(bridge->controller()->sessionName(), ctx.sessionName);
+
+    delete mwGuard.data();
+}
+
+void TmuxIntegrationTest::testKillSessionDoesNotInventNewSession()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    QPointer<MainWindow> mwGuard(attach.mw);
+
+    QProcess killSession;
+    killSession.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-session"), QStringLiteral("-t"), ctx.sessionName});
+    QVERIFY(killSession.waitForFinished(5000));
+    QCOMPARE(killSession.exitCode(), 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!mwGuard, 10000);
+
+    QProcess listSessions;
+    listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
+    QVERIFY(listSessions.waitForFinished(5000));
+    const QString listed = QString::fromUtf8(listSessions.readAllStandardOutput());
+    QVERIFY2(!listed.contains(ctx.sessionName), qPrintable(QStringLiteral("kill-session invented a replacement session: %1").arg(listed)));
+
+    delete mwGuard.data();
+}
+
+void TmuxIntegrationTest::testDetachedWindowReconnectKeepsShowOnlyWindow()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto *app = new Application(makeTestAppParser(), {});
+    TmuxTestFixture::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    QProcess newWindow;
+    newWindow.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-t"), ctx.sessionName});
+    QVERIFY(newWindow.waitForFinished(5000));
+    QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->activeContainer()->count(), 2, 10000);
+
+    QAction *detachTab = attach.mw->actionCollection()->action(QStringLiteral("detach-tab"));
+    QVERIFY(detachTab);
+    attach.mw->viewManager()->activeContainer()->setCurrentIndex(1, Qt::OtherFocusReason);
+    detachTab->trigger();
+
+    QPointer<MainWindow> detachedMw;
+    QTRY_VERIFY_WITH_TIMEOUT((detachedMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!detachedMw->viewManager()->sessions().isEmpty(), 10000);
+    QCOMPARE(detachedMw->viewManager()->activeContainer()->count(), 1);
+
+    auto *detachedBridge = detachedMw->findChild<TmuxProcessBridge *>();
+    QVERIFY(detachedBridge);
+    QVERIFY(detachedBridge->controller());
+    QVERIFY(detachedBridge->controller()->restrictedWindowId() >= 0);
+
+    auto *proc = bridgeProcess(detachedBridge);
+    QVERIFY(proc);
+    proc->kill();
+
+    QTRY_VERIFY_WITH_TIMEOUT(detachedMw && detachedMw->viewManager()->activeContainer()->count() == 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!connectionBannerVisibleTo(firstViewOf(detachedMw)), 10000);
+    QCOMPARE(detachedMw->viewManager()->activeContainer()->count(), 1);
+    QVERIFY(detachedBridge->controller()->restrictedWindowId() >= 0);
+    QCOMPARE(attach.mw->viewManager()->activeContainer()->count(), 1);
+
+    delete detachedMw.data();
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testSiblingWindowUnaffectedByReconnect()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto *app = new Application(makeTestAppParser(), {});
+    TmuxTestFixture::AttachResult attach;
+    attachKonsoleViaApp(*app, tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    QAction *newWindowAction = attach.mw->actionCollection()->action(QStringLiteral("new-window"));
+    QVERIFY(newWindowAction);
+    newWindowAction->trigger();
+
+    QPointer<MainWindow> newMw;
+    QTRY_VERIFY_WITH_TIMEOUT((newMw = findOtherMainWindow(attach.mw)) != nullptr, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!newMw->viewManager()->sessions().isEmpty(), 10000);
+
+    Session *sourceSession = attach.mw->viewManager()->sessions().first();
+    QVERIFY(sourceSession);
+    const QString sourceName = attach.bridge->controller()->sessionName();
+
+    auto *newBridge = newMw->findChild<TmuxProcessBridge *>();
+    QVERIFY(newBridge);
+    auto *proc = bridgeProcess(newBridge);
+    QVERIFY(proc);
+    proc->kill();
+
+    QTRY_VERIFY_WITH_TIMEOUT(newMw && newMw->viewManager()->sessions().count() >= 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!connectionBannerVisibleTo(firstViewOf(newMw)), 10000);
+
+    QVERIFY(attach.mw);
+    QVERIFY(!attach.mw->viewManager()->sessions().isEmpty());
+    QCOMPARE(attach.bridge->controller()->sessionName(), sourceName);
+    QVERIFY(bridgeProcess(attach.bridge));
+    QCOMPARE(bridgeProcess(attach.bridge)->state(), QProcess::Running);
+
+    delete newMw.data();
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testNamelessLaunchReconnectsViaLearnedSessionName()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    // No -s / -t in the launch command: attach to the only session and learn its name.
+    QVERIFY(bridge->start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath}, {QStringLiteral("attach-session")}));
+
+    auto *container = mw->viewManager()->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container->count() >= 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!bridge->controller()->sessionName().isEmpty(), 10000);
+    QCOMPARE(bridge->controller()->sessionName(), ctx.sessionName);
+
+    const QString sessionB = ctx.sessionName + QStringLiteral("-b");
+    QProcess newSession;
+    newSession.start(tmuxPath,
+                     {QStringLiteral("-S"),
+                      ctx.socketPath,
+                      QStringLiteral("new-session"),
+                      QStringLiteral("-d"),
+                      QStringLiteral("-s"),
+                      sessionB,
+                      QStringLiteral("sleep 60")});
+    QVERIFY(newSession.waitForFinished(5000));
+    QCOMPARE(newSession.exitCode(), 0);
+
+    auto *proc = bridgeProcess(bridge);
+    QVERIFY(proc);
+    proc->kill();
+
+    QTRY_VERIFY_WITH_TIMEOUT(mwGuard && mw->viewManager()->sessions().count() >= 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!connectionBannerVisibleTo(firstViewOf(mw)), 10000);
+    QCOMPARE(bridge->controller()->sessionName(), ctx.sessionName);
+
+    QProcess listSessions;
+    listSessions.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("list-sessions")});
+    QVERIFY(listSessions.waitForFinished(5000));
+    const QString listed = QString::fromUtf8(listSessions.readAllStandardOutput());
+    QVERIFY(listed.contains(ctx.sessionName));
+    QVERIFY(listed.contains(sessionB));
+
+    delete mwGuard.data();
 }
 
 QTEST_MAIN(TmuxIntegrationTest)

@@ -28,6 +28,8 @@ class TmuxResizeCoordinator : public QObject
 public:
     TmuxResizeCoordinator(TmuxGateway *gateway, TmuxController *controller, TmuxPaneManager *paneManager, TmuxLayoutManager *layoutManager, ViewManager *viewManager, QObject *parent = nullptr);
 
+    void setGateway(TmuxGateway *gateway);
+
     void onPaneViewSizeChanged(bool suppressResize);
     void onSplitterMoved(ViewSplitter *splitter);
     void sendClientSize();

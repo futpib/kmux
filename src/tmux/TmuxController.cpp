@@ -48,22 +48,11 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     , _resizeCoordinator(new TmuxResizeCoordinator(gateway, this, _paneManager, _layoutManager, viewManager, this))
     , _stateRecovery(new TmuxPaneStateRecovery(gateway, _paneManager, this))
 {
-    // Gateway → controller slots
-    connect(_gateway, &TmuxGateway::outputReceived, _paneManager, &TmuxPaneManager::deliverOutput);
-    connect(_gateway, &TmuxGateway::layoutChanged, this, &TmuxController::onLayoutChanged);
-    connect(_gateway, &TmuxGateway::windowAdded, this, &TmuxController::onWindowAdded);
-    connect(_gateway, &TmuxGateway::windowClosed, this, &TmuxController::onWindowClosed);
-    connect(_gateway, &TmuxGateway::windowRenamed, this, &TmuxController::onWindowRenamed);
-    connect(_gateway, &TmuxGateway::windowPaneChanged, this, &TmuxController::onWindowPaneChanged);
-    connect(_gateway, &TmuxGateway::sessionChanged, this, &TmuxController::onSessionChanged);
-    connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::onSessionWindowChanged);
-    connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::onSubscriptionChanged);
-    connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
+    connectGatewaySignals();
     // tmux pauses a pane (control-mode flow control) when our client falls more
     // than pause-after seconds behind — e.g. the laptop slept over --rsh. We
     // resume it and resync its contents (see onPanePaused). %continue then
     // arrives once tmux resumes; it needs no action of its own.
-    connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
     // Do not turn %pane-mode-changed into local UI. tmux broadcasts it without
     // identifying the client that entered the mode, so it commonly belongs to
     // a separate ordinary `tmux attach`. kmux-owned choose-tree bindings are
@@ -112,6 +101,56 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
 TmuxController::~TmuxController()
 {
     _paneManager->destroyAllPaneSessions();
+}
+
+void TmuxController::connectGatewaySignals()
+{
+    if (_gateway == nullptr) {
+        return;
+    }
+    connect(_gateway, &TmuxGateway::outputReceived, _paneManager, &TmuxPaneManager::deliverOutput);
+    connect(_gateway, &TmuxGateway::layoutChanged, this, &TmuxController::onLayoutChanged);
+    connect(_gateway, &TmuxGateway::windowAdded, this, &TmuxController::onWindowAdded);
+    connect(_gateway, &TmuxGateway::windowClosed, this, &TmuxController::onWindowClosed);
+    connect(_gateway, &TmuxGateway::windowRenamed, this, &TmuxController::onWindowRenamed);
+    connect(_gateway, &TmuxGateway::windowPaneChanged, this, &TmuxController::onWindowPaneChanged);
+    connect(_gateway, &TmuxGateway::sessionChanged, this, &TmuxController::onSessionChanged);
+    connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::onSessionWindowChanged);
+    connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::onSubscriptionChanged);
+    connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
+    connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
+}
+
+void TmuxController::rebindGateway(TmuxGateway *gateway)
+{
+    if (_gateway != nullptr) {
+        disconnect(_gateway, nullptr, this, nullptr);
+        disconnect(_gateway, nullptr, _paneManager, nullptr);
+    }
+    _gateway = gateway;
+    _paneManager->setGateway(gateway);
+    _resizeCoordinator->setGateway(gateway);
+    _stateRecovery->setGateway(gateway);
+    _stateRecovery->clear();
+    _flowControlEnabled = false;
+    _windowIndexSubscriptionEnabled = false;
+    _explicitDetach = false;
+    connectGatewaySignals();
+}
+
+bool TmuxController::explicitDetach() const
+{
+    return _explicitDetach;
+}
+
+void TmuxController::clearExplicitDetach()
+{
+    _explicitDetach = false;
+}
+
+int TmuxController::restrictedWindowId() const
+{
+    return _restrictedWindowId;
 }
 
 void TmuxController::initialize()
@@ -335,6 +374,7 @@ void TmuxController::requestBreakPane(int paneId)
 
 void TmuxController::requestDetach()
 {
+    _explicitDetach = true;
     _gateway->detach();
 }
 
@@ -1653,7 +1693,10 @@ void TmuxController::queryPrefixBindings()
 void TmuxController::onExit(const QString &reason)
 {
     Q_UNUSED(reason)
-    cleanup();
+    // Keep pane widgets frozen so a reconnect can reuse them. Destroying them
+    // here would emit ViewManager::empty() and close the MainWindow.
+    _paneTitleTimer->stop();
+    _resizeCoordinator->stop();
     Q_EMIT detached();
 }
 

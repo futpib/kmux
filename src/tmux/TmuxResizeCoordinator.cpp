@@ -28,6 +28,11 @@ Q_LOGGING_CATEGORY(KonsoleTmuxResize, "konsole.tmux.resize", QtWarningMsg)
 namespace Konsole
 {
 
+void TmuxResizeCoordinator::setGateway(TmuxGateway *gateway)
+{
+    _gateway = gateway;
+}
+
 // Cells the widget tree could draw if tmux gave it the chance, derived
 // from each leaf's current pixel size minus chrome divided by font. The
 // caller takes max() of this and the layout's already-in-use cell count

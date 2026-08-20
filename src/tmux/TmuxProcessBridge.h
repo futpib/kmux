@@ -11,8 +11,10 @@
 #include <QProcess>
 #include <QSocketNotifier>
 #include <QString>
+#include <QTimer>
 
 #include "konsoleprivate_export.h"
+#include "terminalDisplay/TerminalDisplay.h"
 
 namespace Konsole
 {
@@ -57,6 +59,11 @@ public:
     QStringList command() const;
     QStringList rshCommand() const;
 
+    /// Kill a hung/dead client and attach-session to the learned session name.
+    void requestReconnect();
+    /// Handshake deadline for reconnect attempts (not first launch). 0 disables.
+    void setHandshakeTimeoutMs(int ms);
+
 Q_SIGNALS:
     void disconnected();
     /// Emitted once the tmux client sends its first %begin line — i.e. the
@@ -77,15 +84,26 @@ private:
     void onReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void teardown();
-    // Show/hide the "tmux not responding" banner on every pane of this
-    // bridge's window, driven by TmuxGateway::unresponsive()/responsive().
     void setViewsTmuxUnresponsive(bool unresponsive);
+    void setViewsConnectionBanner(TerminalDisplay::TmuxConnectionBanner banner);
+    void connectGatewayBridgeSignals();
+    void createGateway(bool bindController);
+    bool spawnProcess(const QStringList &command);
+    void teardownTransport();
+    void beginReconnect();
+    void onHandshakeTimeout();
+    void onReconnectHandshakeFailed(const QString &reason);
+    bool shouldAutoReconnect() const;
+    static bool looksLikeSessionGone(const QString &reason);
+    QString learnedSessionName() const;
+    void scheduleAutoReconnect();
 
     ViewManager *_viewManager;
     QProcess *_process = nullptr;
     TmuxGateway *_gateway = nullptr;
     TmuxController *_controller = nullptr;
     QSocketNotifier *_readNotifier = nullptr;
+    QTimer *_handshakeTimer = nullptr;
     int _socketFd = -1;
     // True once the gateway emitted ready(). Distinguishes a startup
     // failure (process exits before this) from a normal post-handshake
@@ -101,6 +119,13 @@ private:
     QStringList _tmuxArgs;
     QStringList _command;
     QStringList _rshCommand;
+    bool _gotExitNotification = false;
+    bool _reconnectRequested = false;
+    bool _reconnectInProgress = false;
+    bool _ignoringProcessFinished = false;
+    bool _manualReconnect = false;
+    int _autoReconnectAttempts = 0;
+    int _handshakeTimeoutMs = 8000;
 };
 
 } // namespace Konsole
