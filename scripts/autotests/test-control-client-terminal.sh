@@ -10,14 +10,13 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/autotests/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --require tmux
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="control-client-terminal"
 WRAPPER="$HOMEDIR/rsh-without-term.sh"
 KMUX_PID=""
+kmux_test_register_tmux_socket "$SOCKET"
 
 cat >"$WRAPPER" <<'WRAPPER_EOF'
 #!/usr/bin/env bash
@@ -26,33 +25,22 @@ exec "$@"
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 
-cleanup_tmux() {
-    local rc=$1
-    if [[ -n "$KMUX_PID" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-    return "$rc"
-}
-trap 'cleanup_tmux "$?"; kmux_test__cleanup' EXIT
-
 echo "=== launching kmux through an SSH-like wrapper without TERM ==="
-TERM=dumb "$KMUX" --rsh "$WRAPPER" -S "$SOCKET" -s "$SESSION" >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
+TERM=dumb kmux_test_start "$LOGDIR/kmux.log" --rsh "$WRAPPER" -S "$SOCKET" -s "$SESSION"
+KMUX_PID=$KMUX_TEST_PID
 
 client_term=""
-for _ in $(seq 1 100); do
+control_client_connected() {
     if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        tail -80 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        kmux_test_bail 2 "kmux exited before its control client connected"
+        return 1
     fi
     client_term=$(tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_termname}' 2>/dev/null || true)
-    [[ -n "$client_term" ]] && break
-    sleep 0.1
-done
+    [[ -n "$client_term" ]]
+}
+if ! kmux_test_wait_until 10 "kmux control client to connect" control_client_connected; then
+    kmux_test_dump_log "$LOGDIR/kmux.log"
+    exit 1
+fi
 
 if [[ "$client_term" != "xterm-256color" ]]; then
     echo "FAIL: kmux control client advertised client_termname='$client_term'" >&2

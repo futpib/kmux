@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # End-to-end test that kmux renders a full-screen TUI without line wrapping.
 #
 # Pre-creates a tmux session whose pane runs scripts/autotests/fixtures/
@@ -31,10 +33,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/autotests/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
-command -v dbus-send >/dev/null || kmux_test_bail 2 "dbus-send not installed"
+kmux_test_setup --x11 --require tmux --require dbus-send
 
 FIXTURE="$SCRIPT_DIR/fixtures/tui-rect.sh"
 [[ -x "$FIXTURE" ]] || kmux_test_bail 2 "fixture missing or not executable: $FIXTURE"
@@ -43,22 +42,7 @@ SOCKET="$HOMEDIR/tmux.sock"
 SESSION="rect"
 READY_FILE="$HOMEDIR/tui-ready"
 SIZE_FILE="$HOMEDIR/tui-size"
-
-# Strips dbus-send's "method return ..." preamble and pulls each
-# `   string "..."` line down to its raw content. Our fixture only writes
-# letters so no escape unmangling is needed.
-parse_dbus_strings() {
-    sed -n 's/^[[:space:]]*string "\(.*\)"$/\1/p'
-}
-
-# Lists managed children of a path. dbus-send doesn't have a path-listing
-# command, so we introspect the parent and pull <node name=...> entries.
-introspect_children() {
-    local service="$1" parent="$2"
-    dbus-send --session --print-reply --dest="$service" "$parent" \
-        org.freedesktop.DBus.Introspectable.Introspect 2>/dev/null \
-        | sed -n 's/.*<node name="\([^"]*\)".*/\1/p'
-}
+kmux_test_register_tmux_socket "$SOCKET"
 
 echo "=== pre-creating tmux session running fixture ==="
 TUI_READY_FILE="$READY_FILE" TUI_SIZE_FILE="$SIZE_FILE" \
@@ -67,15 +51,10 @@ TUI_READY_FILE="$READY_FILE" TUI_SIZE_FILE="$SIZE_FILE" \
 # Wait until the fixture has produced its first frame; the file is touched
 # once it's drawn at least once. Without this, kmux might attach before the
 # fixture's first SIGWINCH-triggered redraw and the screen would be empty.
-ready=0
-for _ in $(seq 1 100); do
-    if [[ -e "$READY_FILE" ]]; then
-        ready=1
-        break
-    fi
-    sleep 0.1
-done
-if (( ready != 1 )); then
+fixture_ready() {
+    [[ -e "$READY_FILE" ]]
+}
+if ! kmux_test_wait_until 10 "TUI fixture to report ready" fixture_ready; then
     echo "FAIL: fixture never reported ready (no $READY_FILE)" >&2
     exit 1
 fi
@@ -103,36 +82,14 @@ echo "=== launching kmux to attach to existing session ==="
 # advertised vs what tmux echoed back.
 QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true' \
     QT_ASSUME_STDERR_HAS_CONSOLE=1 \
-    "$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-cleanup_kmux() {
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-}
-trap cleanup_kmux EXIT
+    kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
 
 # Wait for kmux's window to appear.
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared" >&2
-        echo "--- $LOGDIR/kmux.log ---" >&2
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        echo "--- $LOGDIR/xvfb.log ---" >&2
-        tail -20 "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
-        exit 1
-    fi
-    WIN=$(xdotool search --name kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || { echo "FAIL: kmux window never appeared (see $LOGDIR/kmux.log)" >&2; exit 1; }
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
 # Allow kmux to negotiate pane size with tmux and the fixture to redraw at
@@ -161,34 +118,17 @@ if (( FIX_COLS < 4 || FIX_ROWS < 4 )); then
     exit 1
 fi
 
-# Find kmux's D-Bus service. KDBusService::Multiple registers
-# org.kde.kmux-<pid>; fall back to plain org.kde.kmux for Unique mode.
-SERVICE=""
-for _ in $(seq 1 50); do
-    names=$(dbus-send --session --print-reply --dest=org.freedesktop.DBus / \
-        org.freedesktop.DBus.ListNames 2>/dev/null | parse_dbus_strings)
-    if echo "$names" | grep -qx "org.kde.kmux-${KMUX_PID}"; then
-        SERVICE="org.kde.kmux-${KMUX_PID}"
-        break
-    fi
-    fallback=$(echo "$names" | grep -E '^org\.kde\.kmux(-[0-9]+)?$' | head -1 || true)
-    if [[ -n "$fallback" ]]; then
-        SERVICE="$fallback"
-        break
-    fi
-    sleep 0.1
-done
-[[ -n "$SERVICE" ]] || { echo "FAIL: kmux D-Bus service not found" >&2; exit 1; }
+kmux_test_wait_dbus_service "$KMUX_PID" 5 || exit 1
+SERVICE=$KMUX_TEST_DBUS_SERVICE
 echo "kmux D-Bus service: $SERVICE"
 
 # Pick the highest-numbered /Sessions/N — that's the freshly attached pane.
 sessions_children=""
-for _ in $(seq 1 50); do
-    sessions_children=$(introspect_children "$SERVICE" /Sessions)
-    [[ -n "$sessions_children" ]] && break
-    sleep 0.1
-done
-[[ -n "$sessions_children" ]] || { echo "FAIL: no /Sessions/* on $SERVICE" >&2; exit 1; }
+sessions_registered() {
+    sessions_children=$(kmux_test_dbus_children "$SERVICE" /Sessions)
+    [[ -n "$sessions_children" ]]
+}
+kmux_test_wait_until 5 "kmux D-Bus sessions to register" sessions_registered || exit 1
 SESSION_ID=$(echo "$sessions_children" | grep -E '^[0-9]+$' | sort -n | tail -1)
 SESSION_PATH="/Sessions/${SESSION_ID}"
 echo "kmux session path: $SESSION_PATH"
@@ -197,7 +137,7 @@ echo "kmux session path: $SESSION_PATH"
 # empty-row stripping. dbus-send returns "string \"<line>\"" per element.
 mapfile -t LINES < <(dbus-send --session --print-reply --dest="$SERVICE" "$SESSION_PATH" \
     org.kde.konsole.Session.getAllDisplayedTextList boolean:false 2>/dev/null \
-    | parse_dbus_strings)
+    | kmux_test_parse_dbus_strings)
 
 echo "kmux returned ${#LINES[@]} lines (fixture wrote $FIX_ROWS)"
 

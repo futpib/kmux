@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # Bug repro: invoking New Window (Ctrl+Shift+N) on a tmux-attached kmux
 # window spawns a *second* kmux MainWindow — a second tmux control-mode
 # client attached to the same session, showing only the freshly created
@@ -50,18 +52,11 @@ export QT_LOGGING_RULES="konsole.tmux.resize.debug=true;konsole.tmux.controller.
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # xdotool keystrokes need a focused window; bare Xvfb has no window manager,
 # so have lib.sh spawn twm when USE_XVFB=1.
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-# On a Wayland host, Qt prefers the wayland plugin even when DISPLAY is set;
-# force kmux onto our Xvfb's X server so xdotool can drive it.
-unset WAYLAND_DISPLAY
-export QT_QPA_PLATFORM=xcb
-
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --wm --require tmux
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="winsize"
+kmux_test_register_tmux_socket "$SOCKET"
 
 echo "=== pre-creating tmux session (1 window, 1 pane, small) ==="
 # Start small (tmux's 80x24 default). kmux's TmuxResizeCoordinator grows the
@@ -72,19 +67,8 @@ tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 80 -y 24
 tmux -S "$SOCKET" set-option -g automatic-rename off 2>/dev/null || true
 
 echo "=== launching kmux to attach ==="
-"$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-cleanup_kmux() {
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-}
-trap cleanup_kmux EXIT
+kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
 
 # --- helpers --------------------------------------------------------------
 
@@ -102,38 +86,23 @@ x_window_size() {
 count_kmux_windows() {
     xdotool search --onlyvisible --class kmux 2>/dev/null | wc -l
 }
-# Echo a visible kmux top-level window id != $WIN, large enough to be a real
-# MainWindow (filters Qt's tiny "Selection Owner" helper). Returns 1 if none.
-other_kmux_window() {
-    local w sz wpx
-    for w in $(xdotool search --onlyvisible --class kmux 2>/dev/null); do
-        [[ "$w" == "$WIN" ]] && continue
-        sz=$(x_window_size "$w"); wpx=${sz%x*}
-        [[ "$wpx" =~ ^[0-9]+$ ]] || continue
-        if (( wpx > 100 )); then echo "$w"; return 0; fi
-    done
-    return 1
-}
 panes_in() {
     tmux -S "$SOCKET" list-panes -t "$1" 2>/dev/null | wc -l
 }
 wait_for_window_count() {
     local target="$1" what="$2" got=
-    for _ in $(seq 1 50); do
+    window_count_matches() {
         got=$(tmux -S "$SOCKET" list-windows -t "$SESSION" 2>/dev/null | wc -l)
-        (( got == target )) && return 0
-        sleep 0.2
-    done
-    echo "FAIL: $what — got $got tmux windows, expected $target" >&2
-    return 1
+        (( got == target ))
+    }
+    if ! kmux_test_wait_until 10 "$what" window_count_matches; then
+        echo "FAIL: got $got tmux windows, expected $target" >&2
+        return 1
+    fi
 }
 dump_state() {
     echo "--- state: $1 ---" >&2
-    tmux -S "$SOCKET" list-clients -F 'client: tty=#{client_tty} size=#{client_width}x#{client_height}' >&2 2>&1 || true
-    tmux -S "$SOCKET" list-windows -t "$SESSION" \
-        -F 'win: id=#{window_id} name=#{window_name} size=#{window_width}x#{window_height} active=#{?window_active,1,0}' >&2 2>&1 || true
-    tmux -S "$SOCKET" list-panes -s -t "$SESSION" \
-        -F 'pane: id=#{pane_id} win=#{window_index} geom=#{pane_left},#{pane_top}+#{pane_width}x#{pane_height} cmd=#{pane_current_command}' >&2 2>&1 || true
+    kmux_test_dump_tmux "$SOCKET" "$SESSION"
     local w
     for w in $(xdotool search --onlyvisible --class kmux 2>/dev/null); do
         echo "kmux-win $w x-size=$(x_window_size "$w")" >&2
@@ -141,18 +110,10 @@ dump_state() {
 }
 
 # --- wait for kmux's initial window --------------------------------------
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared" >&2
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        exit 2
-    fi
-    WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || { echo "FAIL: kmux window never appeared (see $LOGDIR/kmux.log)" >&2; exit 2; }
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
@@ -169,7 +130,7 @@ xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
 sleep 2  # let the renegotiation settle
 
 # --- baseline: one window, negotiated up to the frame --------------------
-wait_for_window_count 1 "starting window count" || { dump_state "bad start"; exit 2; }
+wait_for_window_count 1 "starting window count" || { dump_state "bad start"; exit 1; }
 ORIG_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' 2>/dev/null | head -1)
 ORIG_PANE=$(tmux -S "$SOCKET" list-panes -t "$ORIG_WID" -F '#{pane_id}' 2>/dev/null | head -1)
 [[ -n "$ORIG_WID" && -n "$ORIG_PANE" ]] || { echo "FAIL: no original window/pane id" >&2; dump_state "no ids"; exit 2; }
@@ -200,32 +161,26 @@ fi
 # --- step 1: New Window (Ctrl+Shift+N) ------------------------------------
 echo "=== Ctrl+Shift+N (new window) ==="
 xdotool key --delay 150 ctrl+shift+n
-wait_for_window_count 2 "after Ctrl+Shift+N" || { dump_state "no 2nd window"; exit 2; }
+wait_for_window_count 2 "after Ctrl+Shift+N" || { dump_state "no 2nd window"; exit 1; }
 NEW_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' 2>/dev/null | grep -vx "$ORIG_WID" | head -1)
 echo "OK: tmux now has 2 windows (original=$ORIG_WID new=$NEW_WID)"
 
-NEWWIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited while opening the new window" >&2
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        exit 2
-    fi
-    NEWWIN=$(other_kmux_window || true)
-    [[ -n "$NEWWIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$NEWWIN" ]] || { echo "FAIL: second kmux window never appeared" >&2; dump_state "no 2nd X window"; exit 2; }
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20 "$WIN"; then
+    dump_state "no 2nd X window"
+    exit 1
+fi
+NEWWIN=$KMUX_TEST_WINDOW_ID
 echo "OK: second kmux window appeared (winid=$NEWWIN)"
 
 # Wait for the new window to draw content (its shell prompt).
-HAVE_CONTENT=0
-for _ in $(seq 1 50); do
+new_window_has_content() {
     txt=$(tmux -S "$SOCKET" capture-pane -p -t "$NEW_WID" 2>/dev/null || true)
-    if [[ -n "${txt//[$' \t\r\n']/}" ]]; then HAVE_CONTENT=1; break; fi
-    sleep 0.2
-done
-(( HAVE_CONTENT == 1 )) || { echo "SCAFFOLD: new window never drew content" >&2; dump_state "new window empty"; exit 2; }
+    [[ -n "${txt//[$' \t\r\n']/}" ]]
+}
+if ! kmux_test_wait_until 10 "new tmux window to draw content" new_window_has_content; then
+    dump_state "new window empty"
+    exit 1
+fi
 echo "OK: new window has content"
 
 # While both clients are attached, watch the ORIGINAL window for transient
@@ -242,20 +197,15 @@ echo "=== closing the new window ==="
 xdotool windowactivate --sync "$NEWWIN" 2>/dev/null || true
 sleep 0.3
 xdotool key --delay 150 ctrl+shift+q  # kmux "Close Window"; 1 tab → no confirm
-closed=0
-for _ in $(seq 1 50); do
-    xdotool search --onlyvisible --class kmux 2>/dev/null | grep -qx "$NEWWIN" || { closed=1; break; }
-    sleep 0.2
-done
-if (( closed != 1 )); then
+window_is_closed() {
+    ! xdotool search --onlyvisible --class kmux 2>/dev/null | grep -qx "$NEWWIN"
+}
+if ! kmux_test_wait_until 10 "new kmux window to close" window_is_closed; then
     echo "note: Ctrl+Shift+Q didn't close it; trying WM close" >&2
     xdotool windowclose "$NEWWIN" 2>/dev/null || true
-    for _ in $(seq 1 30); do
-        xdotool search --onlyvisible --class kmux 2>/dev/null | grep -qx "$NEWWIN" || { closed=1; break; }
-        sleep 0.2
-    done
+    kmux_test_wait_until 6 "new kmux window to close after WM request" window_is_closed || true
 fi
-(( closed == 1 )) || { echo "FAIL: could not close the new kmux window ($NEWWIN)" >&2; dump_state "won't close"; exit 2; }
+window_is_closed || { echo "FAIL: could not close the new kmux window ($NEWWIN)" >&2; dump_state "won't close"; exit 1; }
 echo "OK: new window closed (kmux windows now: $(count_kmux_windows))"
 
 # --- step 3: re-sample the ORIGINAL window --------------------------------

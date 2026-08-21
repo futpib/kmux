@@ -37,10 +37,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/autotests/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
-command -v python3 >/dev/null || kmux_test_bail 2 "python3 not installed"
+kmux_test_setup --x11 --require tmux --require python3
 
 DRIVER="$SCRIPT_DIR/fixtures/pty-run.py"
 [[ -f "$DRIVER" ]] || kmux_test_bail 2 "missing pty driver $DRIVER"
@@ -50,6 +47,7 @@ SOCKET="$HOMEDIR/tmux.sock"
 PTY_LOG="$LOGDIR/pty.log"
 PROMPT_MARKER="KMUX-PTY-PROMPT"
 PASSWORD="hunter2"
+kmux_test_register_tmux_socket "$SOCKET"
 
 # An ssh-like wrapper: talk to the controlling terminal (/dev/tty), not
 # stdin/stderr, so this genuinely tests terminal plumbing. Prompt there,
@@ -77,9 +75,9 @@ chmod +x "$WRAPPER"
 
 echo "=== launching kmux under a pty, --rsh=$WRAPPER -S $SOCKET ==="
 # The driver types $PASSWORD once it sees $PROMPT_MARKER on the terminal.
-python3 "$DRIVER" "$PROMPT_MARKER" "$PASSWORD" -- \
-    "$KMUX" --rsh "$WRAPPER" -S "$SOCKET" >"$PTY_LOG" 2>&1 &
-DRIVER_PID=$!
+kmux_test_start_process "$PTY_LOG" python3 "$DRIVER" "$PROMPT_MARKER" "$PASSWORD" -- \
+    "$KMUX" --rsh "$WRAPPER" -S "$SOCKET"
+DRIVER_PID=$KMUX_TEST_PID
 
 prompt_ok=0
 tmux_ok=0

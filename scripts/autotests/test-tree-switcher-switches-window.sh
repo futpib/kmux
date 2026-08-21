@@ -42,16 +42,7 @@ export QT_LOGGING_RULES="konsole.tmux.bridge.debug=true;konsole.tmux.controller.
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # xdotool keystrokes need a focused window; bare Xvfb has no WM, so lib.sh
 # spawns twm when USE_XVFB=1.
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-# On a Wayland host, Qt picks the wayland plugin over xcb even when DISPLAY
-# is set; force kmux onto our Xvfb's X server.
-unset WAYLAND_DISPLAY
-export QT_QPA_PLATFORM=xcb
-
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
-command -v xdotool >/dev/null || kmux_test_bail 2 "xdotool not installed"
+kmux_test_setup --wm --require tmux
 
 # --- seed a Konsole profile that exposes %w in the tab title format ------
 # That's how we observe the active tab changing (or not): the X-window title
@@ -82,6 +73,7 @@ done
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="demo"
+kmux_test_register_tmux_socket "$SOCKET"
 
 dump_tmux_state() {
     local label="$1"
@@ -119,31 +111,12 @@ tmux -S "$SOCKET" select-window -t "${SESSION}:0"
 dump_tmux_state "after session setup, before kmux"
 
 echo "=== launching kmux to attach ==="
-"$KMUX" -S "$SOCKET" -s "$SESSION" >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-cleanup_kmux() {
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-}
-trap cleanup_kmux EXIT
-
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared (see $LOGDIR/kmux.log)" >&2
-        exit 2
-    fi
-    WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || { echo "FAIL: kmux window never appeared (see $LOGDIR/kmux.log)" >&2; exit 2; }
+kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION"
+KMUX_PID=$KMUX_TEST_PID
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
 sleep 2 # let the control-mode handshake settle

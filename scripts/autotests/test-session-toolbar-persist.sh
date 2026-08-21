@@ -24,9 +24,7 @@ export QT_LOGGING_RULES="org.kde.konsole.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # Menu navigation via xdotool needs a focused window, which bare Xvfb
 # doesn't provide on its own — have lib.sh spawn twm when USE_XVFB=1.
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-
-kmux_test_setup
+kmux_test_setup --wm --require tmux
 
 # kmux ships with AllowMenuAccelerators=false, which strips the
 # &-mnemonics from menu titles so terminal apps don't have to fight Qt
@@ -40,6 +38,9 @@ cat >"$XDG_CONFIG_HOME/kmuxrc" <<'KMUXRC_EOF'
 [KonsoleWindow]
 AllowMenuAccelerators=true
 KMUXRC_EOF
+
+SOCKET="$HOMEDIR/tmux.sock"
+kmux_test_register_tmux_socket "$SOCKET"
 
 LAUNCH_PID=""
 LAUNCH_WIN=""
@@ -55,23 +56,10 @@ LAUNCH_WIN=""
 # (exists but unmapped) from the post-show one.
 launch_and_wait_for_window() {
     local logfile="$1"
-    "$KMUX" >"$logfile" 2>&1 &
-    LAUNCH_PID=$!
-    LAUNCH_WIN=""
-    for _ in $(seq 1 100); do
-        if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
-            echo "error: kmux exited before window appeared (see $logfile)" >&2
-            return 1
-        fi
-        LAUNCH_WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-        if [[ -n "$LAUNCH_WIN" ]]; then
-            return 0
-        fi
-        sleep 0.2
-    done
-    echo "error: kmux window did not appear" >&2
-    kill "$LAUNCH_PID" 2>/dev/null || true
-    return 1
+    kmux_test_start "$logfile" -S "$SOCKET"
+    LAUNCH_PID=$KMUX_TEST_PID
+    kmux_test_wait_visible_window "$LAUNCH_PID" "$logfile" 20 || return 1
+    LAUNCH_WIN=$KMUX_TEST_WINDOW_ID
 }
 
 # Quit kmux and wait for it to exit. We don't rely on Ctrl+Q here: a kmux

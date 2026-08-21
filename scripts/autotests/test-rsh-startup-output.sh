@@ -26,9 +26,7 @@ source "$SCRIPT_DIR/lib.sh"
 # the critical path but ensure stderr reaches our captured log.
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --require tmux
 
 WRAPPER="$HOMEDIR/rsh-noisy-fail.sh"
 OUT_MARKER="RSH-STDOUT-MARKER-7f3a91"
@@ -46,23 +44,12 @@ WRAPPER_EOF
 chmod +x "$WRAPPER"
 
 echo "=== launching kmux with --rsh=$WRAPPER (prints to both streams, exits 7) ==="
-"$KMUX" --rsh "$WRAPPER" >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
+kmux_test_start "$LOGDIR/kmux.log" --rsh "$WRAPPER"
+KMUX_PID=$KMUX_TEST_PID
 
 # Wait for kmux to exit (the startup-failure path should make it quit).
-exited=0
-for _ in $(seq 1 50); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        wait "$KMUX_PID" || true
-        exited=1
-        break
-    fi
-    sleep 0.2
-done
-
-if [[ "$exited" -ne 1 ]]; then
+if ! kmux_test_wait_process_exit "$KMUX_PID" 10; then
     echo "FAIL: kmux did not exit within 10s after the rsh wrapper failed — it hung" >&2
-    kill "$KMUX_PID" 2>/dev/null || true
     exit 1
 fi
 

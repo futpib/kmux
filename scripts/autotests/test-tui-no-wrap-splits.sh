@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # End-to-end test that kmux renders a multi-pane split layout without wrap.
 #
 # Builds a 5-pane window — 2 panes in the top row, 3 in the bottom — every
@@ -30,10 +32,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/autotests/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
-command -v dbus-send >/dev/null || kmux_test_bail 2 "dbus-send not installed"
+kmux_test_setup --x11 --require tmux --require dbus-send
 
 FIXTURE="$SCRIPT_DIR/fixtures/tui-rect.sh"
 [[ -x "$FIXTURE" ]] || kmux_test_bail 2 "fixture missing or not executable: $FIXTURE"
@@ -47,29 +46,20 @@ mkdir -p "$READY_DIR" "$SIZE_DIR"
 # tmux pane ids we expect after the splits below.
 PANE_IDS=(%0 %1 %2 %3 %4)
 NUM_PANES=${#PANE_IDS[@]}
-
-parse_dbus_strings() {
-    sed -n 's/^[[:space:]]*string "\(.*\)"$/\1/p'
-}
-
-introspect_children() {
-    local service="$1" parent="$2"
-    dbus-send --session --print-reply --dest="$service" "$parent" \
-        org.freedesktop.DBus.Introspectable.Introspect 2>/dev/null \
-        | sed -n 's/.*<node name="\([^"]*\)".*/\1/p'
-}
+kmux_test_register_tmux_socket "$SOCKET"
 
 # Wait until the fixture for $1 (a slot index 0..NUM_PANES-1) has touched
 # its ready file. Bails after ~10s.
 wait_for_ready() {
     local slot="$1"
     local f="$READY_DIR/$slot"
-    for _ in $(seq 1 100); do
-        [[ -e "$f" ]] && return 0
-        sleep 0.1
-    done
-    echo "FAIL: fixture in slot $slot never reported ready ($f)" >&2
-    exit 1
+    fixture_slot_ready() {
+        [[ -e "$f" ]]
+    }
+    if ! kmux_test_wait_until 10 "fixture in slot $slot to report ready" fixture_slot_ready; then
+        echo "FAIL: missing $f" >&2
+        exit 1
+    fi
 }
 
 # Build the shell command tmux's split-window / new-session should run for
@@ -114,35 +104,13 @@ tmux -S "$SOCKET" list-panes -t "$SESSION" \
 echo "=== launching kmux to attach ==="
 QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true' \
     QT_ASSUME_STDERR_HAS_CONSOLE=1 \
-    "$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
+    kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
 
-cleanup_kmux() {
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-}
-trap cleanup_kmux EXIT
-
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared" >&2
-        echo "--- $LOGDIR/kmux.log ---" >&2
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        echo "--- $LOGDIR/xvfb.log ---" >&2
-        tail -20 "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
-        exit 1
-    fi
-    WIN=$(xdotool search --name kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || { echo "FAIL: kmux window never appeared (see $LOGDIR/kmux.log)" >&2; exit 1; }
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
 # Settle: the splits resize on attach; sample fixture/tmux sizes so a failure
@@ -161,33 +129,18 @@ for tick in $(seq 1 10); do
     printf '\n'
 done
 
-# Find kmux's D-Bus service.
-SERVICE=""
-for _ in $(seq 1 50); do
-    names=$(dbus-send --session --print-reply --dest=org.freedesktop.DBus / \
-        org.freedesktop.DBus.ListNames 2>/dev/null | parse_dbus_strings)
-    if echo "$names" | grep -qx "org.kde.kmux-${KMUX_PID}"; then
-        SERVICE="org.kde.kmux-${KMUX_PID}"
-        break
-    fi
-    fallback=$(echo "$names" | grep -E '^org\.kde\.kmux(-[0-9]+)?$' | head -1 || true)
-    if [[ -n "$fallback" ]]; then
-        SERVICE="$fallback"
-        break
-    fi
-    sleep 0.1
-done
-[[ -n "$SERVICE" ]] || { echo "FAIL: kmux D-Bus service not found" >&2; exit 1; }
+kmux_test_wait_dbus_service "$KMUX_PID" 5 || exit 1
+SERVICE=$KMUX_TEST_DBUS_SERVICE
 echo "kmux D-Bus service: $SERVICE"
 
 # Wait until kmux has registered all five session paths.
 SESSION_IDS=()
-for _ in $(seq 1 50); do
-    raw=$(introspect_children "$SERVICE" /Sessions)
+all_sessions_registered() {
+    raw=$(kmux_test_dbus_children "$SERVICE" /Sessions)
     mapfile -t SESSION_IDS < <(echo "$raw" | grep -E '^[0-9]+$' | sort -n)
-    (( ${#SESSION_IDS[@]} >= NUM_PANES )) && break
-    sleep 0.2
-done
+    (( ${#SESSION_IDS[@]} >= NUM_PANES ))
+}
+kmux_test_wait_until 10 "all kmux D-Bus sessions to register" all_sessions_registered || exit 1
 echo "kmux /Sessions/* ids: ${SESSION_IDS[*]}"
 if (( ${#SESSION_IDS[@]} != NUM_PANES )); then
     echo "FAIL: expected $NUM_PANES kmux sessions, found ${#SESSION_IDS[@]}" >&2
@@ -222,7 +175,7 @@ for sid in "${SESSION_IDS[@]}"; do
     SESSION_PATH="/Sessions/$sid"
     mapfile -t LINES < <(dbus-send --session --print-reply --dest="$SERVICE" "$SESSION_PATH" \
         org.kde.konsole.Session.getCurrentScreenLines 2>/dev/null \
-        | parse_dbus_strings)
+        | kmux_test_parse_dbus_strings)
 
     n=${#LINES[@]}
     if (( n < 4 )); then
@@ -291,7 +244,7 @@ if (( fail )); then
     for sid in "${SESSION_IDS[@]}"; do
         mapfile -t LINES < <(dbus-send --session --print-reply --dest="$SERVICE" "/Sessions/$sid" \
             org.kde.konsole.Session.getCurrentScreenLines 2>/dev/null \
-            | parse_dbus_strings)
+            | kmux_test_parse_dbus_strings)
         n=${#LINES[@]}
         first_len=$(( n > 0 ? ${#LINES[0]} : 0 ))
         last_len=$(( n > 0 ? ${#LINES[$((n-1))]} : 0 ))

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # End-to-end test for kmux's --rsh option with an interactive wrapper.
 #
 # Drives the real kmux binary in an isolated HOME with an --rsh wrapper
@@ -37,14 +39,13 @@ source "$SCRIPT_DIR/lib.sh"
 export QT_LOGGING_RULES="org.kde.konsole.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --x11 --require tmux
 
 FIFO="$HOMEDIR/rsh-fifo"
 WRAPPER="$HOMEDIR/rsh-wrapper.sh"
 SOCKET="$HOMEDIR/tmux.sock"
 PASSWORD="hunter2"
+kmux_test_register_tmux_socket "$SOCKET"
 
 mkfifo "$FIFO"
 
@@ -65,8 +66,8 @@ WRAPPER_EOF
 chmod +x "$WRAPPER"
 
 echo "=== launching kmux with --rsh=$WRAPPER -S $SOCKET ==="
-"$KMUX" --rsh "$WRAPPER" -S "$SOCKET" >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
+kmux_test_start "$LOGDIR/kmux.log" --rsh "$WRAPPER" -S "$SOCKET"
+KMUX_PID=$KMUX_TEST_PID
 
 # Give kmux time to start Qt, spawn the wrapper, and (if the show-
 # deferral regressed) pop the window. 3 seconds is generous — the
@@ -116,19 +117,19 @@ printf '%s\n' "$PASSWORD" >"$FIFO"
 # show-deferral released once the gateway emitted ready().
 tmux_ok=0
 window_ok=0
-for _ in $(seq 1 60); do
+authenticated_session_ready() {
     if [[ "$tmux_ok" -eq 0 ]] && tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
         tmux_ok=1
     fi
     if [[ "$window_ok" -eq 0 ]] && xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
         window_ok=1
     fi
-    if [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
-        echo "PASS: tmux session established and kmux window shown after --rsh authenticated"
-        exit 0
-    fi
-    sleep 0.5
-done
+    [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]
+}
+if kmux_test_wait_until 30 "tmux session and kmux window after authentication" authenticated_session_ready; then
+    echo "PASS: tmux session established and kmux window shown after --rsh authenticated"
+    exit 0
+fi
 
 echo "FAIL: after unblocking wrapper, tmux_ok=$tmux_ok window_ok=$window_ok (see $LOGDIR/kmux.log)" >&2
 echo "--- kmux still running? ---" >&2

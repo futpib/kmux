@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # Regression: a tmux window created by another process must be sized to an
 # existing kmux frame instead of remaining at tmux's 80x24 default when a
 # second, window-restricted kmux control client is attached.
@@ -11,45 +13,24 @@ source "$SCRIPT_DIR/lib.sh"
 
 export QT_LOGGING_RULES="konsole.tmux.resize.debug=true;konsole.tmux.controller.debug=true;konsole.tmux.bridge.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-unset WAYLAND_DISPLAY
-export QT_QPA_PLATFORM=xcb
-
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --wm --require tmux
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="external-size"
+kmux_test_register_tmux_socket "$SOCKET"
 
 tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 80 -y 24
 tmux -S "$SOCKET" set-option -g automatic-rename off 2>/dev/null || true
 
-"$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-cleanup_tmux() {
-    local rc=$1
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-    return "$rc"
-}
-trap 'cleanup_tmux "$?"; kmux_test__cleanup' EXIT
+kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
 
 window_size() {
     tmux -S "$SOCKET" display-message -p -t "$1" '#{window_width}x#{window_height}' 2>/dev/null || echo '?'
 }
 
 dump_state() {
-    echo "--- tmux state ---" >&2
-    tmux -S "$SOCKET" list-clients -F 'client=#{client_name} flags=#{client_flags}' >&2 2>&1 || true
-    tmux -S "$SOCKET" list-windows -t "$SESSION" \
-        -F 'window=#{window_id}:#{window_index} size=#{window_width}x#{window_height} active=#{window_active}' >&2 2>&1 || true
+    kmux_test_dump_tmux "$SOCKET" "$SESSION"
     echo "--- resize traffic ---" >&2
     { grep -aE 'refresh-client|%window-add|%layout-change|sendClientSize|setWindowSize|ApplyingLayout' \
         "$LOGDIR/kmux.log" 2>/dev/null | tail -100; } >&2 || true
@@ -59,17 +40,10 @@ count_visible_kmux_windows() {
     xdotool search --onlyvisible --class kmux 2>/dev/null | wc -l
 }
 
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        kmux_test_bail 2 "kmux exited before its window appeared"
-    fi
-    WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || kmux_test_bail 2 "kmux window never appeared"
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 
 # Start from a settled, frame-sized session. The regression concerns windows
 # added after this point, so an explicit initial resize removes the separate
@@ -80,20 +54,17 @@ xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
 
 ORIGINAL_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' | head -1)
 ORIGINAL_SIZE=""
-for _ in $(seq 1 50); do
+initial_window_sized() {
     ORIGINAL_SIZE=$(window_size "$ORIGINAL_WID")
     original_cols=${ORIGINAL_SIZE%x*}
     original_rows=${ORIGINAL_SIZE#*x}
-    if [[ "$original_cols" =~ ^[0-9]+$ && "$original_rows" =~ ^[0-9]+$ ]] \
-        && (( original_cols > 80 && original_rows > 24 )); then
-        break
-    fi
-    sleep 0.2
-done
-if ! [[ "$original_cols" =~ ^[0-9]+$ && "$original_rows" =~ ^[0-9]+$ ]] \
-    || (( original_cols <= 80 || original_rows <= 24 )); then
+    [[ "$original_cols" =~ ^[0-9]+$ && "$original_rows" =~ ^[0-9]+$ ]] \
+        && (( original_cols > 80 && original_rows > 24 ))
+}
+if ! kmux_test_wait_until 10 "initial tmux window to exceed 80x24" initial_window_sized; then
     dump_state
-    kmux_test_bail 2 "initial window did not negotiate beyond 80x24 (got $ORIGINAL_SIZE)"
+    echo "FAIL: initial window did not negotiate beyond 80x24 (got $ORIGINAL_SIZE)" >&2
+    exit 1
 fi
 echo "OK: initial window negotiated to $ORIGINAL_SIZE"
 
@@ -104,20 +75,15 @@ echo "OK: initial window negotiated to $ORIGINAL_SIZE"
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
 xdotool key --delay 150 ctrl+shift+n
 
-second_ready=0
-for _ in $(seq 1 100); do
+second_kmux_window_ready() {
     tmux_windows=$(tmux -S "$SOCKET" list-windows -t "$SESSION" 2>/dev/null | wc -l)
     tmux_clients=$(tmux -S "$SOCKET" list-clients 2>/dev/null | wc -l)
     gui_windows=$(count_visible_kmux_windows)
-    if (( tmux_windows == 2 && tmux_clients == 2 && gui_windows == 2 )); then
-        second_ready=1
-        break
-    fi
-    sleep 0.2
-done
-if (( second_ready != 1 )); then
+    (( tmux_windows == 2 && tmux_clients == 2 && gui_windows == 2 ))
+}
+if ! kmux_test_wait_until 20 "second kmux window and control client" second_kmux_window_ready; then
     dump_state
-    kmux_test_bail 2 "kmux New Window did not establish two tmux windows, GUI windows, and control clients"
+    exit 1
 fi
 echo "OK: second kmux window and restricted control client attached"
 
@@ -129,19 +95,14 @@ NEW_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' | grep 
 [[ -n "$NEW_WID" ]] || kmux_test_bail 2 "external tmux window was not created"
 
 NEW_SIZE=""
-for _ in $(seq 1 50); do
+external_window_sized() {
     NEW_SIZE=$(window_size "$NEW_WID")
     new_cols=${NEW_SIZE%x*}
     new_rows=${NEW_SIZE#*x}
-    if [[ "$new_cols" =~ ^[0-9]+$ && "$new_rows" =~ ^[0-9]+$ ]] \
-        && (( new_cols > 80 && new_rows > 24 )); then
-        break
-    fi
-    sleep 0.2
-done
-
-if ! [[ "$new_cols" =~ ^[0-9]+$ && "$new_rows" =~ ^[0-9]+$ ]] \
-    || (( new_cols <= 80 || new_rows <= 24 )); then
+    [[ "$new_cols" =~ ^[0-9]+$ && "$new_rows" =~ ^[0-9]+$ ]] \
+        && (( new_cols > 80 && new_rows > 24 ))
+}
+if ! kmux_test_wait_until 10 "external tmux window to exceed 80x24" external_window_sized; then
     echo "FAIL: externally created window remained constrained at $NEW_SIZE; expected kmux to advertise the existing frame size" >&2
     dump_state
     exit 1

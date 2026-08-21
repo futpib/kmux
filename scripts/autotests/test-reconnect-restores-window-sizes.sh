@@ -11,13 +11,7 @@ source "$SCRIPT_DIR/lib.sh"
 
 export QT_LOGGING_RULES="konsole.tmux.resize.debug=true;konsole.tmux.controller.debug=true;konsole.tmux.bridge.debug=true;konsole.tmux.reconnect.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-unset WAYLAND_DISPLAY
-export QT_QPA_PLATFORM=xcb
-
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --wm --require tmux --require python3
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="reconnect-size"
@@ -29,6 +23,8 @@ RECONNECT_GATE="$HOMEDIR/reconnect-gate"
 TRANSPORT_PID_FILE="$HOMEDIR/rsh-wrapper.pid"
 TRANSPORT_CHILDREN_FILE="$HOMEDIR/rsh-wrapper.children"
 KMUX_PID=""
+[[ -x "$ORPHANING_RSH" ]] || kmux_test_bail 2 "missing executable fixture: $ORPHANING_RSH"
+kmux_test_register_tmux_socket "$SOCKET"
 
 mkfifo "$RECONNECT_GATE"
 
@@ -55,15 +51,7 @@ tmux -S "$SOCKET" new-window -d -t "$SESSION" 'sleep 600'
 tmux -S "$SOCKET" set-option -g automatic-rename off
 tmux -S "$SOCKET" set-option -g window-size latest
 
-cleanup_tmux() {
-    local rc=$1
-    if [[ -n "$KMUX_PID" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
+cleanup_transport_children() {
     if [[ -r "$TRANSPORT_CHILDREN_FILE" ]]; then
         while IFS= read -r child_pid; do
             if [[ "$child_pid" =~ ^[0-9]+$ ]] && kill -0 "$child_pid" 2>/dev/null; then
@@ -71,9 +59,8 @@ cleanup_tmux() {
             fi
         done <"$TRANSPORT_CHILDREN_FILE"
     fi
-    return "$rc"
 }
-trap 'cleanup_tmux "$?"; kmux_test__cleanup' EXIT
+kmux_test_add_cleanup cleanup_transport_children
 
 window_sizes() {
     tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}=#{window_width}x#{window_height}' 2>/dev/null
@@ -102,47 +89,30 @@ client_count() {
 }
 
 dump_state() {
-    echo "--- tmux clients ---" >&2
-    tmux -S "$SOCKET" list-clients -t "$SESSION" \
-        -F 'client=#{client_name} pid=#{client_pid} flags=#{client_flags} width=#{client_width}' >&2 2>&1 || true
-    echo "--- tmux windows ---" >&2
-    window_sizes >&2 2>&1 || true
+    kmux_test_dump_tmux "$SOCKET" "$SESSION"
     echo "--- reconnect and resize traffic ---" >&2
     { grep -aE 'attach-session|reconnect|sendClientSize|refresh-client|size unchanged|size changed' \
         "$LOGDIR/kmux.log" 2>/dev/null | tail -160; } >&2 || true
 }
 
 echo "=== launching kmux through a reconnect-gated --rsh wrapper ==="
-"$KMUX" --rsh "$WRAPPER" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        tail -80 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        kmux_test_bail 2 "kmux exited before its window appeared"
-    fi
-    WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || kmux_test_bail 2 "kmux window never appeared"
+kmux_test_start "$LOGDIR/kmux.log" --rsh "$WRAPPER" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
 xdotool windowsize --sync "$WIN" 900 600 2>/dev/null || true
 xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
 
-initial_ready=0
-for _ in $(seq 1 60); do
-    if all_windows_larger_than_default && (( $(client_count) == 1 )); then
-        initial_ready=1
-        break
-    fi
-    sleep 0.2
-done
-if (( initial_ready != 1 )); then
+initial_client_ready() {
+    all_windows_larger_than_default && (( $(client_count) == 1 ))
+}
+if ! kmux_test_wait_until 12 "initial client to size both windows" initial_client_ready; then
     dump_state
-    kmux_test_bail 2 "initial kmux client did not size both windows beyond 80x24"
+    exit 1
 fi
 echo "OK: initial kmux client sized both windows: $(window_sizes | paste -sd ' ' -)"
 
@@ -159,17 +129,12 @@ TRANSPORT_PID=$(<"$TRANSPORT_PID_FILE")
 # replacement attach-session so the old client can recreate 80x24 first.
 kill -KILL "$TRANSPORT_PID"
 
-reconnect_waiting=0
-for _ in $(seq 1 50); do
-    if [[ -e "$RECONNECT_WAIT" ]] && (( $(client_count) == 1 )) && kill -0 "$PRIMARY_PID" 2>/dev/null; then
-        reconnect_waiting=1
-        break
-    fi
-    sleep 0.1
-done
-if (( reconnect_waiting != 1 )); then
+reconnect_is_gated() {
+    [[ -e "$RECONNECT_WAIT" ]] && (( $(client_count) == 1 )) && kill -0 "$PRIMARY_PID" 2>/dev/null
+}
+if ! kmux_test_wait_until 5 "kmux to enter its gated reconnect" reconnect_is_gated; then
     dump_state
-    kmux_test_bail 2 "kmux did not enter its gated reconnect after transport death"
+    exit 1
 fi
 
 WINDOW_IDS=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}')
@@ -177,34 +142,24 @@ while IFS= read -r window_id; do
     tmux -S "$SOCKET" refresh-client -t "$PRIMARY_NAME" -C "$window_id:80x24"
 done <<<"$WINDOW_IDS"
 
-default_ready=0
-for _ in $(seq 1 50); do
-    if all_windows_at_default; then
-        default_ready=1
-        break
-    fi
-    sleep 0.1
-done
-if (( default_ready != 1 )); then
+if ! kmux_test_wait_until 5 "surviving client to establish the 80x24 precondition" all_windows_at_default; then
     dump_state
-    kmux_test_bail 2 "surviving control client did not establish the 80x24 precondition"
+    exit 1
 fi
 echo "OK: orphaned kmux control client reduced both windows to tmux's 80x24 default"
 
 printf 'reconnect\n' >"$RECONNECT_GATE"
 
-reconnected=0
-for _ in $(seq 1 100); do
+replacement_client_attached() {
     if [[ $(<"$WRAPPER_COUNT") == "2" ]] \
         && tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_pid}' | grep -qvxF "$PRIMARY_PID"; then
-        reconnected=1
-        break
+        return 0
     fi
-    sleep 0.1
-done
-if (( reconnected != 1 )); then
+    return 1
+}
+if ! kmux_test_wait_until 10 "replacement control client to attach" replacement_client_attached; then
     dump_state
-    kmux_test_bail 2 "kmux did not attach a replacement control client"
+    exit 1
 fi
 echo "OK: kmux attached a replacement control client"
 
@@ -214,15 +169,17 @@ echo "OK: kmux attached a replacement control client"
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
 xdotool key --delay 150 ctrl+Tab
 
-for _ in $(seq 1 50); do
+sizes_restored() {
     if all_windows_larger_than_default \
         && ! tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_name}' | grep -qxF "$PRIMARY_NAME"; then
-        echo "PASS: reconnect restored every existing window: $(window_sizes | paste -sd ' ' -)"
-        exit 0
+        return 0
     fi
-    sleep 0.2
-done
+    return 1
+}
+if ! kmux_test_wait_until 10 "reconnect to restore every existing window" sizes_restored; then
+    echo "FAIL (bug reproduced): kmux left its old control client attached and existing windows stayed at 80x24" >&2
+    dump_state
+    exit 1
+fi
 
-echo "FAIL (bug reproduced): kmux left its old control client attached and existing windows stayed at 80x24" >&2
-dump_state
-exit 1
+echo "PASS: reconnect restored every existing window: $(window_sizes | paste -sd ' ' -)"

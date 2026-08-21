@@ -39,7 +39,7 @@ jobs:
                 kxmlgui kbookmarks kiconthemes kconfigwidgets kwindowsystem \
                 kpty kdbusaddons kglobalaccel knewstuff knotifyconfig \
                 ktextwidgets kwidgetsaddons kservice ki18n \
-                icu tmux util-linux \
+                icu tmux util-linux python \
                 ttf-dejavu \
                 xorg-server-xvfb xorg-twm xdotool dbus
 

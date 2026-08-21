@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Wait predicates are passed by name to the shared polling helper.
+# shellcheck disable=SC2329
 # Bug repro: creating a 2nd tab in kmux, splitting it, switching back, then
 # splitting the original tab does NOT produce 2 panes per tmux window. The
 # second split lands on the wrong window (the still-active-in-tmux one),
@@ -45,50 +47,25 @@ export QT_LOGGING_RULES="org.kde.konsole.debug=true;konsole.tmux.bridge.debug=tr
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # xdotool keystrokes need a focused window; bare Xvfb has no window manager,
 # so have lib.sh spawn twm when USE_XVFB=1.
-export KMUX_TEST_NEED_WM="${KMUX_TEST_NEED_WM:-1}"
-
-kmux_test_setup
-
-command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
+kmux_test_setup --wm --require tmux
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="splittest"
+kmux_test_register_tmux_socket "$SOCKET"
 
 echo "=== pre-creating tmux session ==="
 tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 200 -y 60
 
 echo "=== launching kmux to attach ==="
-"$KMUX" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700 >"$LOGDIR/kmux.log" 2>&1 &
-KMUX_PID=$!
-
-cleanup_kmux() {
-    if [[ -n "${KMUX_PID:-}" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
-        kill "$KMUX_PID" 2>/dev/null || true
-        wait "$KMUX_PID" 2>/dev/null || true
-    fi
-    if [[ -e "$SOCKET" ]]; then
-        tmux -S "$SOCKET" kill-server 2>/dev/null || true
-    fi
-}
-trap cleanup_kmux EXIT
+kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
+KMUX_PID=$KMUX_TEST_PID
 
 # Match by WM_CLASS, not name: Qt's "Qt Selection Owner for kmux" auxiliary
 # helper window matches a substring --name search before any MainWindow exists.
-WIN=""
-for _ in $(seq 1 100); do
-    if ! kill -0 "$KMUX_PID" 2>/dev/null; then
-        echo "FAIL: kmux exited before window appeared" >&2
-        echo "--- $LOGDIR/kmux.log ---" >&2
-        tail -50 "$LOGDIR/kmux.log" >&2 2>/dev/null || true
-        echo "--- $LOGDIR/xvfb.log ---" >&2
-        tail -20 "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
-        exit 1
-    fi
-    WIN=$(xdotool search --onlyvisible --class kmux 2>/dev/null | tail -1 || true)
-    [[ -n "$WIN" ]] && break
-    sleep 0.2
-done
-[[ -n "$WIN" ]] || { echo "FAIL: kmux window never appeared (see $LOGDIR/kmux.log)" >&2; exit 1; }
+if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
+    exit 1
+fi
+WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
 # Activate the kmux window so subsequent xdotool keystrokes land on it.
@@ -111,16 +88,16 @@ echo "OK: starting state — 1 window, 1 pane"
 wait_for_tmux_count() {
     local target="$1" what="$2"
     shift 2
+    local -a tmux_args=("$@")
     local got=
-    for _ in $(seq 1 50); do
-        got=$(tmux -S "$SOCKET" "$@" 2>/dev/null | wc -l)
-        if (( got == target )); then
-            return 0
-        fi
-        sleep 0.2
-    done
-    echo "FAIL: $what — got $got, expected $target" >&2
-    return 1
+    tmux_count_matches() {
+        got=$(tmux -S "$SOCKET" "${tmux_args[@]}" 2>/dev/null | wc -l)
+        (( got == target ))
+    }
+    if ! kmux_test_wait_until 10 "$what" tmux_count_matches; then
+        echo "FAIL: got $got, expected $target" >&2
+        return 1
+    fi
 }
 
 DELAY_MS=150
