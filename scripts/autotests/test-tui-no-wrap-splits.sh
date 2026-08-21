@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # End-to-end test that kmux renders a multi-pane split layout without wrap.
 #
 # Builds a 5-pane window — 2 panes in the top row, 3 in the bottom — every
@@ -35,7 +35,7 @@ source "$SCRIPT_DIR/lib.sh"
 kmux_test_setup --x11 --require tmux --require dbus-send
 
 FIXTURE="$SCRIPT_DIR/fixtures/tui-rect.sh"
-[[ -x "$FIXTURE" ]] || kmux_test_bail 2 "fixture missing or not executable: $FIXTURE"
+[[ -x "$FIXTURE" ]] || kmux_test_infra "fixture missing or not executable: $FIXTURE"
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="rect"
@@ -58,7 +58,7 @@ wait_for_ready() {
     }
     if ! kmux_test_wait_until 10 "fixture in slot $slot to report ready" fixture_slot_ready; then
         echo "FAIL: missing $f" >&2
-        exit 1
+        kmux_test_fail
     fi
 }
 
@@ -108,7 +108,7 @@ QT_LOGGING_RULES='konsole.tmux.resize.debug=true;konsole.tmux.bridge.debug=true'
 KMUX_PID=$KMUX_TEST_PID
 
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
@@ -129,7 +129,7 @@ for tick in $(seq 1 10); do
     printf '\n'
 done
 
-kmux_test_wait_dbus_service "$KMUX_PID" 5 || exit 1
+kmux_test_wait_dbus_service "$KMUX_PID" 5 || kmux_test_fail
 SERVICE=$KMUX_TEST_DBUS_SERVICE
 echo "kmux D-Bus service: $SERVICE"
 
@@ -140,11 +140,11 @@ all_sessions_registered() {
     mapfile -t SESSION_IDS < <(echo "$raw" | grep -E '^[0-9]+$' | sort -n)
     (( ${#SESSION_IDS[@]} >= NUM_PANES ))
 }
-kmux_test_wait_until 10 "all kmux D-Bus sessions to register" all_sessions_registered || exit 1
+kmux_test_wait_until 10 "all kmux D-Bus sessions to register" all_sessions_registered || kmux_test_fail
 echo "kmux /Sessions/* ids: ${SESSION_IDS[*]}"
 if (( ${#SESSION_IDS[@]} != NUM_PANES )); then
     echo "FAIL: expected $NUM_PANES kmux sessions, found ${#SESSION_IDS[@]}" >&2
-    exit 1
+    kmux_test_fail
 fi
 
 chars=(a b c d e f g h i j k l m n o p q r s t u v w x y z A B C D E F G H I J K L M N O P Q R S T U V W X Y Z)
@@ -261,8 +261,7 @@ if (( fail )); then
         | tail -20 >&2 || true
     echo "" >&2
     echo "(full kmux output: $LOGDIR/kmux.log)" >&2
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: all $NUM_PANES split panes rendered without wrap"
-exit 0
+kmux_test_pass "all $NUM_PANES split panes rendered without wrap"

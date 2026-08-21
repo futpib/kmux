@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # End-to-end test for sessionToolbar visibility persistence.
 #
 # Drives the real kmux binary in an isolated HOME, toggles "Session Toolbar"
@@ -136,21 +138,19 @@ echo "  run2 finished"
 if ! grep -q 'toolbar HIDE "sessionToolbar"' "$LOGDIR/run1.log"; then
     echo "FAIL: run 1 never hid sessionToolbar — xdotool menu navigation missed the toggle" >&2
     echo "  Check $LOGDIR/run1.log and verify Settings menu mnemonics." >&2
-    exit 2
+    kmux_test_infra
 fi
 
 # Did run 2 see sessionToolbar come back visible?
 final_line=$(grep 'activeViewChanged: after  addClient' "$LOGDIR/run2.log" | tail -1 || true)
 if [[ -z "$final_line" ]]; then
     echo "FAIL: could not find activeViewChanged line in run2 log" >&2
-    exit 1
+    kmux_test_fail
 fi
 
 echo "run2 activeViewChanged: $final_line"
 if echo "$final_line" | grep -q 'sessionToolbar=hidden'; then
-    echo "PASS: sessionToolbar stayed hidden across restart"
-    exit 0
+    kmux_test_pass "sessionToolbar stayed hidden across restart"
 else
-    echo "FAIL: sessionToolbar came back visible"
-    exit 1
+    kmux_test_fail "sessionToolbar came back visible"
 fi

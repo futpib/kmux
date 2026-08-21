@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # Regression gate for the suspend-freeze fix.
 #
 # Bug (see git history): when the machine running kmux suspends while attached to
@@ -49,7 +49,7 @@ rss_kb() { ps -o rss= -p "$1" 2>/dev/null | tr -d ' '; }
 
 echo "=== pre-creating tmux server + session ==="
 tmux -S "$SOCKET" -f /dev/null start-server 2>/dev/null || true
-tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 200 -y 50 || kmux_test_bail 2 "could not create tmux session"
+tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 200 -y 50 || kmux_test_infra "could not create tmux session"
 
 echo "=== launching kmux (KMUX_PAUSE_AFTER=$KMUX_PAUSE_AFTER) ==="
 kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION"
@@ -64,7 +64,7 @@ control_client_attached() {
 }
 if ! kmux_test_wait_until 20 "kmux control client to attach" control_client_attached; then
     kmux_test_dump_log "$LOGDIR/kmux.log"
-    exit 1
+    kmux_test_fail
 fi
 
 # --- check 1: did kmux enable control-mode flow control? --------------------
@@ -74,22 +74,22 @@ flags=$(tmux -S "$SOCKET" list-clients -F '#{client_flags}' 2>/dev/null | grep c
 echo "kmux client_flags: $flags"
 if ! echo "$flags" | grep -q "pause-after"; then
     echo "FAIL: kmux did not enable pause-after flow control (client has no pause-after flag)."
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: kmux enabled pause-after flow control."
 
 # --- check 2: server memory stays bounded while kmux is suspended -----------
 SRV=$(tmux -S "$SOCKET" display-message -p '#{pid}')
-[[ -n "$SRV" ]] || kmux_test_bail 2 "could not read tmux server pid"
+[[ -n "$SRV" ]] || kmux_test_infra "could not read tmux server pid"
 tmux -S "$SOCKET" send-keys -t "$SESSION" \
     'while :; do echo PANE_OUTPUT_PADDING_PADDING_PADDING_PADDING_PADDING_PADDING; done' Enter
 sleep 0.5
 base=$(rss_kb "$SRV")
 echo "=== SIGSTOP kmux (simulates suspend); server pid=$SRV baseline RSS=${base}KB ==="
-kill -STOP "$KMUX_PID" || kmux_test_bail 2 "could not SIGSTOP kmux"
+kill -STOP "$KMUX_PID" || kmux_test_infra "could not SIGSTOP kmux"
 sleep 0.3
 state=$(ps -o state= -p "$KMUX_PID" 2>/dev/null | tr -d ' ')
-[[ "$state" == T* ]] || kmux_test_bail 2 "kmux not stopped after SIGSTOP (state='$state')"
+[[ "$state" == T* ]] || kmux_test_infra "kmux not stopped after SIGSTOP (state='$state')"
 
 ballooned=0
 for i in $(seq 1 8); do
@@ -102,7 +102,6 @@ done
 echo
 if (( ballooned )); then
     echo "FAIL: server RSS grew by $(( ($(rss_kb "$SRV") - base) / 1024 ))MB while kmux was suspended — flow control not bounding the buffer."
-    exit 1
+    kmux_test_fail
 fi
-echo "PASS: kmux enabled flow control and the server stayed bounded while suspended."
-exit 0
+kmux_test_pass "kmux enabled flow control and the server stayed bounded while suspended"

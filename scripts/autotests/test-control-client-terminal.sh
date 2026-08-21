@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # End-to-end regression: kmux must advertise an xterm-compatible terminal for
 # its tmux control client even when the launcher and an SSH-like transport do
 # not provide TERM. Otherwise tmux reports client_termname=dumb/unknown and
@@ -39,14 +41,14 @@ control_client_connected() {
 }
 if ! kmux_test_wait_until 10 "kmux control client to connect" control_client_connected; then
     kmux_test_dump_log "$LOGDIR/kmux.log"
-    exit 1
+    kmux_test_fail
 fi
 
 if [[ "$client_term" != "xterm-256color" ]]; then
     echo "FAIL: kmux control client advertised client_termname='$client_term'" >&2
     tmux -S "$SOCKET" list-clients -t "$SESSION" \
         -F 'client=#{client_name} flags=#{client_flags} tty=#{client_tty} termname=#{client_termname}' >&2 2>&1 || true
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: kmux control client advertised client_termname=$client_term without inherited TERM"
+kmux_test_pass "kmux control client advertised client_termname=$client_term without inherited TERM"

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # End-to-end test: when an --rsh wrapper fails before tmux handshakes,
 # kmux must surface the wrapper's output so the user can see *why* it
 # failed — both its stdout and its stderr (where ssh & friends print
@@ -50,7 +52,7 @@ KMUX_PID=$KMUX_TEST_PID
 # Wait for kmux to exit (the startup-failure path should make it quit).
 if ! kmux_test_wait_process_exit "$KMUX_PID" 10; then
     echo "FAIL: kmux did not exit within 10s after the rsh wrapper failed — it hung" >&2
-    exit 1
+    kmux_test_fail
 fi
 
 # Both markers must show up in kmux's output. grep -F: fixed strings.
@@ -67,8 +69,7 @@ fi
 if [[ "$missing" -ne 0 ]]; then
     echo "--- kmux.log ---" >&2
     cat "$LOGDIR/kmux.log" >&2 || true
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: kmux reported both the stdout and stderr of the failing --rsh wrapper"
-exit 0
+kmux_test_pass "kmux reported both the stdout and stderr of the failing --rsh wrapper"

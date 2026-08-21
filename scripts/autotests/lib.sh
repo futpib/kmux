@@ -40,30 +40,46 @@ KMUX_TEST_WINDOW_ID=""
 KMUX_TEST_EXIT_STATUS=""
 KMUX_TEST_DBUS_SERVICE=""
 
-kmux_test_bail() {
-    local code=$1
-    shift
-    echo "error: $*" >&2
-    exit "$code"
+# Terminal outcome helpers. The message is optional so tests can emit detailed
+# diagnostics first, then terminate with a named status instead of a magic
+# number. Predicate helpers should continue to use return, not these functions.
+kmux_test_pass() {
+    (( $# == 0 )) || printf 'PASS: %s\n' "$*"
+    exit 0
+}
+
+kmux_test_fail() {
+    (( $# == 0 )) || printf 'FAIL: %s\n' "$*" >&2
+    exit 1
+}
+
+kmux_test_infra() {
+    (( $# == 0 )) || printf 'INFRASTRUCTURE: %s\n' "$*" >&2
+    exit 2
+}
+
+kmux_test_skip() {
+    (( $# == 0 )) || printf 'SKIP: %s\n' "$*" >&2
+    exit 77
 }
 
 kmux_test_add_cleanup() {
     local callback=$1
     if ! declare -F "$callback" >/dev/null; then
-        kmux_test_bail 2 "cleanup callback is not a function: $callback"
+        kmux_test_infra "cleanup callback is not a function: $callback"
     fi
     _KMUX_TEST_CLEANUPS+=("$callback")
 }
 
 kmux_test_register_pid() {
     local pid=$1
-    [[ "$pid" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "invalid process id: $pid"
+    [[ "$pid" =~ ^[0-9]+$ ]] || kmux_test_infra "invalid process id: $pid"
     _KMUX_TEST_PIDS+=("$pid")
 }
 
 kmux_test_register_tmux_socket() {
     local socket=$1
-    [[ -n "$socket" ]] || kmux_test_bail 2 "cannot register an empty tmux socket path"
+    [[ -n "$socket" ]] || kmux_test_infra "cannot register an empty tmux socket path"
     _KMUX_TEST_TMUX_SOCKETS+=("$socket")
 }
 
@@ -120,7 +136,7 @@ kmux_test__cleanup() {
 kmux_test_start_process() {
     local logfile=$1
     shift
-    (( $# > 0 )) || kmux_test_bail 2 "kmux_test_start_process requires a command"
+    (( $# > 0 )) || kmux_test_infra "kmux_test_start_process requires a command"
     "$@" >"$logfile" 2>&1 &
     KMUX_TEST_PID=$!
     kmux_test_register_pid "$KMUX_TEST_PID"
@@ -136,8 +152,8 @@ kmux_test_wait_until() {
     local timeout=$1
     local description=$2
     shift 2
-    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "invalid wait timeout: $timeout"
-    (( $# > 0 )) || kmux_test_bail 2 "kmux_test_wait_until requires a predicate"
+    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_infra "invalid wait timeout: $timeout"
+    (( $# > 0 )) || kmux_test_infra "kmux_test_wait_until requires a predicate"
 
     local started=$SECONDS
     while (( SECONDS - started < timeout )); do
@@ -192,7 +208,7 @@ kmux_test_wait_visible_window() {
     local logfile=$2
     local timeout=${3:-20}
     local excluded=${4:-}
-    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "invalid window wait timeout: $timeout"
+    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_infra "invalid window wait timeout: $timeout"
 
     KMUX_TEST_WINDOW_ID=""
     local started=$SECONDS
@@ -215,7 +231,7 @@ kmux_test_wait_visible_window() {
 kmux_test_wait_process_exit() {
     local pid=$1
     local timeout=$2
-    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "invalid process wait timeout: $timeout"
+    [[ "$timeout" =~ ^[0-9]+$ ]] || kmux_test_infra "invalid process wait timeout: $timeout"
 
     KMUX_TEST_EXIT_STATUS=""
     local started=$SECONDS
@@ -308,21 +324,21 @@ kmux_test_setup() {
                 shift
                 ;;
             --require)
-                (( $# >= 2 )) || kmux_test_bail 2 "--require needs a tool name"
+                (( $# >= 2 )) || kmux_test_infra "--require needs a tool name"
                 required+=("$2")
                 shift 2
                 ;;
             *)
-                kmux_test_bail 2 "unknown kmux_test_setup option: $1"
+                kmux_test_infra "unknown kmux_test_setup option: $1"
                 ;;
         esac
     done
 
     local repo_root
-    repo_root=$(kmux_test__repo_root) || kmux_test_bail 2 "could not locate repo root"
+    repo_root=$(kmux_test__repo_root) || kmux_test_infra "could not locate repo root"
     KMUX="$repo_root/build/bin/kmux"
     if [[ ! -x "$KMUX" ]]; then
-        kmux_test_bail 2 "$KMUX missing — build with: cmake --build build --target kmux"
+        kmux_test_infra "$KMUX missing — build with: cmake --build build --target kmux"
     fi
 
     if [[ "${USE_XVFB:-0}" == "1" ]]; then
@@ -336,10 +352,10 @@ kmux_test_setup() {
         fi
     fi
     for t in "${required[@]}"; do
-        command -v "$t" >/dev/null || kmux_test_bail 2 "$t not installed"
+        command -v "$t" >/dev/null || kmux_test_infra "$t not installed"
     done
     if [[ "${USE_XVFB:-0}" != "1" && -z "${DISPLAY:-}" ]]; then
-        kmux_test_bail 2 "no \$DISPLAY and USE_XVFB=0 — run on a live X session or export USE_XVFB=1"
+        kmux_test_infra "no \$DISPLAY and USE_XVFB=0 — run on a live X session or export USE_XVFB=1"
     fi
 
     HOMEDIR=$(mktemp -d)
@@ -383,7 +399,7 @@ kmux_test_setup() {
             echo "FAIL: Xvfb did not allocate a display within 10s" >&2
             echo "--- xvfb.log ---" >&2
             cat "$LOGDIR/xvfb.log" >&2 2>/dev/null || true
-            kmux_test_bail 2 "Xvfb startup timed out"
+            kmux_test_infra "Xvfb startup timed out"
         fi
         export DISPLAY=":$display_number"
 

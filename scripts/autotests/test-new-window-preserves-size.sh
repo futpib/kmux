@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # Bug repro: invoking New Window (Ctrl+Shift+N) on a tmux-attached kmux
 # window spawns a *second* kmux MainWindow — a second tmux control-mode
 # client attached to the same session, showing only the freshly created
@@ -111,7 +111,7 @@ dump_state() {
 
 # --- wait for kmux's initial window --------------------------------------
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
@@ -130,10 +130,10 @@ xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
 sleep 2  # let the renegotiation settle
 
 # --- baseline: one window, negotiated up to the frame --------------------
-wait_for_window_count 1 "starting window count" || { dump_state "bad start"; exit 1; }
+wait_for_window_count 1 "starting window count" || { dump_state "bad start"; kmux_test_fail; }
 ORIG_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' 2>/dev/null | head -1)
 ORIG_PANE=$(tmux -S "$SOCKET" list-panes -t "$ORIG_WID" -F '#{pane_id}' 2>/dev/null | head -1)
-[[ -n "$ORIG_WID" && -n "$ORIG_PANE" ]] || { echo "FAIL: no original window/pane id" >&2; dump_state "no ids"; exit 2; }
+[[ -n "$ORIG_WID" && -n "$ORIG_PANE" ]] || { echo "FAIL: no original window/pane id" >&2; dump_state "no ids"; kmux_test_infra; }
 
 echo "--- baseline size negotiation (window | pane | X-pixels) ---"
 for _ in $(seq 1 10); do
@@ -155,19 +155,19 @@ if ! [[ "$cols_before" =~ ^[0-9]+$ && "$rows_before" =~ ^[0-9]+$ ]] || (( cols_b
          "expected kmux to grow 80x24 toward the 1100x700 frame). Size assertion would" \
          "be meaningless." >&2
     dump_state "no negotiation"
-    exit 2
+    kmux_test_infra
 fi
 
 # --- step 1: New Window (Ctrl+Shift+N) ------------------------------------
 echo "=== Ctrl+Shift+N (new window) ==="
 xdotool key --delay 150 ctrl+shift+n
-wait_for_window_count 2 "after Ctrl+Shift+N" || { dump_state "no 2nd window"; exit 1; }
+wait_for_window_count 2 "after Ctrl+Shift+N" || { dump_state "no 2nd window"; kmux_test_fail; }
 NEW_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' 2>/dev/null | grep -vx "$ORIG_WID" | head -1)
 echo "OK: tmux now has 2 windows (original=$ORIG_WID new=$NEW_WID)"
 
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20 "$WIN"; then
     dump_state "no 2nd X window"
-    exit 1
+    kmux_test_fail
 fi
 NEWWIN=$KMUX_TEST_WINDOW_ID
 echo "OK: second kmux window appeared (winid=$NEWWIN)"
@@ -179,7 +179,7 @@ new_window_has_content() {
 }
 if ! kmux_test_wait_until 10 "new tmux window to draw content" new_window_has_content; then
     dump_state "new window empty"
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: new window has content"
 
@@ -205,7 +205,7 @@ if ! kmux_test_wait_until 10 "new kmux window to close" window_is_closed; then
     xdotool windowclose "$NEWWIN" 2>/dev/null || true
     kmux_test_wait_until 6 "new kmux window to close after WM request" window_is_closed || true
 fi
-window_is_closed || { echo "FAIL: could not close the new kmux window ($NEWWIN)" >&2; dump_state "won't close"; exit 1; }
+window_is_closed || { echo "FAIL: could not close the new kmux window ($NEWWIN)" >&2; dump_state "won't close"; kmux_test_fail; }
 echo "OK: new window closed (kmux windows now: $(count_kmux_windows))"
 
 # --- step 3: re-sample the ORIGINAL window --------------------------------
@@ -254,7 +254,7 @@ if [[ -z "$split_target" ]]; then
     echo "SCAFFOLD: Ctrl+( produced no new pane anywhere — the keystroke was lost" \
          "(not a kmux bug); cannot evaluate the split." >&2
     dump_state "split keystroke lost"
-    exit 2
+    kmux_test_infra
 fi
 if [[ "$split_target" == "wrong" ]]; then
     echo "FAIL: Ctrl+( split the WRONG tmux window. The focused window shows the" \
@@ -273,7 +273,7 @@ if [[ "$split_target" == "wrong" ]]; then
     { grep -aE 'split-window|select-layout|activePane|splitView|hideWindow|%window-add|%window-close' \
         "$LOGDIR/kmux.log" 2>/dev/null | grep -av -e 'bind-key' -e 'display-menu' | tail -50; } >&2 || true
     echo "(full kmux output: $LOGDIR/kmux.log)" >&2
-    exit 1
+    kmux_test_fail
 fi
 sleep 1  # split landed on @0; let select-layout settle
 echo "OK: split landed on the original window; it now has $(panes_in "$ORIG_WID") panes"
@@ -335,8 +335,7 @@ if (( fail )); then
         "$LOGDIR/kmux.log" 2>/dev/null | grep -av -e 'bind-key' -e 'display-menu' | tail -80; } >&2 || true
     echo "(full kmux output: $LOGDIR/kmux.log)" >&2
     echo "FAIL: the new-window+close cycle disturbed the pre-existing window" >&2
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: original window kept its size and splits cleanly after the new-window cycle"
-exit 0
+kmux_test_pass "original window kept its size and splits cleanly after the new-window cycle"

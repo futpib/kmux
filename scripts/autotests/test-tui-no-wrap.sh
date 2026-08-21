@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # End-to-end test that kmux renders a full-screen TUI without line wrapping.
 #
 # Pre-creates a tmux session whose pane runs scripts/autotests/fixtures/
@@ -36,7 +36,7 @@ source "$SCRIPT_DIR/lib.sh"
 kmux_test_setup --x11 --require tmux --require dbus-send
 
 FIXTURE="$SCRIPT_DIR/fixtures/tui-rect.sh"
-[[ -x "$FIXTURE" ]] || kmux_test_bail 2 "fixture missing or not executable: $FIXTURE"
+[[ -x "$FIXTURE" ]] || kmux_test_infra "fixture missing or not executable: $FIXTURE"
 
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="rect"
@@ -56,7 +56,7 @@ fixture_ready() {
 }
 if ! kmux_test_wait_until 10 "TUI fixture to report ready" fixture_ready; then
     echo "FAIL: fixture never reported ready (no $READY_FILE)" >&2
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: fixture printed first frame"
 
@@ -87,7 +87,7 @@ KMUX_PID=$KMUX_TEST_PID
 
 # Wait for kmux's window to appear.
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
@@ -109,16 +109,16 @@ done
 # the only authoritative source for what dimensions the TUI actually drew at.
 if [[ ! -e "$SIZE_FILE" ]]; then
     echo "FAIL: fixture never wrote size file ($SIZE_FILE)" >&2
-    exit 1
+    kmux_test_fail
 fi
 read -r FIX_ROWS FIX_COLS <"$SIZE_FILE"
 echo "fixture observed pane size (stty): ${FIX_COLS}x${FIX_ROWS}"
 if (( FIX_COLS < 4 || FIX_ROWS < 4 )); then
     echo "FAIL: fixture saw degenerate size ${FIX_COLS}x${FIX_ROWS}" >&2
-    exit 1
+    kmux_test_fail
 fi
 
-kmux_test_wait_dbus_service "$KMUX_PID" 5 || exit 1
+kmux_test_wait_dbus_service "$KMUX_PID" 5 || kmux_test_fail
 SERVICE=$KMUX_TEST_DBUS_SERVICE
 echo "kmux D-Bus service: $SERVICE"
 
@@ -128,7 +128,7 @@ sessions_registered() {
     sessions_children=$(kmux_test_dbus_children "$SERVICE" /Sessions)
     [[ -n "$sessions_children" ]]
 }
-kmux_test_wait_until 5 "kmux D-Bus sessions to register" sessions_registered || exit 1
+kmux_test_wait_until 5 "kmux D-Bus sessions to register" sessions_registered || kmux_test_fail
 SESSION_ID=$(echo "$sessions_children" | grep -E '^[0-9]+$' | sort -n | tail -1)
 SESSION_PATH="/Sessions/${SESSION_ID}"
 echo "kmux session path: $SESSION_PATH"
@@ -244,8 +244,7 @@ if (( fail )); then
         | tail -20 >&2 || true
     echo "" >&2
     echo "(full kmux output: $LOGDIR/kmux.log)" >&2
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: full-screen TUI rendered without line wrapping (${FIX_COLS}x${FIX_ROWS})"
-exit 0
+kmux_test_pass "full-screen TUI rendered without line wrapping (${FIX_COLS}x${FIX_ROWS})"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # Regression: a tmux window created by another process must be sized to an
 # existing kmux frame instead of remaining at tmux's 80x24 default when a
 # second, window-restricted kmux control client is attached.
@@ -41,7 +41,7 @@ count_visible_kmux_windows() {
 }
 
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 
@@ -64,7 +64,7 @@ initial_window_sized() {
 if ! kmux_test_wait_until 10 "initial tmux window to exceed 80x24" initial_window_sized; then
     dump_state
     echo "FAIL: initial window did not negotiate beyond 80x24 (got $ORIGINAL_SIZE)" >&2
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: initial window negotiated to $ORIGINAL_SIZE"
 
@@ -83,7 +83,7 @@ second_kmux_window_ready() {
 }
 if ! kmux_test_wait_until 20 "second kmux window and control client" second_kmux_window_ready; then
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: second kmux window and restricted control client attached"
 
@@ -92,7 +92,7 @@ echo "OK: second kmux window and restricted control client attached"
 KNOWN_WIDS=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}')
 tmux -S "$SOCKET" new-window -d -t "$SESSION"
 NEW_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' | grep -vxF -f <(printf '%s\n' "$KNOWN_WIDS") | head -1)
-[[ -n "$NEW_WID" ]] || kmux_test_bail 2 "external tmux window was not created"
+[[ -n "$NEW_WID" ]] || kmux_test_infra "external tmux window was not created"
 
 NEW_SIZE=""
 external_window_sized() {
@@ -105,8 +105,7 @@ external_window_sized() {
 if ! kmux_test_wait_until 10 "external tmux window to exceed 80x24" external_window_sized; then
     echo "FAIL: externally created window remained constrained at $NEW_SIZE; expected kmux to advertise the existing frame size" >&2
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: externally created window grew from tmux's 80x24 default to $NEW_SIZE"
-exit 0
+kmux_test_pass "externally created window grew from tmux's 80x24 default to $NEW_SIZE"

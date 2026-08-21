@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # End-to-end test for kmux's --rsh option with an interactive wrapper.
 #
 # Drives the real kmux binary in an isolated HOME with an --rsh wrapper
@@ -79,7 +79,7 @@ sleep 3
 # exited.
 if ! kill -0 "$KMUX_PID" 2>/dev/null; then
     echo "FAIL: kmux exited before wrapper unblocked (see $LOGDIR/kmux.log)" >&2
-    exit 1
+    kmux_test_fail
 fi
 
 # Assertion 1: tmux socket must NOT exist yet. If it did, the wrapper
@@ -87,7 +87,7 @@ fi
 # --rsh is that every tmux invocation goes through the wrapper.
 if [[ -e "$SOCKET" ]]; then
     echo "FAIL: tmux socket exists before wrapper was unblocked — wrapper was bypassed" >&2
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 
@@ -104,7 +104,7 @@ echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 # the post-show one.
 if xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
     echo "FAIL: kmux window appeared before tmux's first reply — show-deferral regressed" >&2
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: kmux window hidden while wrapper is blocked on FIFO"
 
@@ -127,8 +127,7 @@ authenticated_session_ready() {
     [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]
 }
 if kmux_test_wait_until 30 "tmux session and kmux window after authentication" authenticated_session_ready; then
-    echo "PASS: tmux session established and kmux window shown after --rsh authenticated"
-    exit 0
+    kmux_test_pass "tmux session established and kmux window shown after --rsh authenticated"
 fi
 
 echo "FAIL: after unblocking wrapper, tmux_ok=$tmux_ok window_ok=$window_ok (see $LOGDIR/kmux.log)" >&2
@@ -148,4 +147,4 @@ for w in $(xdotool search --name kmux 2>/dev/null) $(xdotool search --class kmux
 done
 echo "--- last 80 lines of kmux.log ---" >&2
 tail -80 "$LOGDIR/kmux.log" >&2 || true
-exit 1
+kmux_test_fail

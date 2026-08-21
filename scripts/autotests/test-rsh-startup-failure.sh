@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # End-to-end test for kmux's behaviour when an --rsh wrapper fails before
 # tmux ever handshakes.
 #
@@ -60,7 +62,7 @@ if ! kmux_test_wait_process_exit "$KMUX_PID" 10; then
     echo "--- kmux.log ---" >&2
     cat "$LOGDIR/kmux.log" >&2 || true
     kill "$KMUX_PID" 2>/dev/null || true
-    exit 1
+    kmux_test_fail
 fi
 status=$KMUX_TEST_EXIT_STATUS
 
@@ -71,8 +73,7 @@ if [[ "$status" -eq 0 ]]; then
     echo "FAIL: kmux exited 0 after the rsh wrapper failed — failure was swallowed" >&2
     echo "--- kmux.log ---" >&2
     cat "$LOGDIR/kmux.log" >&2 || true
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: kmux exited non-zero (status=$status) after the --rsh wrapper failed before handshake"
-exit 0
+kmux_test_pass "kmux exited non-zero (status=$status) after the --rsh wrapper failed before handshake"

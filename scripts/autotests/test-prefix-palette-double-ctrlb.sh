@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # Repro: "Ctrl+B Ctrl+B works every time in tmux but not in kmux."
 #
 # In tmux, the default `bind-key -T prefix C-b send-prefix` means pressing the
@@ -78,7 +80,7 @@ echo "=== launching kmux ==="
 kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION"
 KMUX_PID=$KMUX_TEST_PID
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 xdotool windowfocus --sync "$WIN" 2>/dev/null || true
@@ -113,7 +115,7 @@ if [[ "$control_ok" != 1 ]]; then
     echo "SCAFFOLD: real C-b C-b never delivered 0x02 in this harness — focus or" \
          "handshake problem, not the bug under test. kmux.log tail:" >&2
     tail -20 "$LOGDIR/kmux.log" >&2 || true
-    exit 2
+    kmux_test_infra
 fi
 echo "OK (scaffold): real C-b C-b delivers the literal prefix to the pane"
 
@@ -134,9 +136,7 @@ sp_delta=$(( ${sp_after:-0} - ${sp_before:-0} ))
 echo "second-press-loses-ctrl -> pane received: $seq_bytes ; send-prefix dispatched during repro: $sp_delta"
 
 if has02 "$off"; then
-    echo "PASS: literal prefix (0x02) reached the pane even though the second"
-    echo "      press lost its Ctrl modifier — palette is robust to the race."
-    exit 0
+    kmux_test_pass "literal prefix (0x02) reached the pane even though the second press lost its Ctrl modifier — palette is robust to the race"
 fi
 
 # No prefix byte. Distinguish the bug from a scaffold miss: if a plain 'b' (0x62)
@@ -146,7 +146,7 @@ fi
 if [[ "$seq_bytes" == *"b'b'"* || "$seq_bytes" == *"\\x62"* ]]; then
     echo "SCAFFOLD: the bare 'b' reached the pane, so the palette wasn't open when" \
          "the second key was sent — precondition not met, rerun." >&2
-    exit 2
+    kmux_test_infra
 fi
 
 echo "FAIL (bug reproduced): the palette swallowed the modifier-dropped second" >&2
@@ -154,4 +154,4 @@ echo "  press and closed without dispatching send-prefix (send-prefix dispatched
 echo "  during the repro: $sp_delta), so the pane received nothing ($seq_bytes)." >&2
 echo "  This is the intermittent 'C-b C-b does nothing' the user hits on Wayland." >&2
 echo "  See TmuxPrefixPalette::keyPressEvent / keyEventToTmuxToken." >&2
-exit 1
+kmux_test_fail

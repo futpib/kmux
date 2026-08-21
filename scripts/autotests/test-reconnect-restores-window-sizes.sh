@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # Regression: after a control transport reconnects while its orphaned server-side
 # client keeps the session at 80x24, kmux must detach that predecessor and
 # advertise every existing window's size again.
@@ -23,7 +25,7 @@ RECONNECT_GATE="$HOMEDIR/reconnect-gate"
 TRANSPORT_PID_FILE="$HOMEDIR/rsh-wrapper.pid"
 TRANSPORT_CHILDREN_FILE="$HOMEDIR/rsh-wrapper.children"
 KMUX_PID=""
-[[ -x "$ORPHANING_RSH" ]] || kmux_test_bail 2 "missing executable fixture: $ORPHANING_RSH"
+[[ -x "$ORPHANING_RSH" ]] || kmux_test_infra "missing executable fixture: $ORPHANING_RSH"
 kmux_test_register_tmux_socket "$SOCKET"
 
 mkfifo "$RECONNECT_GATE"
@@ -99,7 +101,7 @@ echo "=== launching kmux through a reconnect-gated --rsh wrapper ==="
 kmux_test_start "$LOGDIR/kmux.log" --rsh "$WRAPPER" -S "$SOCKET" -s "$SESSION" --qwindowgeometry 1100x700
 KMUX_PID=$KMUX_TEST_PID
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 
@@ -112,16 +114,16 @@ initial_client_ready() {
 }
 if ! kmux_test_wait_until 12 "initial client to size both windows" initial_client_ready; then
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: initial kmux client sized both windows: $(window_sizes | paste -sd ' ' -)"
 
 PRIMARY_PID=$(tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_pid}')
-[[ "$PRIMARY_PID" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "could not identify kmux's initial control client"
+[[ "$PRIMARY_PID" =~ ^[0-9]+$ ]] || kmux_test_infra "could not identify kmux's initial control client"
 PRIMARY_NAME=$(tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_name}')
-[[ -n "$PRIMARY_NAME" ]] || kmux_test_bail 2 "could not identify kmux's initial control client name"
+[[ -n "$PRIMARY_NAME" ]] || kmux_test_infra "could not identify kmux's initial control client name"
 TRANSPORT_PID=$(<"$TRANSPORT_PID_FILE")
-[[ "$TRANSPORT_PID" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "could not identify kmux's wrapped transport"
+[[ "$TRANSPORT_PID" =~ ^[0-9]+$ ]] || kmux_test_infra "could not identify kmux's wrapped transport"
 
 # Crash the wrapper which stands in for ssh, not the tmux process behind it.
 # The proxy leaves that server-side control client alive just like the two
@@ -134,7 +136,7 @@ reconnect_is_gated() {
 }
 if ! kmux_test_wait_until 5 "kmux to enter its gated reconnect" reconnect_is_gated; then
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 
 WINDOW_IDS=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}')
@@ -144,7 +146,7 @@ done <<<"$WINDOW_IDS"
 
 if ! kmux_test_wait_until 5 "surviving client to establish the 80x24 precondition" all_windows_at_default; then
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: orphaned kmux control client reduced both windows to tmux's 80x24 default"
 
@@ -159,7 +161,7 @@ replacement_client_attached() {
 }
 if ! kmux_test_wait_until 10 "replacement control client to attach" replacement_client_attached; then
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: kmux attached a replacement control client"
 
@@ -179,7 +181,7 @@ sizes_restored() {
 if ! kmux_test_wait_until 10 "reconnect to restore every existing window" sizes_restored; then
     echo "FAIL (bug reproduced): kmux left its old control client attached and existing windows stayed at 80x24" >&2
     dump_state
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: reconnect restored every existing window: $(window_sizes | paste -sd ' ' -)"
+kmux_test_pass "reconnect restored every existing window: $(window_sizes | paste -sd ' ' -)"

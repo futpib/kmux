@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # Repro: switching to a different window via kmux's native tree switcher
 # (the popup that replaces tmux's `Prefix + w` choose-tree picker) does
 # not actually change which Konsole tab is shown — the user reports
@@ -114,7 +116,7 @@ echo "=== launching kmux to attach ==="
 kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION"
 KMUX_PID=$KMUX_TEST_PID
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 
@@ -158,7 +160,7 @@ if [[ "$initial_title" != *ALPHA* ]]; then
     echo "SCAFFOLD: kmux X title didn't pick up the seeded OSC titles" \
          "(\"$initial_title\"). The LocalTabTitleFormat=%w seed isn't" \
          "in effect — investigate before trusting this test." >&2
-    exit 2
+    kmux_test_infra
 fi
 
 # --- exercise the bug repro path -----------------------------------------
@@ -197,8 +199,7 @@ tmux -S "$SOCKET" list-windows -t "$SESSION" \
     -F '#{window_index} #{window_name} #{?window_active,ACTIVE,}' >&2 || true
 
 if [[ "$final_title" == *BETA* && "$final_title" != *ALPHA* ]]; then
-    echo "PASS: kmux switched from ALPHA to BETA via the tree switcher (X title)"
-    exit 0
+    kmux_test_pass "kmux switched from ALPHA to BETA via the tree switcher (X title)"
 fi
 
 # Look for the fix's success marker in the kmux log. This works even
@@ -208,11 +209,10 @@ fi
 # fallback to the FAIL branch under Xvfb (where the X title path is the
 # one that stalls).
 if grep -q "onSessionWindowChanged: switched Konsole tab" "$LOGDIR/kmux.log" 2>/dev/null; then
-    echo "PASS: kmux switched the Konsole tab (X title didn't update — Xvfb focus quirk; see kmux.log)"
-    exit 0
+    kmux_test_pass "kmux switched the Konsole tab (X title didn't update — Xvfb focus quirk; see kmux.log)"
 fi
 
 echo "FAIL: kmux X title is still \"$final_title\" and the fix's tab-switch" \
      "log line isn't in kmux.log — bug present (the tree-switcher selection" \
      "didn't change the active Konsole tab)" >&2
-exit 1
+kmux_test_fail

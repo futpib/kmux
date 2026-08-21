@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wait predicates are passed by name to the shared polling helper.
-# shellcheck disable=SC2329
+# Poll predicates are passed by name and outcome helpers accept optional messages.
+# shellcheck disable=SC2119,SC2329
 # Bug repro: creating a 2nd tab in kmux, splitting it, switching back, then
 # splitting the original tab does NOT produce 2 panes per tmux window. The
 # second split lands on the wrong window (the still-active-in-tmux one),
@@ -63,7 +63,7 @@ KMUX_PID=$KMUX_TEST_PID
 # Match by WM_CLASS, not name: Qt's "Qt Selection Owner for kmux" auxiliary
 # helper window matches a substring --name search before any MainWindow exists.
 if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
-    exit 1
+    kmux_test_fail
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
@@ -79,7 +79,7 @@ INITIAL_WINDOWS=$(tmux -S "$SOCKET" list-windows -t "$SESSION" 2>/dev/null | wc 
 INITIAL_PANES=$(tmux -S "$SOCKET" list-panes -s -t "$SESSION" 2>/dev/null | wc -l)
 if (( INITIAL_WINDOWS != 1 || INITIAL_PANES != 1 )); then
     echo "FAIL: starting state windows=$INITIAL_WINDOWS panes=$INITIAL_PANES (expected 1/1)" >&2
-    exit 1
+    kmux_test_fail
 fi
 echo "OK: starting state — 1 window, 1 pane"
 
@@ -105,13 +105,13 @@ DELAY_MS=150
 echo "=== step 1: create a 2nd tab (Ctrl+Shift+T) ==="
 xdotool key --delay "$DELAY_MS" ctrl+shift+t
 wait_for_tmux_count 2 "windows after new-tab" \
-    list-windows -t "$SESSION" || exit 1
+    list-windows -t "$SESSION" || kmux_test_fail
 echo "OK: tmux now has 2 windows"
 
 echo "=== step 2: split the new tab (Ctrl+ParenLeft) ==="
 xdotool key --delay "$DELAY_MS" ctrl+parenleft
 wait_for_tmux_count 3 "total panes after first split" \
-    list-panes -s -t "$SESSION" || exit 1
+    list-panes -s -t "$SESSION" || kmux_test_fail
 echo "OK: total panes = 3"
 
 echo "=== step 3: switch back to original tab (Shift+Left) ==="
@@ -126,7 +126,7 @@ sleep 0.5
 echo "=== step 4: split the original tab (Ctrl+ParenLeft) ==="
 xdotool key --delay "$DELAY_MS" ctrl+parenleft
 wait_for_tmux_count 4 "total panes after second split" \
-    list-panes -s -t "$SESSION" || exit 1
+    list-panes -s -t "$SESSION" || kmux_test_fail
 echo "OK: total panes = 4"
 
 echo "=== verifying each tab has exactly 2 panes ==="
@@ -136,7 +136,7 @@ mapfile -t WINDOW_INFO < <(tmux -S "$SOCKET" list-windows -t "$SESSION" \
 if (( ${#WINDOW_INFO[@]} != 2 )); then
     echo "FAIL: expected 2 windows, got ${#WINDOW_INFO[@]}" >&2
     printf '  %s\n' "${WINDOW_INFO[@]}" >&2
-    exit 1
+    kmux_test_fail
 fi
 
 fail=0
@@ -164,8 +164,7 @@ if (( fail )); then
     grep -aE 'new-window|split-window|select-window|%window-add|%layout-change' \
         "$LOGDIR/kmux.log" >&2 || true
     echo "(full kmux output: $LOGDIR/kmux.log)" >&2
-    exit 1
+    kmux_test_fail
 fi
 
-echo "PASS: each tab has 2 panes from tmux's viewpoint"
-exit 0
+kmux_test_pass "each tab has 2 panes from tmux's viewpoint"

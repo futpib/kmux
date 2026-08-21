@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Outcome helpers accept optional messages.
+# shellcheck disable=SC2119
 # End-to-end test for the kmux --rsh + ssh password-prompt path, exercised
 # over a REAL pseudo-terminal.
 #
@@ -40,7 +42,7 @@ source "$SCRIPT_DIR/lib.sh"
 kmux_test_setup --x11 --require tmux --require python3
 
 DRIVER="$SCRIPT_DIR/fixtures/pty-run.py"
-[[ -f "$DRIVER" ]] || kmux_test_bail 2 "missing pty driver $DRIVER"
+[[ -f "$DRIVER" ]] || kmux_test_infra "missing pty driver $DRIVER"
 
 WRAPPER="$HOMEDIR/rsh-ssh-like.sh"
 SOCKET="$HOMEDIR/tmux.sock"
@@ -95,8 +97,7 @@ for _ in $(seq 1 60); do
         window_ok=1
     fi
     if [[ "$prompt_ok" -eq 1 && "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
-        echo "PASS: prompt shown on the terminal, password delivered, tmux up, window shown"
-        exit 0
+        kmux_test_pass "prompt shown on the terminal, password delivered, tmux up, window shown"
     fi
     # If the driver died early, kmux/pty setup failed — stop waiting.
     if ! kill -0 "$DRIVER_PID" 2>/dev/null; then
@@ -108,4 +109,4 @@ done
 echo "FAIL: prompt_ok=$prompt_ok tmux_ok=$tmux_ok window_ok=$window_ok" >&2
 echo "--- pty.log (terminal as the user would see it) ---" >&2
 cat "$PTY_LOG" >&2 2>/dev/null || true
-exit 1
+kmux_test_fail
