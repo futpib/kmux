@@ -215,6 +215,22 @@ void TmuxGatewayTest::testUnresponsiveFiresDespitePeriodicResends()
     QVERIFY2(spy.count() >= 1, "unresponsive() never fired while commands kept being re-sent without replies");
 }
 
+void TmuxGatewayTest::testChangingTimeoutRearmsOutstandingCommand()
+{
+    TmuxGateway gateway([](const QByteArray &) { });
+    QSignalSpy spy(&gateway, &TmuxGateway::unresponsive);
+    QVERIFY(spy.isValid());
+
+    // Sending first arms the production 5s deadline. Lowering the timeout must
+    // replace that active deadline, which integration tests and runtime tuning
+    // rely on when a command is already outstanding.
+    gateway.sendCommand(TmuxCommand(QStringLiteral("display-message")));
+    gateway.setCommandTimeoutMs(50);
+
+    QVERIFY(spy.wait(1000));
+    QCOMPARE(spy.count(), 1);
+}
+
 QTEST_MAIN(TmuxGatewayTest)
 
 #include "moc_TmuxGatewayTest.cpp"

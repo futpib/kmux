@@ -24,6 +24,7 @@ private Q_SLOTS:
     void testIdleLinkNeverUnresponsive();
     void testActivityRecoversFromUnresponsive();
     void testUnresponsiveFiresDespitePeriodicResends();
+    void testChangingTimeoutRearmsOutstandingCommand();
     void testExtendedOutputParsedAsOutput();
     void testSubscriptionChangedParsed();
 };

@@ -369,6 +369,12 @@ void TmuxGateway::finishCurrentCommand(bool success)
 void TmuxGateway::setCommandTimeoutMs(int ms)
 {
     _commandTimeoutMs = ms;
+    // Apply a runtime change to an already-outstanding command immediately.
+    // updateCommandTimeout() deliberately leaves active deadlines alone so
+    // periodic sends cannot postpone them, so the setter must rearm explicitly.
+    if (_commandTimeoutTimer != nullptr) {
+        _commandTimeoutTimer->stop();
+    }
     updateCommandTimeout();
 }
 
