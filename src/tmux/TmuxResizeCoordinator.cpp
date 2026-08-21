@@ -31,6 +31,11 @@ namespace Konsole
 void TmuxResizeCoordinator::setGateway(TmuxGateway *gateway)
 {
     _gateway = gateway;
+    // refresh-client -C state belongs to one tmux client, not the session.
+    // A replacement control client starts without any of the per-window sizes
+    // cached below, so every tracked window must be advertised again.
+    _lastClientSizes.clear();
+    _clientSizesNeedReplay = true;
 }
 
 // Cells the widget tree could draw if tmux gave it the chance, derived
@@ -415,6 +420,15 @@ void TmuxResizeCoordinator::sendClientSize()
             qCDebug(KonsoleTmuxResize) << "sendClientSize: windowId=" << windowId << "size unchanged at" << lastSize << "→ skipping";
         }
     }
+}
+
+void TmuxResizeCoordinator::replayClientSizesIfNeeded()
+{
+    if (!_clientSizesNeedReplay) {
+        return;
+    }
+    _clientSizesNeedReplay = false;
+    sendClientSize();
 }
 
 void TmuxResizeCoordinator::setWindowSize(int windowId, int cols, int lines)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regression: after a control transport reconnects while an older client keeps
-# the session at 80x24, kmux must advertise every existing window's size again.
+# Regression: after a control transport reconnects while its orphaned server-side
+# client keeps the session at 80x24, kmux must detach that predecessor and
+# advertise every existing window's size again.
 
 set -uo pipefail
 
@@ -21,19 +22,20 @@ command -v tmux >/dev/null || kmux_test_bail 2 "tmux not installed"
 SOCKET="$HOMEDIR/tmux.sock"
 SESSION="reconnect-size"
 WRAPPER="$HOMEDIR/rsh-wrapper.sh"
+ORPHANING_RSH="$SCRIPT_DIR/fixtures/orphaning-rsh.py"
 WRAPPER_COUNT="$HOMEDIR/rsh-wrapper.count"
 RECONNECT_WAIT="$HOMEDIR/reconnect-waiting"
 RECONNECT_GATE="$HOMEDIR/reconnect-gate"
-STALE_INPUT="$HOMEDIR/stale-client-input"
+TRANSPORT_PID_FILE="$HOMEDIR/rsh-wrapper.pid"
+TRANSPORT_CHILDREN_FILE="$HOMEDIR/rsh-wrapper.children"
 KMUX_PID=""
-STALE_PID=""
-STALE_FD_OPEN=0
 
-mkfifo "$RECONNECT_GATE" "$STALE_INPUT"
+mkfifo "$RECONNECT_GATE"
 
 cat >"$WRAPPER" <<WRAPPER_EOF
 #!/usr/bin/env bash
 set -uo pipefail
+printf '%s\n' "\$\$" >"$TRANSPORT_PID_FILE"
 count=0
 if [[ -r "$WRAPPER_COUNT" ]]; then
     IFS= read -r count <"$WRAPPER_COUNT"
@@ -44,7 +46,7 @@ if (( count > 1 )); then
     : >"$RECONNECT_WAIT"
     IFS= read -r _ <"$RECONNECT_GATE"
 fi
-exec "\$@"
+exec "$ORPHANING_RSH" "$TRANSPORT_CHILDREN_FILE" "\$@"
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 
@@ -55,20 +57,19 @@ tmux -S "$SOCKET" set-option -g window-size latest
 
 cleanup_tmux() {
     local rc=$1
-    if (( STALE_FD_OPEN == 1 )); then
-        exec 9>&-
-        STALE_FD_OPEN=0
-    fi
-    if [[ -n "$STALE_PID" ]] && kill -0 "$STALE_PID" 2>/dev/null; then
-        kill "$STALE_PID" 2>/dev/null || true
-        wait "$STALE_PID" 2>/dev/null || true
-    fi
     if [[ -n "$KMUX_PID" ]] && kill -0 "$KMUX_PID" 2>/dev/null; then
         kill "$KMUX_PID" 2>/dev/null || true
         wait "$KMUX_PID" 2>/dev/null || true
     fi
     if [[ -e "$SOCKET" ]]; then
         tmux -S "$SOCKET" kill-server 2>/dev/null || true
+    fi
+    if [[ -r "$TRANSPORT_CHILDREN_FILE" ]]; then
+        while IFS= read -r child_pid; do
+            if [[ "$child_pid" =~ ^[0-9]+$ ]] && kill -0 "$child_pid" 2>/dev/null; then
+                kill "$child_pid" 2>/dev/null || true
+            fi
+        done <"$TRANSPORT_CHILDREN_FILE"
     fi
     return "$rc"
 }
@@ -109,8 +110,6 @@ dump_state() {
     echo "--- reconnect and resize traffic ---" >&2
     { grep -aE 'attach-session|reconnect|sendClientSize|refresh-client|size unchanged|size changed' \
         "$LOGDIR/kmux.log" 2>/dev/null | tail -160; } >&2 || true
-    echo "--- stale client traffic ---" >&2
-    tail -80 "$LOGDIR/stale-client.log" >&2 2>/dev/null || true
 }
 
 echo "=== launching kmux through a reconnect-gated --rsh wrapper ==="
@@ -149,41 +148,20 @@ echo "OK: initial kmux client sized both windows: $(window_sizes | paste -sd ' '
 
 PRIMARY_PID=$(tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_pid}')
 [[ "$PRIMARY_PID" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "could not identify kmux's initial control client"
+PRIMARY_NAME=$(tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_name}')
+[[ -n "$PRIMARY_NAME" ]] || kmux_test_bail 2 "could not identify kmux's initial control client name"
+TRANSPORT_PID=$(<"$TRANSPORT_PID_FILE")
+[[ "$TRANSPORT_PID" =~ ^[0-9]+$ ]] || kmux_test_bail 2 "could not identify kmux's wrapped transport"
 
-# Keep a second control client connected just like the orphaned SSH-created
-# clients seen in the live session. Its input stays open through fd 9 and its
-# output is drained to a file so control-mode flow control cannot hide the
-# sizing behavior under test.
-exec 9<>"$STALE_INPUT"
-STALE_FD_OPEN=1
-(
-    exec 9>&-
-    exec tmux -S "$SOCKET" -u -C attach-session -t "$SESSION" <"$STALE_INPUT" >"$LOGDIR/stale-client.log" 2>&1
-) &
-STALE_PID=$!
-
-stale_ready=0
-for _ in $(seq 1 50); do
-    if (( $(client_count) == 2 )); then
-        stale_ready=1
-        break
-    fi
-    sleep 0.1
-done
-if (( stale_ready != 1 )); then
-    dump_state
-    kmux_test_bail 2 "stale control client did not attach"
-fi
-echo "OK: second control client attached (pid=$STALE_PID)"
-
-# Crash kmux's transport without sending tmux's deliberate %exit notification.
-# The --rsh wrapper gates the replacement attach-session so the surviving
-# client can recreate the observed 80x24 state deterministically.
-kill -KILL "$PRIMARY_PID"
+# Crash the wrapper which stands in for ssh, not the tmux process behind it.
+# The proxy leaves that server-side control client alive just like the two
+# orphaned SSH-created clients found in the live session. The wrapper gates the
+# replacement attach-session so the old client can recreate 80x24 first.
+kill -KILL "$TRANSPORT_PID"
 
 reconnect_waiting=0
 for _ in $(seq 1 50); do
-    if [[ -e "$RECONNECT_WAIT" ]] && (( $(client_count) == 1 )); then
+    if [[ -e "$RECONNECT_WAIT" ]] && (( $(client_count) == 1 )) && kill -0 "$PRIMARY_PID" 2>/dev/null; then
         reconnect_waiting=1
         break
     fi
@@ -196,8 +174,7 @@ fi
 
 WINDOW_IDS=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}')
 while IFS= read -r window_id; do
-    printf 'select-window -t %s\n' "$window_id" >&9
-    printf 'refresh-client -C %s:80x24\n' "$window_id" >&9
+    tmux -S "$SOCKET" refresh-client -t "$PRIMARY_NAME" -C "$window_id:80x24"
 done <<<"$WINDOW_IDS"
 
 default_ready=0
@@ -212,13 +189,14 @@ if (( default_ready != 1 )); then
     dump_state
     kmux_test_bail 2 "surviving control client did not establish the 80x24 precondition"
 fi
-echo "OK: surviving control client reduced both windows to tmux's 80x24 default"
+echo "OK: orphaned kmux control client reduced both windows to tmux's 80x24 default"
 
 printf 'reconnect\n' >"$RECONNECT_GATE"
 
 reconnected=0
 for _ in $(seq 1 100); do
-    if (( $(client_count) == 2 )) && [[ $(<"$WRAPPER_COUNT") == "2" ]]; then
+    if [[ $(<"$WRAPPER_COUNT") == "2" ]] \
+        && tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_pid}' | grep -qvxF "$PRIMARY_PID"; then
         reconnected=1
         break
     fi
@@ -228,7 +206,7 @@ if (( reconnected != 1 )); then
     dump_state
     kmux_test_bail 2 "kmux did not attach a replacement control client"
 fi
-echo "OK: kmux reconnected while the older control client remained attached"
+echo "OK: kmux attached a replacement control client"
 
 # Exercise the normal user path after reconnect. Changing tabs schedules
 # sendClientSize(), which must advertise sizes to this new tmux client even
@@ -237,13 +215,14 @@ xdotool windowactivate --sync "$WIN" 2>/dev/null || true
 xdotool key --delay 150 ctrl+Tab
 
 for _ in $(seq 1 50); do
-    if all_windows_larger_than_default; then
+    if all_windows_larger_than_default \
+        && ! tmux -S "$SOCKET" list-clients -t "$SESSION" -F '#{client_name}' | grep -qxF "$PRIMARY_NAME"; then
         echo "PASS: reconnect restored every existing window: $(window_sizes | paste -sd ' ' -)"
         exit 0
     fi
     sleep 0.2
 done
 
-echo "FAIL (bug reproduced): existing windows stayed at tmux's 80x24 default after kmux reconnected" >&2
+echo "FAIL (bug reproduced): kmux left its old control client attached and existing windows stayed at 80x24" >&2
 dump_state
 exit 1

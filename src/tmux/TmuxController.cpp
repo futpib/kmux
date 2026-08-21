@@ -128,6 +128,12 @@ void TmuxController::rebindGateway(TmuxGateway *gateway)
         disconnect(_gateway, nullptr, _paneManager, nullptr);
     }
     _gateway = gateway;
+    _staleControlClientName = _controlClientName;
+    _controlClientName.clear();
+    _controlClientQueryStarted = false;
+    _staleControlClientHandled = false;
+    _windowsInitializedAfterRebind = false;
+    _reconnectSizingPending = true;
     _paneManager->setGateway(gateway);
     _resizeCoordinator->setGateway(gateway);
     _stateRecovery->setGateway(gateway);
@@ -156,6 +162,8 @@ int TmuxController::restrictedWindowId() const
 void TmuxController::initialize()
 {
     setState(State::Initializing);
+
+    identifyControlClient();
 
     // Opt into control-mode flow control before anything else, so a stalled or
     // suspended client can't wedge the server (see enableFlowControl).
@@ -220,6 +228,54 @@ void TmuxController::initialize()
                           });
 
     queryPrefixBindings();
+}
+
+void TmuxController::identifyControlClient()
+{
+    if (_controlClientQueryStarted) {
+        return;
+    }
+    _controlClientQueryStarted = true;
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")).singleQuotedArg(QStringLiteral("#{client_name}")),
+                          [this](bool success, const QString &response) {
+                              const QString currentClientName = response.trimmed();
+                              if (!success || currentClientName.isEmpty()) {
+                                  _staleControlClientHandled = true;
+                                  maybeReplayClientSizes();
+                                  return;
+                              }
+
+                              _controlClientName = currentClientName;
+                              const QString staleClientName = _staleControlClientName;
+                              _staleControlClientName.clear();
+                              if (staleClientName.isEmpty() || staleClientName == currentClientName) {
+                                  _staleControlClientHandled = true;
+                                  maybeReplayClientSizes();
+                                  return;
+                              }
+
+                              // An ssh transport may disappear without closing
+                              // the remote tmux -C process. Its per-window -C
+                              // sizes continue clamping every replacement
+                              // client, so detach exactly this controller's
+                              // predecessor before replaying geometry.
+                              _gateway->sendCommand(TmuxCommand(QStringLiteral("detach-client")).flag(QStringLiteral("-t")).arg(staleClientName),
+                                                    [this, staleClientName](bool detached, const QString &) {
+                                                        qCDebug(KonsoleTmuxController)
+                                                            << "reconnect predecessor" << staleClientName << (detached ? "detached" : "already absent");
+                                                        _staleControlClientHandled = true;
+                                                        maybeReplayClientSizes();
+                                                    });
+                          });
+}
+
+void TmuxController::maybeReplayClientSizes()
+{
+    if (!_reconnectSizingPending || !_staleControlClientHandled || !_windowsInitializedAfterRebind) {
+        return;
+    }
+    _reconnectSizingPending = false;
+    _resizeCoordinator->replayClientSizesIfNeeded();
 }
 
 TmuxGateway *TmuxController::gateway() const
@@ -988,6 +1044,8 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
     }
 
     setState(State::Idle);
+    _windowsInitializedAfterRebind = true;
+    maybeReplayClientSizes();
     refreshPaneTitles();
     _paneTitleTimer->start();
     Q_EMIT initialWindowsOpened();

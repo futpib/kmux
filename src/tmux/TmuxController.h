@@ -169,6 +169,8 @@ private Q_SLOTS:
     void onExit(const QString &reason);
 
 private:
+    void identifyControlClient();
+    void maybeReplayClientSizes();
     void setState(State newState);
     bool shouldSuppressResize() const;
     bool isWindowVisible(int windowId) const;
@@ -224,6 +226,12 @@ private:
     int _sessionId = -1;
     State _state = State::Idle;
     int _activePaneId = -1;
+    QString _controlClientName;
+    QString _staleControlClientName;
+    bool _controlClientQueryStarted = false;
+    bool _staleControlClientHandled = true;
+    bool _windowsInitializedAfterRebind = true;
+    bool _reconnectSizingPending = false;
     bool _flowControlEnabled = false;
     bool _windowIndexSubscriptionEnabled = false;
     bool _reorderingTabs = false;

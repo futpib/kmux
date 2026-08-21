@@ -33,6 +33,7 @@ public:
     void onPaneViewSizeChanged(bool suppressResize);
     void onSplitterMoved(ViewSplitter *splitter);
     void sendClientSize();
+    void replayClientSizesIfNeeded();
     void stop();
     void setWindowSize(int windowId, int cols, int lines);
 
@@ -46,6 +47,7 @@ private:
     QTimer _resizeTimer;
     QMap<int, QSize> _lastClientSizes;
     QMap<int, QSize> _tmuxWindowSizes;
+    bool _clientSizesNeedReplay = false;
 };
 
 } // namespace Konsole
