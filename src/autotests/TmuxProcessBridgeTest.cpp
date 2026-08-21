@@ -81,6 +81,40 @@ void TmuxProcessBridgeTest::testConnectNoServer()
     delete mwGuard.data();
 }
 
+void TmuxProcessBridgeTest::testConnectAdvertisesTerminalType()
+{
+    const bool termWasSet = qEnvironmentVariableIsSet("TERM");
+    const QByteArray originalTerm = qgetenv("TERM");
+    qputenv("TERM", "dumb");
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    ViewManager *vm = mw->viewManager();
+
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    const bool started = bridge->start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath()});
+
+    if (termWasSet) {
+        qputenv("TERM", originalTerm);
+    } else {
+        qunsetenv("TERM");
+    }
+    QVERIFY(started);
+
+    QPointer<TabbedViewContainer> container = vm->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
+
+    QProcess listClients;
+    listClients.start(m_tmuxPath,
+                      {QStringLiteral("-S"), tmuxSocketPath(), QStringLiteral("list-clients"), QStringLiteral("-F"), QStringLiteral("#{client_termname}")});
+    QVERIFY(listClients.waitForFinished(5000));
+    QCOMPARE(listClients.exitCode(), 0);
+    QCOMPARE(QString::fromUtf8(listClients.readAllStandardOutput()).trimmed(), QStringLiteral("xterm-256color"));
+
+    delete mwGuard.data();
+}
+
 void TmuxProcessBridgeTest::testConnectServerNoSessions()
 {
     // Start a tmux server, set exit-empty off, kill all sessions,
@@ -254,6 +288,35 @@ void TmuxProcessBridgeTest::testRshMultiTokenWrapperAndDefaultTmuxPath()
     QCOMPARE(queryEnv.exitCode(), 0);
     const QString output = QString::fromUtf8(queryEnv.readAllStandardOutput()).trimmed();
     QCOMPARE(output, QStringLiteral("1"));
+
+    delete mwGuard.data();
+}
+
+void TmuxProcessBridgeTest::testRshAdvertisesTerminalTypeWithoutForwardedTerm()
+{
+    // Model an SSH transport without a PTY: the wrapper removes TERM before
+    // running the remote command appended by kmux.
+    const QStringList rshCommand = {QStringLiteral("env"), QStringLiteral("-u"), QStringLiteral("TERM")};
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    ViewManager *vm = mw->viewManager();
+
+    auto *bridge = new TmuxProcessBridge(vm, mw);
+    const bool started = bridge->start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath()}, {QStringLiteral("new-session"), QStringLiteral("-A")}, rshCommand);
+    QVERIFY(started);
+    QCOMPARE(bridge->rshCommand(), rshCommand);
+
+    QPointer<TabbedViewContainer> container = vm->activeContainer();
+    QVERIFY(container);
+    QTRY_VERIFY_WITH_TIMEOUT(container && container->count() >= 1, 10000);
+
+    QProcess listClients;
+    listClients.start(m_tmuxPath,
+                      {QStringLiteral("-S"), tmuxSocketPath(), QStringLiteral("list-clients"), QStringLiteral("-F"), QStringLiteral("#{client_termname}")});
+    QVERIFY(listClients.waitForFinished(5000));
+    QCOMPARE(listClients.exitCode(), 0);
+    QCOMPARE(QString::fromUtf8(listClients.readAllStandardOutput()).trimmed(), QStringLiteral("xterm-256color"));
 
     delete mwGuard.data();
 }

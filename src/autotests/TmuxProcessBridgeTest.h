@@ -20,10 +20,12 @@ private Q_SLOTS:
     void initTestCase();
     void cleanup();
     void testConnectNoServer();
+    void testConnectAdvertisesTerminalType();
     void testConnectServerNoSessions();
     void testConnectServerPreexistingSession();
     void testRshSingleTokenWrapper();
     void testRshMultiTokenWrapperAndDefaultTmuxPath();
+    void testRshAdvertisesTerminalTypeWithoutForwardedTerm();
 
 private:
     void killTmuxServer();

@@ -17,7 +17,9 @@
 #include "terminalDisplay/TerminalDisplay.h"
 
 #include <QDir>
+#include <QLatin1StringView>
 #include <QLoggingCategory>
+#include <QProcessEnvironment>
 #include <QSocketNotifier>
 #include <QStandardPaths>
 
@@ -30,6 +32,8 @@ Q_LOGGING_CATEGORY(KonsoleTmuxBridge, "konsole.tmux.bridge", QtWarningMsg)
 
 namespace Konsole
 {
+
+constexpr QLatin1StringView CONTROL_CLIENT_TERM("xterm-256color");
 
 TmuxProcessBridge::TmuxProcessBridge(ViewManager *viewManager, QObject *parent)
     : QObject(parent)
@@ -104,7 +108,9 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
         }
         executable = _rshCommand.first();
         leadingArgs = _rshCommand.mid(1);
-        leadingArgs << resolvedTmuxPath;
+        // SSH does not forward TERM without a PTY. The control connection has
+        // no PTY by design, so set the terminal type in the remote command too.
+        leadingArgs << QStringLiteral("env") << QStringLiteral("TERM=%1").arg(CONTROL_CLIENT_TERM) << resolvedTmuxPath;
     }
 
     _tmuxPath = resolvedTmuxPath;
@@ -119,6 +125,13 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
     fcntl(_socketFd, F_SETFL, fcntl(_socketFd, F_GETFL) | O_NONBLOCK);
 
     _process = new QProcess(this);
+    // tmux records the control process's TERM as client_termname. kmux has no
+    // PTY here, but it presents the same xterm-compatible terminal as a normal
+    // Konsole profile; leaving TERM absent or inherited as "dumb" makes clients
+    // such as Codex reject an otherwise fully capable pane.
+    QProcessEnvironment processEnvironment = QProcessEnvironment::systemEnvironment();
+    processEnvironment.insert(QStringLiteral("TERM"), CONTROL_CLIENT_TERM.toString());
+    _process->setProcessEnvironment(processEnvironment);
     _process->setProcessChannelMode(QProcess::ForwardedOutputChannel);
 
     _process->setChildProcessModifier([childFd, fds]() {
