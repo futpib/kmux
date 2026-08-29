@@ -324,7 +324,9 @@ TerminalDisplay::TerminalDisplay(QWidget *parent)
         _terminalPainter->drawBackground(painter, rect, backgroundColor, useOpacitySetting);
     };
     auto ldrawContents = [this](QPainter &paint, const QRect &rect, bool friendly) {
-        _terminalPainter->drawContents(_image, paint, rect, friendly, _imageSize, _bidiEnabled, _lineProperties);
+        const TerminalPainter::DrawFlags drawFlags = (friendly ? TerminalPainter::DrawFlag::PrinterFriendly : TerminalPainter::DrawFlag::DrawCursor)
+            | (_bidiEnabled ? TerminalPainter::DrawFlag::BidiEnabled : TerminalPainter::DrawFlag::None);
+        _terminalPainter->drawContents(_image, paint, rect, drawFlags, _imageSize, _lineProperties);
     };
     auto lgetBackgroundColor = [this]() {
         return _terminalColor->backgroundColor();
@@ -762,8 +764,10 @@ void TerminalDisplay::paintEvent(QPaintEvent *pe)
         return;
     }
 
+    const TerminalPainter::DrawFlags drawFlags = TerminalPainter::DrawFlag::DrawCursor | TerminalPainter::DrawFlag::DrawBlinking
+        | TerminalPainter::DrawFlag::DrawSelection | (_bidiEnabled ? TerminalPainter::DrawFlag::BidiEnabled : TerminalPainter::DrawFlag::None);
     for (const QRect &rect : std::as_const(dirtyImageRegion)) {
-        _terminalPainter->drawContents(_image, paint, rect, false, _imageSize, _bidiEnabled, _lineProperties, _screenWindow->screen()->ulColorTable());
+        _terminalPainter->drawContents(_image, paint, rect, drawFlags, _imageSize, _lineProperties, _screenWindow->screen()->ulColorTable());
     }
 
     if (screenWindow()->currentResultLine() != -1) {
@@ -977,6 +981,17 @@ QRect TerminalDisplay::widgetToImage(const QRect &widgetArea) const
     result.setRight(qBound(0, (widgetArea.right() - contentsRect().left() - _contentRect.left()) / fontWidth, _usedColumns - 1));
     result.setBottom(qBound(0, (widgetArea.bottom() - contentsRect().top() - _contentRect.top()) / fontHeight, _usedLines - 1));
     return result;
+}
+
+QPoint TerminalDisplay::topLeftWidgetPos(int column, int line) const
+{
+    const int fontWidth = _terminalFont->fontWidth();
+    const int fontHeight = _terminalFont->fontHeight();
+
+    const int left = _contentRect.left() + fontWidth * column;
+    const int top = _contentRect.top() + fontHeight * line;
+
+    return QPoint(left, top);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1384,7 +1399,7 @@ void TerminalDisplay::mousePressEvent(QMouseEvent *ev)
     _filterChain->mouseMoveEvent(this, ev, charLine, charColumn);
     auto hotSpotClick = _filterChain->hotSpotAt(charLine, charColumn);
     if (hotSpotClick && hotSpotClick->hasDragOperation() && ev->modifiers() & Qt::Modifier::ALT) {
-        hotSpotClick->startDrag();
+        hotSpotClick->startDrag(this, ev->pos());
         return;
     }
 
@@ -1410,6 +1425,8 @@ void TerminalDisplay::mousePressEvent(QMouseEvent *ev)
         if ((!_ctrlRequiredForDrag || ((ev->modifiers() & Qt::ControlModifier) != 0u)) && selected) {
             _dragInfo.state = diPending;
             _dragInfo.start = ev->pos();
+            _screenWindow->getSelectionStart(_dragInfo.startColumn, _dragInfo.startLine);
+            _screenWindow->getSelectionEnd(_dragInfo.endColumn, _dragInfo.endLine);
         } else {
             // No reason to ever start a drag event
             _dragInfo.state = diNone;
@@ -3365,6 +3382,15 @@ void TerminalDisplay::doDrag()
     mimeData->setText(clipboardMimeData->text());
     mimeData->setHtml(clipboardMimeData->html());
     _dragInfo.dragObject->setMimeData(mimeData);
+    // Use app's, not window's, dpr value to prepare drag pixmap
+    // for being displayed on any screens during drag
+    const qreal dpr = qApp->devicePixelRatio();
+    const QPixmap pixmap = createPixmap(_dragInfo.startLine, _dragInfo.startColumn, _dragInfo.endLine, _dragInfo.endColumn, dpr);
+    _dragInfo.dragObject->setPixmap(pixmap);
+    const int column = (_dragInfo.startLine == _dragInfo.endLine) ? _dragInfo.startColumn : 0;
+    const QPoint selectionTopLeft = topLeftWidgetPos(column, _dragInfo.startLine);
+    _dragInfo.dragObject->setHotSpot(_dragInfo.start - selectionTopLeft);
+
     _dragInfo.dragObject->exec(Qt::CopyAction);
 }
 
@@ -3491,6 +3517,49 @@ void TerminalDisplay::printScreen()
         _printManager->printContent(painter, friendly, columnLines, lfontget, lfontset);
     };
     _printManager->printRequest(lprintContent, this);
+}
+
+QPixmap TerminalDisplay::createPixmap(int startLine, int startColumn, int endLine, int endColumn, qreal dpr) const
+{
+    const int top = _contentRect.top();
+    const int left = _contentRect.left();
+    const int fontWidth = _terminalFont->fontWidth();
+    const int fontHeight = _terminalFont->fontHeight();
+
+    QRegion region;
+
+    auto lineRect = [top, left, fontWidth, fontHeight](int line, int startColumn, int endColumn) {
+        return QRect(QPoint(startColumn * fontWidth + left, line * fontHeight + top),
+                     QPoint(endColumn * fontWidth + left - 1, (line + 1) * fontHeight + top - 1));
+    };
+    if (startLine == endLine) {
+        region |= lineRect(startLine, startColumn, endColumn);
+    } else {
+        region |= lineRect(startLine, startColumn, _columns);
+        for (int line = startLine + 1; line < endLine; ++line) {
+            region |= lineRect(line, 0, _columns);
+        }
+        region |= lineRect(endLine, 0, endColumn);
+    }
+
+    const QRect boundingRect = region.boundingRect();
+    QPixmap pixmap(boundingRect.size() * dpr);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.translate(-boundingRect.topLeft());
+
+    painter.setFont(_terminalFont->getVTFont());
+    painter.setRenderHint(QPainter::TextAntialiasing, _terminalFont->antialiasText());
+
+    const TerminalPainter::DrawFlags drawFlags = (_bidiEnabled ? TerminalPainter::DrawFlag::BidiEnabled : TerminalPainter::DrawFlag::None);
+
+    for (const QRect &rect : std::as_const(region)) {
+        _terminalPainter->drawContents(_image, painter, widgetToImage(rect), drawFlags, _imageSize, _lineProperties, _screenWindow->screen()->ulColorTable());
+    }
+
+    return pixmap;
 }
 
 Character TerminalDisplay::getCursorCharacter(int column, int line)

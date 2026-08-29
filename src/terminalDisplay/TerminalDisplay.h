@@ -318,6 +318,9 @@ public:
     // a character which left edge is closest to the point.
     QPair<int, int> getCharacterPosition(const QPoint &widgetPoint, bool edge) const;
 
+    // maps an character image position to its top-left widget position
+    QPoint topLeftWidgetPos(int column, int line) const;
+
     // toggle the header bar Minimize/Maximize button.
     void setExpandedMode(bool expand);
 
@@ -451,6 +454,13 @@ public:
     void setVisualCursorPosition(int x);
 
     void setHoverLinkIndicator(QString text);
+
+    /**
+     * Create a pixmap with the given range rendered as on the display,
+     * yet without any selection & the cursor.
+     * Blinking text is rendered as visible.
+     */
+    QPixmap createPixmap(int startLine, int startColumn, int endLine, int endColumn, qreal dpr) const;
 
 public Q_SLOTS:
     /**
@@ -595,6 +605,10 @@ protected:
         DragState state;
         QPoint start;
         QDrag *dragObject;
+        int startLine;
+        int startColumn;
+        int endLine;
+        int endColumn;
     } _dragInfo;
 
     // classifies the 'ch' into one of three categories
