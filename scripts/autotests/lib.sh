@@ -285,13 +285,13 @@ kmux_test_wait_dbus_service() {
     kmux_test_wait_until "$timeout" "kmux D-Bus service to register" dbus_service_registered
 }
 
-# Find the repo root by walking up from this lib.sh until a .git dir
-# shows up. Keeps tests relocatable without hardcoding paths.
+# Find the repo root by walking up from this lib.sh until a .git directory or
+# worktree gitfile shows up. Keeps tests relocatable without hardcoding paths.
 kmux_test__repo_root() {
     local d
     d=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
     while [[ "$d" != "/" ]]; do
-        if [[ -d "$d/.git" ]]; then
+        if [[ -e "$d/.git" ]]; then
             echo "$d"
             return 0
         fi
