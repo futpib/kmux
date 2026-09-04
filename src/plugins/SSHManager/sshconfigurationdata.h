@@ -8,6 +8,7 @@
 #ifndef SSHCONFIGURATIONDATA_H
 #define SSHCONFIGURATIONDATA_H
 
+#include <QMetaType>
 #include <QString>
 
 class SSHConfigurationData
@@ -19,6 +20,11 @@ public:
     QString sshKey;
     QString username;
     QString profileName;
+    QString tmuxPath;
+    QString tmuxSession;
+    QString tmuxSocketName;
+    QString tmuxSocketPath;
+    QString remoteWorkingDirectory;
     bool useSshConfig = false;
     bool importedFromSshConfig = false;
 };

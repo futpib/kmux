@@ -9,6 +9,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSocketNotifier>
 #include <QString>
 
@@ -47,11 +48,14 @@ public:
      * @param rshCommand Optional remote-shell wrapper (e.g. {"ssh", "user@host"}).
      *                   When non-empty, the first element is the executable and
      *                   the rest are prepended to the tmux invocation.
+     * @param processEnvironment Environment for the transport process. Empty
+     *                           uses the current system environment.
      */
     bool start(const QString &tmuxPath = QString(),
                const QStringList &tmuxArgs = {},
                const QStringList &command = {QStringLiteral("new-session"), QStringLiteral("-A")},
-               const QStringList &rshCommand = {});
+               const QStringList &rshCommand = {},
+               const QProcessEnvironment &processEnvironment = {});
 
     TmuxController *controller() const;
 
@@ -59,6 +63,7 @@ public:
     QStringList tmuxArgs() const;
     QStringList command() const;
     QStringList rshCommand() const;
+    QProcessEnvironment processEnvironment() const;
 
     /// Kill a hung/dead client and attach-session to the learned session name.
     void requestReconnect();
@@ -114,6 +119,7 @@ private:
     QStringList _tmuxArgs;
     QStringList _command;
     QStringList _rshCommand;
+    QProcessEnvironment _processEnvironment;
     bool _ignoringProcessFinished = false;
 };
 

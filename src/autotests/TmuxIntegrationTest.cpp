@@ -15,7 +15,9 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
@@ -5249,6 +5251,77 @@ void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneRegistersPlugins()
 
     delete newMw.data();
     delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testRemoteConnectionRequestOpensTmuxWindow()
+{
+    // Exercise the GUI request all the way through Application and the real
+    // TmuxProcessBridge. A fake ssh executable records the askpass environment
+    // and then executes the remote tmux argv locally.
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    const QString wrapperDir = m_tmuxTmpDir.path() + QStringLiteral("/gui-remote-wrapper");
+    QVERIFY(QDir().mkpath(wrapperDir));
+    const QString wrapperPath = wrapperDir + QStringLiteral("/ssh");
+    const QString askpassStamp = wrapperDir + QStringLiteral("/askpass");
+    const QString askpassModeStamp = wrapperDir + QStringLiteral("/askpass-mode");
+    {
+        QFile wrapper(wrapperPath);
+        QVERIFY(wrapper.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        wrapper.write("#!/bin/sh\n");
+        wrapper.write("printf '%s\\n' \"$SSH_ASKPASS\" > \"");
+        wrapper.write(askpassStamp.toUtf8());
+        wrapper.write("\"\n");
+        wrapper.write("printf '%s\\n' \"$SSH_ASKPASS_REQUIRE\" > \"");
+        wrapper.write(askpassModeStamp.toUtf8());
+        wrapper.write("\"\n");
+        wrapper.write("exec \"$@\"\n");
+    }
+    QVERIFY(QFile::setPermissions(wrapperPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    // Intentionally leaked — see the note in testNewMainWindowFromTmuxPane.
+    auto *app = new Application(makeTestAppParser(), {});
+    MainWindow *requestingWindow = app->newMainWindow();
+
+    TmuxConnectionOptions options;
+    options.displayName = QStringLiteral("Test Remote");
+    options.rshCommand = {wrapperPath};
+    options.tmuxPath = tmuxPath;
+    options.socketPath = ctx.socketPath;
+    options.sessionName = ctx.sessionName;
+    Q_EMIT requestingWindow->remoteTmuxConnectionRequested(options);
+
+    QPointer<MainWindow> remoteWindow;
+    QTRY_VERIFY_WITH_TIMEOUT((remoteWindow = findOtherMainWindow(requestingWindow)) != nullptr, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(remoteWindow && remoteWindow->isVisible(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(remoteWindow && !remoteWindow->viewManager()->sessions().isEmpty(), 10000);
+
+    auto *bridge = remoteWindow->findChild<TmuxProcessBridge *>();
+    QVERIFY(bridge);
+    QCOMPARE(bridge->rshCommand(), QStringList({wrapperPath}));
+    QCOMPARE(bridge->tmuxPath(), tmuxPath);
+    QCOMPARE(bridge->tmuxArgs(), QStringList({QStringLiteral("-S"), ctx.socketPath}));
+    QCOMPARE(bridge->controller()->sessionName(), ctx.sessionName);
+
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(askpassStamp), 5000);
+    QFile askpassFile(askpassStamp);
+    QVERIFY(askpassFile.open(QIODevice::ReadOnly));
+    const QString askpassPath = QString::fromUtf8(askpassFile.readAll()).trimmed();
+    QVERIFY2(!askpassPath.isEmpty(), "GUI remote connection did not configure SSH_ASKPASS");
+    QVERIFY2(QFileInfo(askpassPath).isExecutable(), qPrintable(QStringLiteral("SSH_ASKPASS is not executable: %1").arg(askpassPath)));
+
+    QFile askpassModeFile(askpassModeStamp);
+    QVERIFY(askpassModeFile.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(askpassModeFile.readAll()).trimmed(), QStringLiteral("force"));
+
+    delete remoteWindow.data();
+    delete requestingWindow;
 }
 
 void TmuxIntegrationTest::testNewMainWindowFromTmuxPaneSplitsTabs()

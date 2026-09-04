@@ -46,6 +46,9 @@ KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
 - **Remote/socket-aware startup** — attach/create sessions by tmux session name,
   socket name/path, custom tmux binary path, and optional remote shell wrapper
   (`--rsh` / `KMUX_RSH`).
+- **Remote host manager** — open a host from the SSH Manager as a remote tmux
+  workspace, with `~/.ssh/config` aliases, GUI authentication prompts, and
+  per-host tmux session/socket/path overrides.
 - **Full Konsole feature set** — color schemes, keyboard shortcuts, KPart
   embedding, profiles, bookmarks, and everything else Konsole provides.
 

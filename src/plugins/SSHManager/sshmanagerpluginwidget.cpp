@@ -63,6 +63,11 @@ SSHManagerTreeWidget::SSHManagerTreeWidget(QWidget *parent)
     connect(ui->btnEdit, &QPushButton::clicked, this, &SSHManagerTreeWidget::editSshInfo);
     connect(ui->btnDelete, &QPushButton::clicked, this, &SSHManagerTreeWidget::triggerDelete);
     connect(ui->btnInvertFilter, &QPushButton::clicked, d->filterModel, &SSHManagerFilterModel::setInvertFilter);
+    connect(ui->btnConnect, &QPushButton::clicked, this, &SSHManagerTreeWidget::connectSelected);
+    connect(ui->advancedToggle, &QToolButton::toggled, this, [this](bool expanded) {
+        ui->advancedToggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+        ui->advancedPane->setVisible(expanded);
+    });
 
     connect(ui->btnFindSshKey, &QPushButton::clicked, this, [this] {
         const QString homeFolder = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
@@ -90,21 +95,38 @@ SSHManagerTreeWidget::SSHManagerTreeWidget(QWidget *parent)
             return;
         }
 
-        if (idx.data(Qt::DisplayRole) == i18n("SSH Config")) {
-            return;
-        }
-
         auto sourceIdx = d->filterModel->mapToSource(idx);
         const bool isParent = sourceIdx.parent() == d->model->invisibleRootItem()->index();
+        auto *menu = new QMenu(this);
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+
         if (!isParent) {
             const auto item = d->model->itemFromIndex(sourceIdx);
             const auto data = item->data(SSHManagerModel::SSHRole).value<SSHConfigurationData>();
+            auto *remoteAction = menu->addAction(QIcon::fromTheme(QStringLiteral("network-connect")), i18n("Open Remote kmux Window"));
+            connect(remoteAction, &QAction::triggered, this, [this, data] {
+                Q_EMIT requestRemoteConnection(data);
+            });
+
+            auto *shellAction = menu->addAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18n("Open SSH Shell in Current Pane"));
+            connect(shellAction, &QAction::triggered, this, [this, sourceIdx] {
+                SSHManagerPlugin::requestConnection(nullptr, d->model, d->controller, sourceIdx);
+            });
+
             if (data.importedFromSshConfig) {
+                menu->popup(ui->treeView->viewport()->mapToGlobal(pos));
                 return;
             }
         }
 
-        QMenu *menu = new QMenu(this);
+        if (sourceIdx.data(Qt::DisplayRole).toString() == i18n("SSH Config")) {
+            delete menu;
+            return;
+        }
+
+        if (!menu->isEmpty()) {
+            menu->addSeparator();
+        }
         auto action = new QAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18nc("@action:inmenu", "Delete"), ui->treeView);
         menu->addAction(action);
 
@@ -114,12 +136,18 @@ SSHManagerTreeWidget::SSHManagerTreeWidget(QWidget *parent)
     });
 
     connect(ui->treeView, &QTreeView::doubleClicked, this, [this](const QModelIndex &idx) {
-        SSHManagerPlugin::requestConnection(d->filterModel, d->model, d->controller, idx);
+        const auto data = configurationForIndex(idx);
+        if (data) {
+            Q_EMIT requestRemoteConnection(*data);
+        }
     });
 
     connect(ui->treeView, &SshTreeView::mouseButtonClicked, this, &SSHManagerTreeWidget::handleTreeClick);
 
     ui->treeView->setModel(d->filterModel);
+    connect(ui->treeView->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &current) {
+        ui->btnConnect->setEnabled(configurationForIndex(current).has_value());
+    });
 
     // We have nothing selected, so there's nothing to edit.
     ui->btnEdit->setEnabled(false);
@@ -140,6 +168,34 @@ SSHManagerTreeWidget::SSHManagerTreeWidget(QWidget *parent)
         Q_EMIT quickAccessShortcutChanged(shortcut);
     });
     ui->keySequenceEdit->setKeySequence(shortcutEntry);
+}
+
+std::optional<SSHConfigurationData> SSHManagerTreeWidget::configurationForIndex(const QModelIndex &index) const
+{
+    if (!index.isValid() || !d->model) {
+        return std::nullopt;
+    }
+    const QModelIndex sourceIndex = d->filterModel->mapToSource(index);
+    if (sourceIndex.parent() == d->model->invisibleRootItem()->index()) {
+        return std::nullopt;
+    }
+    const auto *item = d->model->itemFromIndex(sourceIndex);
+    if (!item) {
+        return std::nullopt;
+    }
+    return item->data(SSHManagerModel::SSHRole).value<SSHConfigurationData>();
+}
+
+void SSHManagerTreeWidget::connectSelected()
+{
+    const auto selection = ui->treeView->selectionModel()->selectedRows();
+    if (selection.isEmpty()) {
+        return;
+    }
+    const auto data = configurationForIndex(selection.constFirst());
+    if (data) {
+        Q_EMIT requestRemoteConnection(*data);
+    }
 }
 
 SSHManagerTreeWidget::~SSHManagerTreeWidget() = default;
@@ -203,6 +259,11 @@ SSHConfigurationData SSHManagerTreeWidget::info() const
     data.sshKey = ui->sshkey->text().trimmed();
     data.profileName = ui->profile->currentText().trimmed();
     data.username = ui->username->text().trimmed();
+    data.tmuxPath = ui->tmuxPath->text().trimmed();
+    data.tmuxSession = ui->tmuxSession->text().trimmed();
+    data.tmuxSocketName = ui->tmuxSocketName->text().trimmed();
+    data.tmuxSocketPath = ui->tmuxSocketPath->text().trimmed();
+    data.remoteWorkingDirectory = ui->remoteWorkingDirectory->text().trimmed();
     data.useSshConfig = ui->useSshConfig->checkState() == Qt::Checked;
     // if ui->username is enabled then we were not imported!
     data.importedFromSshConfig = !ui->username->isEnabled();
@@ -264,6 +325,14 @@ void SSHManagerTreeWidget::editSshInfo()
     }
     ui->username->setText(data.username);
     ui->useSshConfig->setCheckState(data.useSshConfig ? Qt::Checked : Qt::Unchecked);
+    ui->tmuxPath->setText(data.tmuxPath);
+    ui->tmuxSession->setText(data.tmuxSession);
+    ui->tmuxSocketName->setText(data.tmuxSocketName);
+    ui->tmuxSocketPath->setText(data.tmuxSocketPath);
+    ui->remoteWorkingDirectory->setText(data.remoteWorkingDirectory);
+    const bool hasAdvancedOptions = !data.tmuxPath.isEmpty() || !data.tmuxSession.isEmpty() || !data.tmuxSocketName.isEmpty() || !data.tmuxSocketPath.isEmpty()
+        || !data.remoteWorkingDirectory.isEmpty();
+    ui->advancedToggle->setChecked(hasAdvancedOptions);
 
     // This is just for add. To edit the folder, the user will drag & drop.
     ui->folder->setCurrentText(QStringLiteral("not-used-here"));
@@ -298,6 +367,11 @@ void SSHManagerTreeWidget::setEditComponentsEnabled(bool enabled)
     ui->profile->setEnabled(enabled);
     ui->username->setEnabled(enabled);
     ui->useSshConfig->setEnabled(enabled);
+    ui->tmuxPath->setEnabled(enabled);
+    ui->tmuxSession->setEnabled(enabled);
+    ui->tmuxSocketName->setEnabled(enabled);
+    ui->tmuxSocketPath->setEnabled(enabled);
+    ui->remoteWorkingDirectory->setEnabled(enabled);
 }
 
 void SSHManagerTreeWidget::clearSshInfo()
@@ -307,15 +381,28 @@ void SSHManagerTreeWidget::clearSshInfo()
     ui->hostname->setText({});
     ui->port->setText(QStringLiteral("22"));
     ui->sshkey->setText({});
+    ui->tmuxPath->setText({});
+    ui->tmuxSession->setText({});
+    ui->tmuxSocketName->setText({});
+    ui->tmuxSocketPath->setText({});
+    ui->remoteWorkingDirectory->setText({});
+    ui->advancedToggle->setChecked(false);
     ui->treeView->setEnabled(true);
 }
 
 void SSHManagerTreeWidget::hideInfoPane()
 {
+    ui->label_6->show();
+    ui->keySequenceEdit->show();
+    ui->filterText->show();
+    ui->btnInvertFilter->show();
+    ui->btnManageProfile->show();
+    ui->treeView->show();
     ui->newSSHConfig->show();
     ui->btnDelete->show();
     ui->btnEdit->show();
-    ui->sshInfoPane->hide();
+    ui->btnConnect->show();
+    ui->sshInfoScrollArea->hide();
     ui->btnAdd->hide();
     ui->btnCancel->hide();
     ui->errorPanel->hide();
@@ -323,10 +410,19 @@ void SSHManagerTreeWidget::hideInfoPane()
 
 void SSHManagerTreeWidget::showInfoPane()
 {
+    // Give the editor its full vertical space. The Advanced tmux fields must
+    // remain reachable even when the dock is shorter than the form.
+    ui->label_6->hide();
+    ui->keySequenceEdit->hide();
+    ui->filterText->hide();
+    ui->btnInvertFilter->hide();
+    ui->btnManageProfile->hide();
+    ui->treeView->hide();
     ui->newSSHConfig->hide();
     ui->btnDelete->hide();
     ui->btnEdit->hide();
-    ui->sshInfoPane->show();
+    ui->btnConnect->hide();
+    ui->sshInfoScrollArea->show();
     ui->btnAdd->show();
     ui->btnCancel->show();
     ui->folder->show();
@@ -396,6 +492,11 @@ std::pair<bool, QString> SSHManagerTreeWidget::checkFields() const
         }
     }
 
+    if (!ui->tmuxSocketName->text().trimmed().isEmpty() && !ui->tmuxSocketPath->text().trimmed().isEmpty()) {
+        error = true;
+        errorString += li + i18n("Set either a tmux socket name or socket path, not both") + il;
+    }
+
     if (ui->folder->currentText().isEmpty()) {
         error = true;
         errorString += li + i18n("Missing Folder") + il;
@@ -412,9 +513,6 @@ std::pair<bool, QString> SSHManagerTreeWidget::checkFields() const
 
 void SSHManagerTreeWidget::handleTreeClick(Qt::MouseButton btn, const QModelIndex idx)
 {
-    if (!d->controller) {
-        return;
-    }
     auto sourceIdx = d->filterModel->mapToSource(idx);
 
     ui->treeView->setCurrentIndex(idx);
@@ -424,6 +522,7 @@ void SSHManagerTreeWidget::handleTreeClick(Qt::MouseButton btn, const QModelInde
         const bool isParent = sourceIdx.parent() == d->model->invisibleRootItem()->index();
 
         if (isParent) {
+            ui->btnConnect->setEnabled(false);
             setEditComponentsEnabled(false);
             if (sourceIdx.data(Qt::DisplayRole).toString() == i18n("SSH Config")) {
                 ui->btnDelete->setEnabled(false);
@@ -433,16 +532,17 @@ void SSHManagerTreeWidget::handleTreeClick(Qt::MouseButton btn, const QModelInde
                 ui->btnDelete->setToolTip(i18n("Delete folder and all of its contents"));
             }
             ui->btnEdit->setEnabled(false);
-            if (ui->sshInfoPane->isVisible()) {
+            if (ui->sshInfoScrollArea->isVisible()) {
                 ui->errorPanel->setText(i18n("Double click to change the folder name."));
             }
         } else {
             const auto item = d->model->itemFromIndex(sourceIdx);
             const auto data = item->data(SSHManagerModel::SSHRole).value<SSHConfigurationData>();
             ui->btnEdit->setEnabled(true);
+            ui->btnConnect->setEnabled(true);
             ui->btnDelete->setEnabled(!data.importedFromSshConfig);
             ui->btnDelete->setToolTip(data.importedFromSshConfig ? i18n("You can't delete an automatically added entry.") : i18n("Delete selected entry"));
-            if (ui->sshInfoPane->isVisible()) {
+            if (ui->sshInfoScrollArea->isVisible()) {
                 handleImportedData(data.importedFromSshConfig);
                 editSshInfo();
             }
@@ -451,7 +551,7 @@ void SSHManagerTreeWidget::handleTreeClick(Qt::MouseButton btn, const QModelInde
     }
 
     if (btn == Qt::MiddleButton) {
-        if (sourceIdx.parent() == d->model->invisibleRootItem()->index()) {
+        if (!d->controller || sourceIdx.parent() == d->model->invisibleRootItem()->index()) {
             return;
         }
 

@@ -28,6 +28,7 @@
 #include "profile/ProfileModel.h"
 
 #include "sshconfigurationdata.h"
+#include "sshmanagerconfig.h"
 
 #include "sshmanagerplugindebug.h"
 
@@ -247,7 +248,7 @@ void SSHManagerModel::triggerProfileChange(const QString &sshHost)
 
 void SSHManagerModel::load()
 {
-    auto config = KConfig(QStringLiteral("konsolesshconfig"), KConfig::OpenFlag::SimpleConfig);
+    auto config = KConfig(SSHManagerConfig::fileName(), KConfig::OpenFlag::SimpleConfig);
 
     const auto groupList = config.groupList();
     for (const QString &groupName : groupList) {
@@ -267,6 +268,11 @@ void SSHManagerModel::load()
             data.profileName = sessionGroup.readEntry("profileName");
             data.username = sessionGroup.readEntry("username");
             data.sshKey = sessionGroup.readEntry("sshkey");
+            data.tmuxPath = sessionGroup.readEntry("tmuxPath");
+            data.tmuxSession = sessionGroup.readEntry("tmuxSession");
+            data.tmuxSocketName = sessionGroup.readEntry("tmuxSocketName");
+            data.tmuxSocketPath = sessionGroup.readEntry("tmuxSocketPath");
+            data.remoteWorkingDirectory = sessionGroup.readEntry("remoteWorkingDirectory");
             data.useSshConfig = sessionGroup.readEntry<bool>("useSshConfig", false);
             data.importedFromSshConfig = sessionGroup.readEntry<bool>("importedFromSshConfig", false);
             addChildItem(data, groupName);
@@ -276,7 +282,7 @@ void SSHManagerModel::load()
 
 void SSHManagerModel::save()
 {
-    auto config = KConfig(QStringLiteral("konsolesshconfig"), KConfig::OpenFlag::SimpleConfig);
+    auto config = KConfig(SSHManagerConfig::fileName(), KConfig::OpenFlag::SimpleConfig);
     const auto groupList = config.groupList();
     for (const QString &groupName : groupList) {
         config.deleteGroup(groupName);
@@ -298,6 +304,11 @@ void SSHManagerModel::save()
             sshGroup.writeEntry("port", data.port.trimmed());
             sshGroup.writeEntry("profileName", data.profileName.trimmed());
             sshGroup.writeEntry("sshkey", data.sshKey.trimmed());
+            sshGroup.writeEntry("tmuxPath", data.tmuxPath.trimmed());
+            sshGroup.writeEntry("tmuxSession", data.tmuxSession.trimmed());
+            sshGroup.writeEntry("tmuxSocketName", data.tmuxSocketName.trimmed());
+            sshGroup.writeEntry("tmuxSocketPath", data.tmuxSocketPath.trimmed());
+            sshGroup.writeEntry("remoteWorkingDirectory", data.remoteWorkingDirectory.trimmed());
             sshGroup.writeEntry("useSshConfig", data.useSshConfig);
             sshGroup.writeEntry("username", data.username);
             sshGroup.writeEntry("importedFromSshConfig", data.importedFromSshConfig);

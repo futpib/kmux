@@ -7,6 +7,7 @@
 
 #include "sshmanagerplugin.h"
 
+#include "sshconnectionbuilder.h"
 #include "sshmanagermodel.h"
 #include "sshmanagerpluginwidget.h"
 
@@ -27,6 +28,7 @@
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KPluginFactory>
+#include <KShell>
 #include <QSettings>
 #include <kcommandbar.h>
 
@@ -77,6 +79,10 @@ void SSHManagerPlugin::createWidgetsForMainWindow(Konsole::MainWindow *mainWindo
         mainWindow->newTab();
     });
 
+    connect(managerWidget, &SSHManagerTreeWidget::requestRemoteConnection, this, [mainWindow](const SSHConfigurationData &data) {
+        Q_EMIT mainWindow->remoteTmuxConnectionRequested(SSHConnectionBuilder::tmuxOptions(data));
+    });
+
     connect(managerWidget, &SSHManagerTreeWidget::quickAccessShortcutChanged, this, [this, mainWindow](QKeySequence s) {
         mainWindow->actionCollection()->setDefaultShortcut(d->showQuickAccess.get(), s);
 
@@ -111,7 +117,7 @@ void SSHManagerPlugin::activeViewChanged(Konsole::SessionController *controller,
 
     auto terminalDisplay = controller->view();
 
-    d->showQuickAccess = std::make_unique<QAction>(i18n("Show Quick Access for SSH Actions"));
+    d->showQuickAccess = std::make_unique<QAction>(i18n("Open a Remote kmux Connection"));
 
     QSettings settings;
     settings.beginGroup(QStringLiteral("plugins"));
@@ -125,7 +131,7 @@ void SSHManagerPlugin::activeViewChanged(Konsole::SessionController *controller,
     mainWindow->actionCollection()->setDefaultShortcut(d->showQuickAccess.get(), shortcutEntry);
     terminalDisplay->addAction(d->showQuickAccess.get());
 
-    connect(d->showQuickAccess.get(), &QAction::triggered, this, [this, terminalDisplay, controller] {
+    connect(d->showQuickAccess.get(), &QAction::triggered, this, [this, terminalDisplay, mainWindow] {
         auto bar = new KCommandBar(terminalDisplay->topLevelWidget());
         QList<QAction *> actions;
         for (int i = 0; i < d->model.rowCount(); i++) {
@@ -133,8 +139,10 @@ void SSHManagerPlugin::activeViewChanged(Konsole::SessionController *controller,
             for (int e = 0; e < d->model.rowCount(folder); e++) {
                 QModelIndex idx = d->model.index(e, 0, folder);
                 QAction *act = new QAction(idx.data().toString());
-                connect(act, &QAction::triggered, this, [this, idx, controller] {
-                    requestConnection(nullptr, &d->model, controller, idx);
+                connect(act, &QAction::triggered, this, [this, idx, mainWindow] {
+                    const auto *item = d->model.itemFromIndex(idx);
+                    const auto data = item->data(SSHManagerModel::SSHRole).value<SSHConfigurationData>();
+                    Q_EMIT mainWindow->remoteTmuxConnectionRequested(SSHConnectionBuilder::tmuxOptions(data));
                 });
                 actions.append(act);
             }
@@ -149,7 +157,7 @@ void SSHManagerPlugin::activeViewChanged(Konsole::SessionController *controller,
         }
 
         QVector<KCommandBar::ActionGroup> groups;
-        groups.push_back(KCommandBar::ActionGroup{i18n("SSH Entries"), actions});
+        groups.push_back(KCommandBar::ActionGroup{i18n("Remote Hosts"), actions});
         bar->setActions(groups);
         bar->show();
     });
@@ -200,32 +208,14 @@ void SSHManagerPlugin::requestConnection(QSortFilterProxyModel *filterModel,
     auto item = model->itemFromIndex(sourceIdx);
     auto data = item->data(SSHManagerModel::SSHRole).value<SSHConfigurationData>();
 
-    QString sshCommand = QStringLiteral("ssh ");
-    if (data.useSshConfig) {
-        // useSshConfig is defined in sshwidget.ui:165 -> meaning whether the ssh config is taken from .ssh/config
-        // call that host by data.name (which is the identifier as in sshmanagermodel.cpp:263)
-        sshCommand += data.name;
-    } else {
-        // if (!data.useSshConfig)
-        // useSshConfig is false aka not set, so we just a assume a manual entry in terms of an entry that was added manually to the sshmanager 
-        if (data.sshKey.length()) {
-            sshCommand += QStringLiteral("-i %1 ").arg(data.sshKey);
-        }
-
-        if (data.port.length()) {
-            sshCommand += QStringLiteral("-p %1 ").arg(data.port);
-        }
-
-        if (!data.username.isEmpty()) {
-            sshCommand += data.username + QLatin1Char('@');
-        }
-        
-        if (!data.host.isEmpty()) {
-            sshCommand += data.host;
-        }
+    QStringList quotedCommand;
+    const QStringList sshArguments = SSHConnectionBuilder::sshCommand(data);
+    quotedCommand.reserve(sshArguments.size());
+    for (const QString &argument : sshArguments) {
+        quotedCommand << KShell::quoteArg(argument);
     }
 
-    controller->session()->sendTextToTerminal(sshCommand, QLatin1Char('\r'));
+    controller->session()->sendTextToTerminal(quotedCommand.join(QLatin1Char(' ')), QLatin1Char('\r'));
     if (controller->session()->views().count()) {
         controller->session()->views().at(0)->setFocus(Qt::MouseFocusReason);
     }

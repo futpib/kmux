@@ -11,6 +11,7 @@
 #include <QModelIndex>
 #include <QWidget>
 #include <memory>
+#include <optional>
 
 #include "sshconfigurationdata.h"
 
@@ -56,6 +57,7 @@ public:
     Q_SLOT void handleTreeClick(Qt::MouseButton btn, const QModelIndex idx);
 
     Q_SIGNAL void requestNewTab();
+    Q_SIGNAL void requestRemoteConnection(const SSHConfigurationData &data);
 
     void setEditComponentsEnabled(bool enabled);
 
@@ -71,6 +73,8 @@ protected:
 
 private:
     void updateProfileList();
+    void connectSelected();
+    std::optional<SSHConfigurationData> configurationForIndex(const QModelIndex &index) const;
 
     std::pair<bool, QString> checkFields() const;
     SSHConfigurationData info() const;
