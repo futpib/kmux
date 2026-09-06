@@ -45,13 +45,6 @@ if ! kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20; then
 fi
 WIN=$KMUX_TEST_WINDOW_ID
 
-# Start from a settled, frame-sized session. The regression concerns windows
-# added after this point, so an explicit initial resize removes the separate
-# startup-size race from the setup.
-xdotool windowactivate --sync "$WIN" 2>/dev/null || true
-xdotool windowsize --sync "$WIN" 900 600 2>/dev/null || true
-xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
-
 ORIGINAL_WID=$(tmux -S "$SOCKET" list-windows -t "$SESSION" -F '#{window_id}' | head -1)
 ORIGINAL_SIZE=""
 initial_window_sized() {
@@ -61,6 +54,24 @@ initial_window_sized() {
     [[ "$original_cols" =~ ^[0-9]+$ && "$original_rows" =~ ^[0-9]+$ ]] \
         && (( original_cols > 80 && original_rows > 24 ))
 }
+
+# A visible top-level X window does not guarantee that its terminal view has
+# finished the control-mode handshake and installed its resize handling. CI
+# can expose the window just before that point, causing a one-shot xdotool
+# resize to be lost and leaving this test's unrelated setup at tmux's 80x24
+# default. Wait for the initial view to settle, then retry distinct frame
+# sizes until kmux has advertised a real cell size. The assertion below still
+# tests only windows created after this precondition is established.
+sleep 1
+for _ in 1 2 3; do
+    xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+    xdotool windowsize --sync "$WIN" 900 600 2>/dev/null || true
+    sleep 0.2
+    xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
+    sleep 1
+    initial_window_sized && break
+done
+
 if ! kmux_test_wait_until 10 "initial tmux window to exceed 80x24" initial_window_sized; then
     dump_state
     echo "FAIL: initial window did not negotiate beyond 80x24 (got $ORIGINAL_SIZE)" >&2
