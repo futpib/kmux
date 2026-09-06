@@ -15,8 +15,12 @@
 #include <QHash>
 #include <QPointer>
 #include <QProcess>
+#include <QProcessEnvironment>
+#include <QProgressDialog>
 #include <QStandardPaths>
 #include <QTimer>
+
+#include <memory>
 
 // KF
 #include <KActionCollection>
@@ -24,6 +28,7 @@
 #include <KGlobalAccel>
 #endif
 #include <KLocalizedString>
+#include <KMessageBox>
 
 // Konsole
 #include "KonsoleSettings.h"
@@ -150,6 +155,10 @@ MainWindow *Application::newMainWindow()
         createTmuxWindow(window, directory);
     });
 
+    connect(window, &Konsole::MainWindow::remoteTmuxConnectionRequested, this, [this, window](const TmuxConnectionOptions &options) {
+        openTmuxConnection(window, options);
+    });
+
     connect(window, &Konsole::MainWindow::detachTmuxWindowRequest, this, [this, window](int windowId) {
         detachTmuxWindow(window, windowId);
     });
@@ -168,6 +177,121 @@ MainWindow *Application::newMainWindow()
     m_pluginManager.registerMainWindow(window);
 
     return window;
+}
+
+void Application::openTmuxConnection(MainWindow *requestingWindow, const TmuxConnectionOptions &options)
+{
+    if (options.rshCommand.isEmpty()) {
+        KMessageBox::error(requestingWindow, i18n("The remote shell command is empty."), i18nc("@title:window", "Remote Connection Failed"));
+        return;
+    }
+
+    MainWindow *window = newMainWindow();
+    QPointer<MainWindow> windowGuard(window);
+    QPointer<MainWindow> requestingWindowGuard(requestingWindow);
+    auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
+
+    QStringList tmuxArgs;
+    if (!options.socketName.isEmpty()) {
+        tmuxArgs << QStringLiteral("-L") << options.socketName;
+    }
+    if (!options.socketPath.isEmpty()) {
+        tmuxArgs << QStringLiteral("-S") << options.socketPath;
+    }
+
+    QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A")};
+    if (!options.workingDirectory.isEmpty()) {
+        tmuxCommand << QStringLiteral("-c") << options.workingDirectory;
+    }
+    if (!options.sessionName.isEmpty()) {
+        tmuxCommand << QStringLiteral("-s") << options.sessionName;
+    }
+
+    const QString connectionName = options.displayName.isEmpty() ? options.rshCommand.constLast() : options.displayName;
+    auto *progress = new QProgressDialog(i18n("Connecting to %1…", connectionName), i18n("Cancel"), 0, 0, requestingWindow);
+    progress->setAutoClose(false);
+    progress->setAutoReset(false);
+    progress->setMinimumDuration(0);
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setWindowTitle(i18nc("@title:window", "Remote kmux Connection"));
+    QPointer<QProgressDialog> progressGuard(progress);
+    const auto connectionFinished = std::make_shared<bool>(false);
+
+    connect(progress, &QProgressDialog::canceled, this, [windowGuard, progressGuard, connectionFinished]() {
+        if (*connectionFinished) {
+            return;
+        }
+        *connectionFinished = true;
+        if (progressGuard) {
+            progressGuard->deleteLater();
+        }
+        if (windowGuard) {
+            windowGuard->deleteLater();
+        }
+    });
+
+    connect(bridge, &TmuxProcessBridge::ready, this, [windowGuard, progressGuard, connectionFinished]() {
+        if (*connectionFinished) {
+            return;
+        }
+        *connectionFinished = true;
+        if (progressGuard) {
+            progressGuard->hide();
+            progressGuard->deleteLater();
+        }
+        if (windowGuard) {
+            windowGuard->show();
+            windowGuard->activateWindow();
+        }
+    });
+
+    connect(bridge,
+            &TmuxProcessBridge::startupFailed,
+            this,
+            [windowGuard, requestingWindowGuard, progressGuard, connectionFinished, connectionName](const QString &reason) {
+                if (*connectionFinished) {
+                    return;
+                }
+                *connectionFinished = true;
+                if (progressGuard) {
+                    progressGuard->hide();
+                    progressGuard->deleteLater();
+                }
+                if (windowGuard) {
+                    windowGuard->deleteLater();
+                }
+                KMessageBox::error(requestingWindowGuard,
+                                   i18n("Could not connect to %1.\n\n%2", connectionName, reason),
+                                   i18nc("@title:window", "Remote Connection Failed"));
+            });
+
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    const QFileInfo rshExecutable(options.rshCommand.constFirst());
+    if (rshExecutable.fileName() == QLatin1String("ssh")) {
+        QString askpass = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("kmux-ssh-askpass"));
+        if (!QFileInfo(askpass).isExecutable()) {
+            askpass = QStandardPaths::findExecutable(QStringLiteral("kmux-ssh-askpass"));
+        }
+        if (!askpass.isEmpty()) {
+            environment.insert(QStringLiteral("SSH_ASKPASS"), askpass);
+            environment.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
+        }
+    }
+
+    if (!bridge->start(options.tmuxPath, tmuxArgs, tmuxCommand, options.rshCommand, environment)) {
+        *connectionFinished = true;
+        if (progressGuard) {
+            progressGuard->hide();
+            progressGuard->deleteLater();
+        }
+        delete window;
+        KMessageBox::error(requestingWindow,
+                           i18n("Could not start the remote connection to %1.", connectionName),
+                           i18nc("@title:window", "Remote Connection Failed"));
+        return;
+    }
+
+    progress->show();
 }
 
 void Application::createWindow(const Profile::Ptr &profile, const QString &directory, const ContainerInfo &container)
@@ -198,12 +322,13 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
     const QStringList tmuxArgs = bridge->tmuxArgs();
     const QStringList command = bridge->command();
     const QStringList rshCommand = bridge->rshCommand();
+    const QProcessEnvironment processEnvironment = bridge->processEnvironment();
 
     // Route the new tmux window to its own kmux MainWindow: hide it on the
     // source side (so the source keeps only its existing tabs) and restrict
     // the new bridge to that one window. Without this, both the source and
     // the new MainWindow would each show all tmux windows as tabs.
-    bridge->controller()->requestNewWindow(directory, [this, sourceGuard, tmuxPath, tmuxArgs, command, rshCommand](int newWindowId) {
+    bridge->controller()->requestNewWindow(directory, [this, sourceGuard, tmuxPath, tmuxArgs, command, rshCommand, processEnvironment](int newWindowId) {
         if (newWindowId < 0 || !sourceGuard) {
             return;
         }
@@ -218,7 +343,7 @@ void Application::createTmuxWindow(MainWindow *source, const QString &directory)
         // attached window gets everything a normally-spawned window would.
         MainWindow *window = newMainWindow();
         auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
-        if (!newBridge->start(tmuxPath, tmuxArgs, command, rshCommand)) {
+        if (!newBridge->start(tmuxPath, tmuxArgs, command, rshCommand, processEnvironment)) {
             delete window;
             return;
         }
@@ -245,7 +370,7 @@ void Application::detachTmuxWindow(MainWindow *source, int windowId)
     // restricted to the detached window so it shows only that one tab.
     MainWindow *window = newMainWindow();
     auto *newBridge = new TmuxProcessBridge(window->viewManager(), window);
-    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command(), bridge->rshCommand())) {
+    if (!newBridge->start(bridge->tmuxPath(), bridge->tmuxArgs(), bridge->command(), bridge->rshCommand(), bridge->processEnvironment())) {
         delete window;
         return;
     }

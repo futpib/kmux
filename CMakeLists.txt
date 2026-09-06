@@ -175,6 +175,10 @@ endif()
 
 add_subdirectory( tools )
 
+if(BUILD_TESTING AND TARGET TmuxIntegrationTest)
+    add_dependencies(TmuxIntegrationTest kmux-ssh-askpass)
+endif()
+
 # Conditionally install icons for Linux as they may not be provided by the user theme
 option(INSTALL_ICONS "Install icons" OFF)
 if(INSTALL_ICONS)

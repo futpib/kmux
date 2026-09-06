@@ -1175,6 +1175,22 @@ Currently, &konsole; accepts the following:
 "No plugins available"
 </para>
 
+<para>The SSH Manager opens saved hosts as remote <command>tmux</command>
+workspaces in a new <application>kmux</application> window. Double-click a host, select it and choose
+<guibutton>Connect</guibutton>, or use the quick-access shortcut. Entries from
+<filename>~/.ssh/config</filename> use their alias so options such as jump
+hosts and identities continue to be resolved by <command>ssh</command>.
+The context menu retains <guimenuitem>Open SSH Shell in Current
+Pane</guimenuitem> for a conventional shell connection.</para>
+
+<para>The entry editor's <guibutton>Advanced</guibutton> section can select a
+remote <command>tmux</command> session, socket name or path, executable, and initial working
+directory. Password, key-passphrase, and host-verification prompts are shown
+graphically. Saved entries and these overrides are stored in
+<application>kmux</application>'s own
+<filename>kmuxsshconfig</filename>; Konsole's SSH Manager configuration is not
+read.</para>
+
 </sect2>
 
 
@@ -2195,5 +2211,3 @@ sgml-shorttag: t
 sgml-general-insert-case: lower
 End:
 -->
-
-

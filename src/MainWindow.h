@@ -21,6 +21,7 @@
 
 // Konsole
 #include "konsoleapp_export.h"
+#include "tmux/TmuxConnectionOptions.h"
 
 #include <optional>
 #include <vector>
@@ -147,6 +148,12 @@ Q_SIGNALS:
      * and opening a new tmux-attached MainWindow displaying it.
      */
     void newTmuxWindowRequest(const QString &directory);
+
+    /**
+     * Emitted when a plugin or another GUI action requests a connection to a
+     * different tmux server. Application owns the new window and transport.
+     */
+    void remoteTmuxConnectionRequested(const TmuxConnectionOptions &options);
 
     /**
      * Emitted when the user invokes Detach Tab on a tmux-attached tab.

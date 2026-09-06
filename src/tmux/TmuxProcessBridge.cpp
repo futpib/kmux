@@ -70,12 +70,17 @@ TmuxProcessBridge::~TmuxProcessBridge()
     }
 }
 
-bool TmuxProcessBridge::start(const QString &tmuxPath, const QStringList &tmuxArgs, const QStringList &command, const QStringList &rshCommand)
+bool TmuxProcessBridge::start(const QString &tmuxPath,
+                              const QStringList &tmuxArgs,
+                              const QStringList &command,
+                              const QStringList &rshCommand,
+                              const QProcessEnvironment &processEnvironment)
 {
     _tmuxPath = tmuxPath;
     _tmuxArgs = tmuxArgs;
     _command = command;
     _rshCommand = rshCommand;
+    _processEnvironment = processEnvironment.isEmpty() ? QProcessEnvironment::systemEnvironment() : processEnvironment;
     _policy->setHasRsh(!_rshCommand.isEmpty());
 
     if (!spawnProcess(command)) {
@@ -129,9 +134,8 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
     // PTY here, but it presents the same xterm-compatible terminal as a normal
     // Konsole profile; leaving TERM absent or inherited as "dumb" makes clients
     // such as Codex reject an otherwise fully capable pane.
-    QProcessEnvironment processEnvironment = QProcessEnvironment::systemEnvironment();
-    processEnvironment.insert(QStringLiteral("TERM"), CONTROL_CLIENT_TERM.toString());
-    _process->setProcessEnvironment(processEnvironment);
+    _processEnvironment.insert(QStringLiteral("TERM"), CONTROL_CLIENT_TERM.toString());
+    _process->setProcessEnvironment(_processEnvironment);
     _process->setProcessChannelMode(QProcess::ForwardedOutputChannel);
 
     _process->setChildProcessModifier([childFd, fds]() {
@@ -227,6 +231,11 @@ QStringList TmuxProcessBridge::command() const
 QStringList TmuxProcessBridge::rshCommand() const
 {
     return _rshCommand;
+}
+
+QProcessEnvironment TmuxProcessBridge::processEnvironment() const
+{
+    return _processEnvironment;
 }
 
 void TmuxProcessBridge::setHandshakeTimeoutMs(int ms)

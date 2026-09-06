@@ -97,6 +97,7 @@ private Q_SLOTS:
     void testNewTabFromTmuxPaneRespectsConfiguredPlacement();
     void testNewMainWindowFromTmuxPane();
     void testNewMainWindowFromTmuxPaneRegistersPlugins();
+    void testRemoteConnectionRequestOpensTmuxWindow();
     void testNewMainWindowFromTmuxPaneSplitsTabs();
     void testDetachViewBreaksPane();
     void testDetachTabFromTmuxCreatesNewKmuxWindow();

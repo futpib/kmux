@@ -19,9 +19,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # KDE's localization bot updates po/ frequently. Leave those commits
-      # pending until an upstream change outside the localization tree arrives.
-      - name: Check for non-localization upstream changes
+      # Leave translation churn and AppStream release-list updates pending
+      # until an upstream change affecting kmux behavior or packaging arrives.
+      - name: Check for upstream changes needing a sync PR
         id: upstream_changes
         run: |
           set -euo pipefail

@@ -74,8 +74,26 @@
     <widget class="KMessageWidget" name="errorPanel"/>
    </item>
    <item>
-    <widget class="QWidget" name="sshInfoPane" native="true">
-     <layout class="QFormLayout" name="formLayout">
+    <widget class="QScrollArea" name="sshInfoScrollArea">
+     <property name="frameShape">
+      <enum>QFrame::Shape::NoFrame</enum>
+     </property>
+     <property name="horizontalScrollBarPolicy">
+      <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+     </property>
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="sshInfoPane">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>300</width>
+        <height>610</height>
+       </rect>
+      </property>
+      <layout class="QFormLayout" name="formLayout">
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
@@ -234,24 +252,126 @@
         </property>
        </widget>
       </item>
-      <item row="8" column="1">
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Orientation::Vertical</enum>
+      <item row="8" column="0" colspan="2">
+       <widget class="QToolButton" name="advancedToggle">
+        <property name="text">
+         <string>Advanced</string>
         </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>40</height>
-         </size>
+        <property name="checkable">
+         <bool>true</bool>
         </property>
-       </spacer>
+        <property name="arrowType">
+         <enum>Qt::ArrowType::RightArrow</enum>
+        </property>
+        <property name="toolButtonStyle">
+         <enum>Qt::ToolButtonStyle::ToolButtonTextBesideIcon</enum>
+        </property>
+        <property name="autoRaise">
+         <bool>true</bool>
+        </property>
+       </widget>
       </item>
-     </layout>
+      <item row="9" column="0" colspan="2">
+       <widget class="QWidget" name="advancedPane" native="true">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <layout class="QFormLayout" name="advancedFormLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="tmuxSessionLabel">
+           <property name="text">
+            <string>tmux session</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="tmuxSession">
+           <property name="placeholderText">
+            <string>Attach to or create this session</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="tmuxSocketNameLabel">
+           <property name="text">
+            <string>Socket name</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLineEdit" name="tmuxSocketName">
+           <property name="placeholderText">
+            <string>tmux -L name</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="tmuxSocketPathLabel">
+           <property name="text">
+            <string>Socket path</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLineEdit" name="tmuxSocketPath">
+           <property name="placeholderText">
+            <string>tmux -S path</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="tmuxPathLabel">
+           <property name="text">
+            <string>tmux executable</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QLineEdit" name="tmuxPath">
+           <property name="placeholderText">
+            <string>tmux</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="remoteWorkingDirectoryLabel">
+           <property name="text">
+            <string>Working directory</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QLineEdit" name="remoteWorkingDirectory">
+           <property name="placeholderText">
+            <string>Remote path for a new session</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QPushButton" name="btnConnect">
+       <property name="toolTip">
+        <string>Open this host's tmux server in a new kmux window</string>
+       </property>
+       <property name="text">
+        <string>Connect</string>
+       </property>
+       <property name="icon">
+        <iconset theme="network-connect"/>
+       </property>
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
      <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
