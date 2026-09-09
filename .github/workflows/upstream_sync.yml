@@ -81,13 +81,14 @@ jobs:
       # actions-template-sync's built-in cleanup missed #24 while closing the
       # sync PRs immediately before and after it. Do the cleanup explicitly
       # through the REST API, and narrow it to bot-authored branches using the
-      # action's naming convention. If this run did not create a PR, keep the
-      # newest matching PR so this step is safe and idempotent.
+      # action's naming convention. Keep the newest matching PR only while a
+      # sync is still required; otherwise close every stale sync PR.
       - name: Close superseded upstream-sync PRs
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT_PR: ${{ steps.sync.outputs.pr_number }}
+          SYNC_REQUIRED: ${{ steps.upstream_changes.outputs.sync_required }}
         run: |
           set -euo pipefail
 
@@ -106,8 +107,11 @@ jobs:
           )"
 
           keep_pr="$CURRENT_PR"
-          if [[ -z "$keep_pr" && -n "$open_prs" ]]; then
+          close_comment="Automatically closed because a newer upstream-sync PR exists."
+          if [[ "$SYNC_REQUIRED" == true && -z "$keep_pr" && -n "$open_prs" ]]; then
             keep_pr="${open_prs%%$'\t'*}"
+          elif [[ "$SYNC_REQUIRED" != true ]]; then
+            close_comment="Automatically closed because KDE/konsole is already synchronized."
           fi
 
           while IFS=$'\t' read -r pr_number _; do
@@ -117,7 +121,7 @@ jobs:
 
             gh pr close "$pr_number" \
               --repo "$GITHUB_REPOSITORY" \
-              --comment "Automatically closed because a newer upstream-sync PR exists." \
+              --comment "$close_comment" \
               --delete-branch
           done <<< "$open_prs"
 
@@ -128,12 +132,16 @@ jobs:
           gh workflow run ci.yml --ref "${{ steps.sync.outputs.pr_branch }}"
           gh pr merge --auto --merge "${{ steps.sync.outputs.pr_number }}"
 
-      - if: failure()
+      - name: Clear resolved upstream-sync failure issues
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh issue create \
-            --title "Upstream sync from KDE/konsole failed" \
-            --label upstream-sync \
-            --body "The scheduled upstream sync failed. See [run]($RUN_URL)."
+        run: ./scripts/reconcile-upstream-sync-issues.sh resolved "$RUN_URL"
+
+      - name: Record upstream-sync failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: ./scripts/reconcile-upstream-sync-issues.sh failed "$RUN_URL"
