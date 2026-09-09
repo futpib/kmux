@@ -55,14 +55,19 @@ echo "=== launching kmux (KMUX_PAUSE_AFTER=$KMUX_PAUSE_AFTER) ==="
 kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s "$SESSION"
 KMUX_PID=$KMUX_TEST_PID
 
-# Wait until kmux has attached as a control-mode client.
-control_client_attached() {
+# Wait until kmux has attached and its asynchronous refresh-client command has
+# enabled flow control. Seeing control-mode alone is too early: tmux advertises
+# that as soon as the transport attaches, before queued initialization commands
+# have necessarily completed.
+flow_control_ready() {
     if ! kill -0 "$KMUX_PID" 2>/dev/null; then
         return 1
     fi
-    tmux -S "$SOCKET" list-clients -F '#{client_flags}' 2>/dev/null | grep -q control-mode
+    tmux -S "$SOCKET" list-clients -F '#{client_flags}' 2>/dev/null \
+        | grep control-mode \
+        | grep -q pause-after
 }
-if ! kmux_test_wait_until 20 "kmux control client to attach" control_client_attached; then
+if ! kmux_test_wait_until 20 "kmux control client to enable pause-after" flow_control_ready; then
     kmux_test_dump_log "$LOGDIR/kmux.log"
     kmux_test_fail
 fi

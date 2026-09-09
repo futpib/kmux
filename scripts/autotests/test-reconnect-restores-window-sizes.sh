@@ -110,9 +110,29 @@ xdotool windowsize --sync "$WIN" 900 600 2>/dev/null || true
 xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
 
 initial_client_ready() {
-    all_windows_larger_than_default && (( $(client_count) == 1 ))
+    local size cols rows
+    (( $(client_count) == 1 )) || return 1
+    while IFS='=' read -r _ size; do
+        cols=${size%x*}
+        rows=${size#*x}
+        if [[ "$cols" =~ ^[0-9]+$ && "$rows" =~ ^[0-9]+$ ]] && (( cols > 80 && rows > 24 )); then
+            return 0
+        fi
+    done < <(window_sizes)
+    return 1
 }
-if ! kmux_test_wait_until 12 "initial client to size both windows" initial_client_ready; then
+if ! kmux_test_wait_until 12 "initial client to size the visible window" initial_client_ready; then
+    dump_state
+    kmux_test_fail
+fi
+
+# A hidden QStackedWidget page may retain its tmux-provided 80x24 geometry
+# until it is shown, especially while the freshly created tabs are still being
+# laid out. Visit the other tab before establishing the reconnect baseline so
+# this test measures reconnect replay rather than startup page-layout timing.
+xdotool key --delay 150 ctrl+Tab
+
+if ! kmux_test_wait_until 12 "initial client to size both visited windows" all_windows_larger_than_default; then
     dump_state
     kmux_test_fail
 fi
