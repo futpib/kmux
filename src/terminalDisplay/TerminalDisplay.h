@@ -470,7 +470,7 @@ public Q_SLOTS:
     void updateImage();
 
     /** Copies the selected text to the X11 Selection. */
-    void copyToX11Selection(bool useSavedText = false);
+    void copyToX11Selection();
 
     /** Copies the selected text to the system clipboard. */
     void copyToClipboard(Screen::DecodingOptions options = Screen::PlainText);
@@ -594,7 +594,7 @@ protected:
     // drag and drop
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
-    void doDrag();
+    void doDrag(QMimeData *mimeData);
     enum DragState {
         diNone,
         diPending,
@@ -679,7 +679,7 @@ private:
     bool isInTerminalRegion(const QPoint &pnt) const;
 
     // Uses the current settings for trimming whitespace and preserving linebreaks to create a proper flag value for Screen
-    Screen::DecodingOptions currentDecodingOptions();
+    Screen::DecodingOptions currentDecodingOptions() const;
 
     // Boilerplate setup for MessageWidget
     KMessageWidget *createMessageWidget(const QString &text);
@@ -705,6 +705,24 @@ private:
 
     void sendMouseSignal(int button, QPoint pos, int eventType, bool sendInexact);
 
+    struct SelectionCopyData {
+        QString text;
+        QString html;
+        void clear()
+        {
+            text.clear();
+            html.clear();
+        }
+        bool isEmpty() const
+        {
+            return text.isEmpty();
+        }
+    };
+
+    SelectionCopyData selectionCopyData(Screen::DecodingOptions options = Screen::PlainText) const;
+    QMimeData *createSelectionMimeData(const SelectionCopyData &data) const;
+
+private: // data members
     // the window onto the terminal screen which this display
     // is currently showing.
     QPointer<ScreenWindow> _screenWindow;
@@ -789,9 +807,6 @@ private:
     bool _possibleTripleClick = false; // is set in mouseDoubleClickEvent and cleared
                                        // after QApplication::doubleClickInterval() delay
     QPoint _tripleClickPos = QPoint(0, 0); // The position where a potential triple click was started
-    QString _doubleClickSelectedText = QString(); // selected text whose copying may be cancelled by further events; copying
-    QString _doubleClickSelectedHtml = QString(); // is delayed to prevent a triple-click from generating > 1 entries in the
-                                      // clipboard history (a triple click is a double click at first ;)
 
     QLabel *_resizeWidget = nullptr;
     QTimer *_resizeTimer = nullptr;

@@ -1060,9 +1060,6 @@ void TerminalDisplay::focusOutEvent(QFocusEvent *)
     // suppress further text blinking
     _blinkTextTimer->stop();
     Q_ASSERT(!_textBlinking);
-
-    // If waiting for a triple click - losing focus cancels that (do the pending copy)
-    copyToX11Selection(true);
 }
 
 void TerminalDisplay::focusInEvent(QFocusEvent *)
@@ -1494,7 +1491,6 @@ void TerminalDisplay::mouseMoveEvent(QMouseEvent *ev)
 
     if (_possibleTripleClick && (ev->pos() - _tripleClickPos).manhattanLength() > 20) {
         _possibleTripleClick = false;
-        copyToX11Selection(true);
     }
     auto [charLine, charColumn] = getCharacterPosition(ev->pos(), !usesMouseTracking());
 
@@ -1544,8 +1540,22 @@ void TerminalDisplay::mouseMoveEvent(QMouseEvent *ev)
             || ev->position().y() > _dragInfo.start.y() + distance || ev->position().y() < _dragInfo.start.y() - distance) {
             // we've left the drag square, we can start a real drag operation now
 
+            // prepare data, reuse the one from the selection clipboard if present
+            QMimeData *mimeData;
+            const QMimeData *const clipboardMimeData =
+                (QApplication::clipboard()->supportsSelection()) ? QApplication::clipboard()->mimeData(QClipboard::Selection) : nullptr;
+            if (clipboardMimeData) {
+                mimeData = new QMimeData();
+                mimeData->setText(clipboardMimeData->text());
+                mimeData->setHtml(clipboardMimeData->html());
+            } else {
+                const SelectionCopyData data = selectionCopyData();
+                mimeData = createSelectionMimeData(data);
+            }
+
             clearSelection();
-            doDrag();
+
+            doDrag(mimeData);
         }
         return;
     } else if (_dragInfo.state == diDragging) {
@@ -1758,15 +1768,6 @@ void TerminalDisplay::mouseReleaseEvent(QMouseEvent *ev)
         } else {
             if (_actSel > 1) {
                 copyToX11Selection();
-                if (_possibleTripleClick) {
-                    const QString text = _screenWindow->selectedText(currentDecodingOptions());
-                    if (!text.isEmpty()) {
-                        _doubleClickSelectedText = text;
-                        if (_copyTextAsHTML) {
-                            _doubleClickSelectedHtml = _screenWindow->selectedText(currentDecodingOptions() | Screen::ConvertToHtml);
-                        }
-                    }
-                }
             }
 
             _actSel = 0;
@@ -1830,9 +1831,6 @@ void TerminalDisplay::processMidButtonClick(QMouseEvent *ev)
 {
     if (!usesMouseTracking() || ((ev->modifiers() & Qt::ShiftModifier) != 0u)) {
         const bool appendEnter = (ev->modifiers() & Qt::ControlModifier) != 0u;
-
-        // If currently waiting for a triple click, a middle click cancels that - copy now
-        copyToX11Selection(true);
 
         if (_middleClickPasteMode == Enum::PasteFromX11Selection) {
             pasteFromX11Selection(appendEnter);
@@ -1905,7 +1903,6 @@ void TerminalDisplay::mouseDoubleClickEvent(QMouseEvent *ev)
 
     QTimer::singleShot(QApplication::doubleClickInterval(), this, [this]() {
         _possibleTripleClick = false;
-        copyToX11Selection(true); // this will do nothing if another copy happened in the meantime
     });
 }
 
@@ -2251,7 +2248,7 @@ bool TerminalDisplay::isInTerminalRegion(const QPoint &point) const
     return !(!visibleRegion().contains(point) || _scrollBar->frameGeometry().contains(point));
 }
 
-Screen::DecodingOptions TerminalDisplay::currentDecodingOptions()
+Screen::DecodingOptions TerminalDisplay::currentDecodingOptions() const
 {
     Screen::DecodingOptions decodingOptions;
     if (_preserveLineBreaks) {
@@ -2631,49 +2628,45 @@ void TerminalDisplay::setCopyTextAsHTML(bool enabled)
     _copyTextAsHTML = enabled;
 }
 
-void TerminalDisplay::copyToX11Selection(bool useSavedText)
+TerminalDisplay::SelectionCopyData TerminalDisplay::selectionCopyData(Screen::DecodingOptions options) const
+{
+    SelectionCopyData data;
+    data.text = _screenWindow->selectedText(currentDecodingOptions() | options);
+    if (!data.text.isEmpty() && _copyTextAsHTML) {
+        // TODO: should possibly also get OR'ed with options
+        data.html = _screenWindow->selectedText(currentDecodingOptions() | Screen::ConvertToHtml);
+    }
+    return data;
+}
+
+QMimeData *TerminalDisplay::createSelectionMimeData(const SelectionCopyData &data) const
+{
+    auto mimeData = new QMimeData;
+    mimeData->setText(data.text);
+    if (!data.html.isEmpty()) {
+        mimeData->setHtml(data.html);
+    }
+    return mimeData;
+};
+
+void TerminalDisplay::copyToX11Selection()
 {
     if (_screenWindow.isNull()) {
         return;
     }
 
-    QString text;
-    QString html;
-    if (useSavedText) {
-        text = _doubleClickSelectedText;
-        html = _doubleClickSelectedHtml;
-    } else {
-        text = _screenWindow->selectedText(currentDecodingOptions());
-        if (!text.isEmpty() && _copyTextAsHTML) {
-            html = _screenWindow->selectedText(currentDecodingOptions() | Screen::ConvertToHtml);
-        }
-    }
+    const SelectionCopyData data = selectionCopyData();
 
-    if (text.isEmpty()) {
+    if (data.isEmpty()) {
         return;
     }
 
-    // Copying the double-click selection *does* double click select + copy.
-    // Copying another selection *cancels* double-click select + copy.
-    // In both cases, no double-click copy is pending anymore.
-    _doubleClickSelectedText.clear();
-    _doubleClickSelectedHtml.clear();
-
-    auto createMimeData = [&text, &html]() {
-        QMimeData *data = new QMimeData;
-        data->setText(text);
-        if (!html.isEmpty()) {
-            data->setHtml(html);
-        }
-        return data;
-    };
-
     if (QApplication::clipboard()->supportsSelection()) {
-        QApplication::clipboard()->setMimeData(createMimeData(), QClipboard::Selection);
+        QApplication::clipboard()->setMimeData(createSelectionMimeData(data), QClipboard::Selection);
     }
 
     if (_autoCopySelectedText) {
-        QApplication::clipboard()->setMimeData(createMimeData(), QClipboard::Clipboard);
+        QApplication::clipboard()->setMimeData(createSelectionMimeData(data), QClipboard::Clipboard);
     }
 }
 
@@ -2683,17 +2676,12 @@ void TerminalDisplay::copyToClipboard(Screen::DecodingOptions options)
         return;
     }
 
-    const QString &text = _screenWindow->selectedText(currentDecodingOptions() | options);
-    if (text.isEmpty()) {
+    const SelectionCopyData copyData = selectionCopyData(options);
+    if (copyData.isEmpty()) {
         return;
     }
 
-    auto mimeData = new QMimeData;
-    mimeData->setText(text);
-
-    if (_copyTextAsHTML) {
-        mimeData->setHtml(_screenWindow->selectedText(currentDecodingOptions() | Screen::ConvertToHtml));
-    }
+    auto mimeData = createSelectionMimeData(copyData);
 
     QApplication::clipboard()->setMimeData(mimeData, QClipboard::Clipboard);
 
@@ -3370,17 +3358,10 @@ void TerminalDisplay::dropEvent(QDropEvent *event)
     setFocus(Qt::MouseFocusReason);
 }
 
-void TerminalDisplay::doDrag()
+void TerminalDisplay::doDrag(QMimeData *mimeData)
 {
-    const QMimeData *clipboardMimeData = QApplication::clipboard()->mimeData(QClipboard::Selection);
-    if (clipboardMimeData == nullptr) {
-        return;
-    }
-    auto mimeData = new QMimeData();
     _dragInfo.state = diDragging;
     _dragInfo.dragObject = new QDrag(this);
-    mimeData->setText(clipboardMimeData->text());
-    mimeData->setHtml(clipboardMimeData->html());
     _dragInfo.dragObject->setMimeData(mimeData);
     // Use app's, not window's, dpr value to prepare drag pixmap
     // for being displayed on any screens during drag
@@ -3733,8 +3714,6 @@ int TerminalDisplay::bidiMap(Character *screenline,
 void TerminalDisplay::clearSelection()
 {
     _screenWindow->clearSelection();
-    _doubleClickSelectedText.clear();
-    _doubleClickSelectedHtml.clear();
 }
 
 #include "moc_TerminalDisplay.cpp"
