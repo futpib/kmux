@@ -19,6 +19,10 @@ private Q_SLOTS:
 
     void testUrlFilter_data();
     void testUrlFilter();
+
+    void testUrlDetectionAcrossWrappedLines();
+    void testUrlCutAtNonWrappedLineBreak();
+    void testUrlDetectionAcrossAppWordWrappedLines();
 };
 
 #endif // HOTSPOTFILTERTEST_H
