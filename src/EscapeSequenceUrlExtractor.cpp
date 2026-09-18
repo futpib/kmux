@@ -8,8 +8,13 @@
 #include "EscapeSequenceUrlExtractor.h"
 #include "Screen.h"
 
-#include <QHostInfo>
+#include <kio_version.h>
+
 #include <QUrl>
+
+#if KIO_VERSION < QT_VERSION_CHECK(6, 29, 0)
+#include <QHostInfo>
+#endif
 
 namespace Konsole
 {
@@ -43,6 +48,7 @@ void EscapeSequenceUrlExtractor::setUrl(const QString &url)
     QUrl qUrl = QUrl(url);
 
     if (_allowedUriSchemas.contains(qUrl.scheme() + QLatin1String("://"))) {
+#if KIO_VERSION < QT_VERSION_CHECK(6, 29, 0)
         if (qUrl.scheme() == QLatin1String("file") && !qUrl.host().isEmpty()) {
             if (qUrl.host() != QHostInfo::localHostName() && qUrl.host() != QLatin1String("localhost")) {
                 abortUrlInput();
@@ -51,7 +57,7 @@ void EscapeSequenceUrlExtractor::setUrl(const QString &url)
 
             qUrl.setHost(QString());
         }
-
+#endif
         _currentUrl.url = qUrl.toString();
     } else {
         abortUrlInput();
