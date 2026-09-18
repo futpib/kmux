@@ -94,6 +94,8 @@ using namespace Konsole;
 
 namespace
 {
+constexpr auto tmuxRestoreStateKey = "TmuxRestoreState";
+
 QString dumpToolbars(const QMainWindow *w)
 {
     QStringList out;
@@ -379,6 +381,11 @@ void MainWindow::correctStandardShortcuts()
 ViewManager *MainWindow::viewManager() const
 {
     return _viewManager;
+}
+
+std::optional<TmuxRestoreState> MainWindow::tmuxRestoreState() const
+{
+    return _tmuxRestoreState;
 }
 
 void MainWindow::disconnectController(SessionController *controller)
@@ -1142,12 +1149,48 @@ bool MainWindow::queryClose()
 void MainWindow::saveProperties(KConfigGroup &group)
 {
     qCDebug(KonsoleDebug) << "saveProperties: file=" << group.config()->name() << "group=" << group.name() << "toolbars=[" << dumpToolbars(this) << "]";
+    if (auto *bridge = findChild<TmuxProcessBridge *>(); bridge && bridge->controller()) {
+        TmuxRestoreState restoreState;
+        restoreState.tmuxPath = bridge->tmuxPath();
+        restoreState.tmuxArgs = bridge->tmuxArgs();
+        restoreState.rshCommand = bridge->rshCommand();
+        restoreState.visibleWindowIndexes = bridge->controller()->visibleWindowIndexes();
+        restoreState.activeWindowIndex = bridge->controller()->activeWindowIndex();
+        restoreState.workspace = bridge->controller()->workspaceSnapshot();
+        if (restoreState.visibleWindowIndexes.isEmpty()) {
+            for (const TmuxWindowSnapshot &window : restoreState.workspace.windows) {
+                restoreState.visibleWindowIndexes.append(window.index);
+            }
+        }
+        if (restoreState.isValid()) {
+            group.writeEntry(tmuxRestoreStateKey, restoreState.toJson());
+            group.deleteEntry("Tabs");
+            group.deleteEntry("Sessions");
+            group.deleteEntry("Active");
+            return;
+        }
+        qCWarning(KonsoleDebug) << "Could not save tmux reboot state: the live workspace snapshot is incomplete";
+        group.deleteEntry(tmuxRestoreStateKey);
+        group.writeEntry("Tabs", QByteArrayLiteral("[]"));
+        group.deleteEntry("Sessions");
+        group.writeEntry("Active", 0);
+        return;
+    }
+    group.deleteEntry(tmuxRestoreStateKey);
     _viewManager->saveSessions(group);
 }
 
 void MainWindow::readProperties(const KConfigGroup &group)
 {
     qCDebug(KonsoleDebug) << "readProperties: file=" << group.config()->name() << "group=" << group.name() << "toolbars=[" << dumpToolbars(this) << "]";
+    const QByteArray restoreJson = group.readEntry(tmuxRestoreStateKey, QByteArray());
+    if (!restoreJson.isEmpty()) {
+        _tmuxRestoreState = TmuxRestoreState::fromJson(restoreJson);
+        if (_tmuxRestoreState.has_value()) {
+            return;
+        }
+        qCWarning(KonsoleDebug) << "Ignoring invalid tmux reboot restore state";
+    }
     _viewManager->restoreSessions(group);
 }
 

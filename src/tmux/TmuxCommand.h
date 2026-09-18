@@ -99,7 +99,15 @@ public:
 
     TmuxCommand &singleQuotedArg(const QString &value)
     {
-        _parts.append(QLatin1Char('\'') + value + QLatin1Char('\''));
+        QString escaped = value;
+        // tmux parses control-mode commands a line at a time rather than with
+        // argv semantics. Close/reopen the single-quoted token around quotes
+        // and encode line breaks outside it so names and paths remain one
+        // argument and cannot turn into additional tmux commands.
+        escaped.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+        escaped.replace(QLatin1Char('\n'), QStringLiteral("'\\n'"));
+        escaped.replace(QLatin1Char('\r'), QStringLiteral("'\\r'"));
+        _parts.append(QLatin1Char('\'') + escaped + QLatin1Char('\''));
         return *this;
     }
 

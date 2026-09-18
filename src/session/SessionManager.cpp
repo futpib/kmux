@@ -389,6 +389,13 @@ void SessionManager::saveSessions(KConfig *config)
     _restoreMapping.clear();
 
     for (Session *session : std::as_const(_sessions)) {
+        // VirtualSession instances are projections of tmux panes, not local
+        // processes. Restoring one as a plain Session would create unrelated
+        // shells and bypass TmuxProcessBridge. Their owning MainWindow saves a
+        // structured tmux restore record instead.
+        if (qobject_cast<VirtualSession *>(session) != nullptr) {
+            continue;
+        }
         QString name = QLatin1String("Session") + QString::number(n);
         KConfigGroup group(config, name);
 
@@ -399,7 +406,7 @@ void SessionManager::saveSessions(KConfig *config)
     }
 
     KConfigGroup group(config, QStringLiteral("Number"));
-    group.writeEntry("NumberOfSessions", _sessions.count());
+    group.writeEntry("NumberOfSessions", n - 1);
 }
 
 int SessionManager::getRestoreId(Session *session)

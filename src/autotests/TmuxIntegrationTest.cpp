@@ -9,6 +9,8 @@
 #include "TmuxTestFixture.h"
 
 #include <KActionCollection>
+#include <KConfig>
+#include <KConfigGroup>
 #include <KMessageBox>
 #include <KMessageWidget>
 #include <QAction>
@@ -28,6 +30,7 @@
 #include <QTabBar>
 #include <QTest>
 #include <QTreeView>
+#include <QUuid>
 
 #include <algorithm>
 
@@ -61,6 +64,23 @@
 #include "../widgets/ViewSplitter.h"
 
 using namespace Konsole;
+
+namespace
+{
+class SessionStateMainWindow : public MainWindow
+{
+public:
+    void saveSessionState(KConfigGroup &group)
+    {
+        saveProperties(group);
+    }
+
+    void readSessionState(const KConfigGroup &group)
+    {
+        readProperties(group);
+    }
+};
+}
 
 void TmuxIntegrationTest::initTestCase()
 {
@@ -219,6 +239,246 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testWorkspaceRestoreAfterTmuxServerLoss()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    if (tmuxPath.isEmpty()) {
+        QSKIP("tmux command not found.");
+    }
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 60")), TmuxTestFixture::pane(QStringLiteral("sleep 60"))}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto runTmux = [&](const QStringList &command, QString *output = nullptr) {
+        QProcess process;
+        QStringList arguments{QStringLiteral("-S"), ctx.socketPath};
+        arguments.append(command);
+        process.start(tmuxPath, arguments);
+        if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            return false;
+        }
+        if (output) {
+            *output = QString::fromUtf8(process.readAllStandardOutput());
+        }
+        return true;
+    };
+
+    const QString firstDirectory = m_tmuxTmpDir.path() + QStringLiteral("/restore first\nline");
+    const QString secondDirectory = m_tmuxTmpDir.path() + QStringLiteral("/restore's second");
+    const QString thirdDirectory = m_tmuxTmpDir.path() + QStringLiteral("/restore-third");
+    QVERIFY(QDir().mkpath(firstDirectory));
+    QVERIFY(QDir().mkpath(secondDirectory));
+    QVERIFY(QDir().mkpath(thirdDirectory));
+
+    QString paneOutput;
+    QVERIFY(runTmux({QStringLiteral("list-panes"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-F"), QStringLiteral("#{pane_id}")}, &paneOutput));
+    const QStringList originalPaneIds = paneOutput.trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(originalPaneIds.size(), 2);
+    QVERIFY(runTmux({QStringLiteral("respawn-pane"),
+                     QStringLiteral("-k"),
+                     QStringLiteral("-c"),
+                     firstDirectory,
+                     QStringLiteral("-t"),
+                     originalPaneIds.at(0),
+                     QStringLiteral("sleep 60")}));
+    QVERIFY(runTmux({QStringLiteral("respawn-pane"),
+                     QStringLiteral("-k"),
+                     QStringLiteral("-c"),
+                     secondDirectory,
+                     QStringLiteral("-t"),
+                     originalPaneIds.at(1),
+                     QStringLiteral("sleep 60")}));
+    QVERIFY(runTmux({QStringLiteral("rename-window"), QStringLiteral("-t"), ctx.sessionName + QStringLiteral(":0"), QStringLiteral("editor's desk")}));
+    QVERIFY(runTmux({QStringLiteral("move-window"),
+                     QStringLiteral("-s"),
+                     ctx.sessionName + QStringLiteral(":0"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName + QStringLiteral(":4")}));
+    QVERIFY(runTmux({QStringLiteral("new-window"),
+                     QStringLiteral("-d"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName + QStringLiteral(":7"),
+                     QStringLiteral("-n"),
+                     QStringLiteral("logs; safe"),
+                     QStringLiteral("-c"),
+                     thirdDirectory,
+                     QStringLiteral("sleep 60")}));
+
+    auto *sourceWindow = new SessionStateMainWindow();
+    auto *sourceBridge = new TmuxProcessBridge(sourceWindow->viewManager(), sourceWindow);
+    QVERIFY(sourceBridge->start(tmuxPath,
+                                {QStringLiteral("-S"), ctx.socketPath},
+                                {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName}));
+    QTRY_VERIFY_WITH_TIMEOUT(sourceWindow->viewManager()->activeContainer()->count() >= 1, 10000);
+    TmuxController *sourceController = sourceBridge->controller();
+    QVERIFY(sourceController);
+    QTRY_VERIFY_WITH_TIMEOUT(sourceController->workspaceSnapshot().isValid() && sourceController->workspaceSnapshot().windows.size() == 2, 10000);
+    sourceController->restoreActiveWindowIndex(4);
+    QCOMPARE(sourceController->activeWindowIndex(), 4);
+    KConfig sessionConfig(m_tmuxTmpDir.path() + QStringLiteral("/workspace-restore-sessionrc"), KConfig::SimpleConfig);
+    KConfigGroup sessionGroup(&sessionConfig, QStringLiteral("Window1"));
+    sourceWindow->saveSessionState(sessionGroup);
+    QVERIFY(sessionGroup.hasKey("TmuxRestoreState"));
+    QVERIFY(!sessionGroup.hasKey("Tabs"));
+    QVERIFY(!sessionGroup.hasKey("Sessions"));
+    sessionConfig.sync();
+
+    KConfig globalConfig(m_tmuxTmpDir.path() + QStringLiteral("/workspace-restore-globalrc"), KConfig::SimpleConfig);
+    SessionManager::instance()->saveSessions(&globalConfig);
+    QCOMPARE(KConfigGroup(&globalConfig, QStringLiteral("Number")).readEntry("NumberOfSessions", -1), 0);
+
+    const std::optional<TmuxRestoreState> persistedState = TmuxRestoreState::fromJson(sessionGroup.readEntry("TmuxRestoreState", QByteArray()));
+    QVERIFY(persistedState.has_value());
+    QCOMPARE(persistedState->tmuxPath, tmuxPath);
+    QCOMPARE(persistedState->tmuxArgs, QStringList({QStringLiteral("-S"), ctx.socketPath}));
+    QCOMPARE(persistedState->activeWindowIndex, 4);
+    const TmuxWorkspaceSnapshot snapshot = persistedState->workspace;
+    QVERIFY(snapshot.serverPid > 0);
+    QCOMPARE(snapshot.windows.at(0).panes.size(), 2);
+    QCOMPARE(snapshot.windows.at(0).index, 4);
+    QCOMPARE(snapshot.windows.at(1).index, 7);
+    QCOMPARE(snapshot.windows.at(0).name, QStringLiteral("editor's desk"));
+    QCOMPARE(snapshot.windows.at(1).name, QStringLiteral("logs; safe"));
+
+    bool warmFinished = false;
+    TmuxController::WorkspaceRestoreResult warmResult = TmuxController::WorkspaceRestoreResult::Failed;
+    sourceController->restoreWorkspace(snapshot, QStringLiteral("unused-warm-token"), [&](TmuxController::WorkspaceRestoreResult result, const QString &) {
+        warmResult = result;
+        warmFinished = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(warmFinished, 5000);
+    QCOMPARE(warmResult, TmuxController::WorkspaceRestoreResult::WarmReattach);
+
+    delete sourceWindow;
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(runTmux({QStringLiteral("kill-server")}));
+    QVERIFY(QDir(secondDirectory).removeRecursively());
+
+    const QString launchToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto *restoredWindow = new SessionStateMainWindow();
+    QPointer<MainWindow> restoredWindowGuard(restoredWindow);
+    restoredWindow->readSessionState(sessionGroup);
+    QVERIFY(restoredWindow->tmuxRestoreState().has_value());
+    auto *restoredBridge = new TmuxProcessBridge(restoredWindow->viewManager(), restoredWindow);
+    QVERIFY(restoredBridge->start(tmuxPath,
+                                  {QStringLiteral("-S"), ctx.socketPath},
+                                  {QStringLiteral("new-session"),
+                                   QStringLiteral("-A"),
+                                   QStringLiteral("-e"),
+                                   QStringLiteral("KMUX_RESTORE_LAUNCH=") + launchToken,
+                                   QStringLiteral("-s"),
+                                   ctx.sessionName}));
+    QTRY_VERIFY_WITH_TIMEOUT(restoredBridge->controller()->sessionId() >= 0 && restoredWindow->viewManager()->activeContainer()->count() >= 1, 10000);
+
+    // Plasma can restore multiple kmux MainWindows that were detached views
+    // of the same tmux session. Start a sibling before either restore begins
+    // to exercise the tmux-side atomic ownership and peer-wait path.
+    const QString peerLaunchToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto *peerWindow = new SessionStateMainWindow();
+    QPointer<MainWindow> peerWindowGuard(peerWindow);
+    peerWindow->readSessionState(sessionGroup);
+    auto *peerBridge = new TmuxProcessBridge(peerWindow->viewManager(), peerWindow);
+    QVERIFY(peerBridge->start(tmuxPath,
+                              {QStringLiteral("-S"), ctx.socketPath},
+                              {QStringLiteral("new-session"),
+                               QStringLiteral("-A"),
+                               QStringLiteral("-e"),
+                               QStringLiteral("KMUX_RESTORE_LAUNCH=") + peerLaunchToken,
+                               QStringLiteral("-s"),
+                               ctx.sessionName}));
+    QTRY_VERIFY_WITH_TIMEOUT(peerBridge->controller()->sessionId() >= 0 && peerWindow->viewManager()->activeContainer()->count() >= 1, 10000);
+
+    bool coldFinished = false;
+    QString restoreError;
+    TmuxController::WorkspaceRestoreResult coldResult = TmuxController::WorkspaceRestoreResult::Failed;
+    restoredBridge->controller()->restoreWorkspace(snapshot, launchToken, [&](TmuxController::WorkspaceRestoreResult result, const QString &error) {
+        coldResult = result;
+        restoreError = error;
+        coldFinished = true;
+    });
+    bool peerFinished = false;
+    QString peerRestoreError;
+    TmuxController::WorkspaceRestoreResult peerResult = TmuxController::WorkspaceRestoreResult::Failed;
+    peerBridge->controller()->restoreWorkspace(snapshot, peerLaunchToken, [&](TmuxController::WorkspaceRestoreResult result, const QString &error) {
+        peerResult = result;
+        peerRestoreError = error;
+        peerFinished = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(coldFinished && peerFinished, 20000);
+    QCOMPARE(restoreError, QString());
+    QCOMPARE(peerRestoreError, QString());
+    QCOMPARE(coldResult, TmuxController::WorkspaceRestoreResult::ColdRestore);
+    QCOMPARE(peerResult, TmuxController::WorkspaceRestoreResult::ColdRestore);
+
+    TmuxController *restoredController = restoredBridge->controller();
+    QTRY_VERIFY_WITH_TIMEOUT(restoredController->workspaceSnapshot().isValid() && restoredController->workspaceSnapshot().windows.size() == 2, 10000);
+    const TmuxWorkspaceSnapshot restored = restoredController->workspaceSnapshot();
+    QVERIFY(restored.serverPid > 0);
+    QVERIFY(restored.serverPid != snapshot.serverPid);
+    QCOMPARE(restored.windows.at(0).name, snapshot.windows.at(0).name);
+    QCOMPARE(restored.windows.at(1).name, snapshot.windows.at(1).name);
+    QCOMPARE(restored.windows.at(0).panes.size(), snapshot.windows.at(0).panes.size());
+    QCOMPARE(restored.windows.at(1).panes.size(), snapshot.windows.at(1).panes.size());
+    QCOMPARE(restored.windows.at(0).panes.at(0).workingDirectory, firstDirectory);
+    QVERIFY(restored.windows.at(0).panes.at(1).workingDirectory != secondDirectory);
+    QVERIFY(QFileInfo::exists(restored.windows.at(0).panes.at(1).workingDirectory));
+    QCOMPARE(restored.windows.at(1).panes.at(0).workingDirectory, thirdDirectory);
+
+    const auto savedLayout = TmuxLayoutParser::parse(snapshot.windows.at(0).layout);
+    const auto restoredLayout = TmuxLayoutParser::parse(restored.windows.at(0).layout);
+    QVERIFY(savedLayout.has_value());
+    QVERIFY(restoredLayout.has_value());
+    QCOMPARE(restoredLayout->type, savedLayout->type);
+
+    QString commands;
+    QVERIFY(runTmux({QStringLiteral("list-panes"),
+                     QStringLiteral("-s"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_current_command}")},
+                    &commands));
+    const QStringList restoredCommands = commands.trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(restoredCommands.size(), 3);
+    QVERIFY2(!restoredCommands.contains(QStringLiteral("sleep")), "cold restore must not rerun saved foreground commands");
+
+    restoredController->restrictToWindowIndexes(persistedState->visibleWindowIndexes);
+    restoredController->restoreActiveWindowIndex(persistedState->activeWindowIndex);
+    QCOMPARE(restoredController->activeWindowIndex(), restored.windows.at(0).index);
+
+    // Detached kmux windows save the old tmux index as their membership
+    // identity. Cold restore may assign new indexes, so verify that filtering
+    // translates the saved identity to the corresponding rebuilt window.
+    restoredController->restrictToWindowIndexes({7});
+    QCOMPARE(restoredController->windowCount(), 1);
+    const int visibleWindowId = restoredController->windowToTabIndex().firstKey();
+    const auto visibleWindow = std::find_if(restored.windows.cbegin(), restored.windows.cend(), [visibleWindowId](const TmuxWindowSnapshot &window) {
+        return window.windowId == visibleWindowId;
+    });
+    QVERIFY(visibleWindow != restored.windows.cend());
+    QCOMPARE(visibleWindow->name, QStringLiteral("logs; safe"));
+
+    TmuxController *peerController = peerBridge->controller();
+    peerController->restrictToWindowIndexes({4});
+    QCOMPARE(peerController->windowCount(), 1);
+    const int peerVisibleWindowId = peerController->windowToTabIndex().firstKey();
+    const auto peerVisibleWindow = std::find_if(restored.windows.cbegin(), restored.windows.cend(), [peerVisibleWindowId](const TmuxWindowSnapshot &window) {
+        return window.windowId == peerVisibleWindowId;
+    });
+    QVERIFY(peerVisibleWindow != restored.windows.cend());
+    QCOMPARE(peerVisibleWindow->name, QStringLiteral("editor's desk"));
+
+    delete peerWindowGuard.data();
+    delete restoredWindowGuard.data();
 }
 
 // Helper: read all visible text from a Session's screen

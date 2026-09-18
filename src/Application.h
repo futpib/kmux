@@ -60,6 +60,9 @@ public:
      */
     MainWindow *newMainWindow();
 
+    /** Recreate a tmux-backed MainWindow saved by KDE session management. */
+    bool restoreTmuxWindow(MainWindow *window);
+
     PluginManager *pluginManager()
     {
         return &m_pluginManager;

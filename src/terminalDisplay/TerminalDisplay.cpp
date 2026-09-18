@@ -2884,6 +2884,12 @@ void TerminalDisplay::setTmuxConnectionBanner(TmuxConnectionBanner banner)
         text = i18n("The tmux connection dropped.");
         showRetry = true;
         break;
+    case TmuxConnectionBanner::RestoredAfterReboot:
+        text = i18n(
+            "The previous tmux server did not survive the reboot. kmux restored the windows, panes, layout, and working directories with fresh shells; "
+            "programs that were running have ended.");
+        showRetry = false;
+        break;
     case TmuxConnectionBanner::Hidden:
         break;
     }
@@ -2895,6 +2901,7 @@ void TerminalDisplay::setTmuxConnectionBanner(TmuxConnectionBanner banner)
             action->setEnabled(showRetry);
         }
     }
+    _tmuxUnresponsiveMessageWidget->setCloseButtonVisible(banner == TmuxConnectionBanner::RestoredAfterReboot);
     _tmuxUnresponsiveMessageWidget->animatedShow();
 }
 
