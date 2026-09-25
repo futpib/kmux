@@ -22,6 +22,7 @@
 // Konsole
 #include "konsoleapp_export.h"
 #include "tmux/TmuxConnectionOptions.h"
+#include "tmux/TmuxWorkspaceSnapshot.h"
 
 #include <optional>
 #include <vector>
@@ -126,6 +127,8 @@ public:
      * @brief set list actions for menu "Plugins"
      */
     void setPluginsActions(const QList<QAction *> &actions);
+
+    std::optional<TmuxRestoreState> tmuxRestoreState() const;
 
 Q_SIGNALS:
 
@@ -277,6 +280,7 @@ private:
     std::vector<IKonsolePlugin *> _plugins;
     QList<QAction *> _pluginsActions;
     std::optional<int> _progress;
+    std::optional<TmuxRestoreState> _tmuxRestoreState;
     bool _blurEnabled = false;
     bool _firstShowEvent = true;
 

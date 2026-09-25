@@ -22,11 +22,14 @@
 
 #include <QApplication>
 #include <QLoggingCategory>
+#include <QPointer>
 #include <QTabBar>
 #include <QTimer>
+#include <QUuid>
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 
 Q_LOGGING_CATEGORY(KonsoleTmuxController, "konsole.tmux.controller", QtWarningMsg)
 
@@ -37,6 +40,284 @@ namespace
 {
 constexpr auto tmuxWindowIdProperty = "_kmux_tmux_window_id";
 constexpr auto windowOrderSubscriptionName = "kmux-window-order";
+constexpr auto restoreLaunchEnvironment = "KMUX_RESTORE_LAUNCH";
+constexpr auto restoredSourceOption = "@kmux-restored-source-created";
+constexpr auto restoreInProgressOption = "@kmux-restore-in-progress";
+
+QString snapshotIdentity(const TmuxWorkspaceSnapshot &snapshot)
+{
+    return QString::number(snapshot.serverPid) + QLatin1Char(':') + QString::number(snapshot.sessionCreated);
+}
+
+void rememberPaneDimensions(TmuxPaneStateRecovery *recovery, const TmuxLayoutNode &node)
+{
+    if (node.type == TmuxLayoutNodeType::Leaf) {
+        recovery->setPaneDimensions(node.paneId, node.width, node.height);
+        return;
+    }
+    for (const TmuxLayoutNode &child : node.children) {
+        rememberPaneDimensions(recovery, child);
+    }
+}
+
+using BoolCallback = std::function<void(bool)>;
+
+struct ColdRestoreOperation {
+    QPointer<TmuxGateway> gateway;
+    QList<TmuxWindowSnapshot> windows;
+    int sessionId = -1;
+    int initialWindowId = -1;
+    int initialPaneId = -1;
+    int position = 0;
+    QMap<int, int> restoredWindowIds; // saved window index -> new @window id
+    std::function<void(bool, const QString &)> finished;
+};
+
+void respawnPane(const QPointer<TmuxGateway> &gateway, int paneId, const QString &directory, BoolCallback callback)
+{
+    if (!gateway) {
+        callback(false);
+        return;
+    }
+    TmuxCommand command(QStringLiteral("respawn-pane"));
+    command.flag(QStringLiteral("-k")).paneTarget(paneId);
+    if (!directory.isEmpty()) {
+        command.flag(QStringLiteral("-c")).singleQuotedArg(directory);
+    }
+    gateway->sendCommand(command, [gateway, paneId, directory, callback = std::move(callback)](bool success, const QString &) mutable {
+        if (success || directory.isEmpty() || !gateway) {
+            callback(success);
+            return;
+        }
+        // A directory may have disappeared while the machine was off. Keep
+        // restoring the workspace and fall back to the shell's default cwd.
+        gateway->sendCommand(TmuxCommand(QStringLiteral("respawn-pane")).flag(QStringLiteral("-k")).paneTarget(paneId),
+                             [callback = std::move(callback)](bool fallbackSuccess, const QString &) mutable {
+                                 callback(fallbackSuccess);
+                             });
+    });
+}
+
+using CreatedPaneCallback = std::function<void(int)>;
+
+void createPane(const QPointer<TmuxGateway> &gateway, int targetPaneId, const QString &directory, CreatedPaneCallback callback)
+{
+    if (!gateway) {
+        callback(-1);
+        return;
+    }
+    auto send = [gateway, targetPaneId, callback](const QString &cwd, bool allowFallback) mutable {
+        TmuxCommand command(QStringLiteral("split-window"));
+        command.flag(QStringLiteral("-d")).flag(QStringLiteral("-P")).format(QStringLiteral("#{pane_id}")).paneTarget(targetPaneId);
+        if (!cwd.isEmpty()) {
+            command.flag(QStringLiteral("-c")).singleQuotedArg(cwd);
+        }
+        gateway->sendCommand(command, [gateway, targetPaneId, cwd, allowFallback, callback](bool success, const QString &response) mutable {
+            const QString paneToken = response.trimmed();
+            bool paneOk = false;
+            const int paneId = paneToken.startsWith(QLatin1Char('%')) ? paneToken.mid(1).toInt(&paneOk) : -1;
+            if (success && paneOk) {
+                callback(paneId);
+                return;
+            }
+            if (allowFallback && !cwd.isEmpty() && gateway) {
+                TmuxCommand fallback(QStringLiteral("split-window"));
+                fallback.flag(QStringLiteral("-d")).flag(QStringLiteral("-P")).format(QStringLiteral("#{pane_id}")).paneTarget(targetPaneId);
+                gateway->sendCommand(fallback, [callback](bool fallbackSuccess, const QString &fallbackResponse) mutable {
+                    const QString fallbackToken = fallbackResponse.trimmed();
+                    bool fallbackOk = false;
+                    const int fallbackPaneId = fallbackToken.startsWith(QLatin1Char('%')) ? fallbackToken.mid(1).toInt(&fallbackOk) : -1;
+                    callback(fallbackSuccess && fallbackOk ? fallbackPaneId : -1);
+                });
+                return;
+            }
+            callback(-1);
+        });
+    };
+    send(directory, true);
+}
+
+using CreatedWindowCallback = std::function<void(int, int)>;
+
+void createWindow(const QPointer<TmuxGateway> &gateway, int sessionId, const QString &name, const QString &directory, CreatedWindowCallback callback)
+{
+    if (!gateway) {
+        callback(-1, -1);
+        return;
+    }
+    auto send = [gateway, sessionId, name, callback](const QString &cwd, bool allowFallback) mutable {
+        TmuxCommand command(QStringLiteral("new-window"));
+        command.flag(QStringLiteral("-d")).flag(QStringLiteral("-P")).format(QStringLiteral("#{window_id} #{pane_id}"));
+        command.sessionTarget(sessionId).flag(QStringLiteral("-n")).singleQuotedArg(name);
+        if (!cwd.isEmpty()) {
+            command.flag(QStringLiteral("-c")).singleQuotedArg(cwd);
+        }
+        gateway->sendCommand(command, [gateway, sessionId, name, cwd, allowFallback, callback](bool success, const QString &response) mutable {
+            const QStringList parts = response.trimmed().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            bool windowOk = false;
+            bool paneOk = false;
+            const int windowId = parts.size() == 2 && parts[0].startsWith(QLatin1Char('@')) ? parts[0].mid(1).toInt(&windowOk) : -1;
+            const int paneId = parts.size() == 2 && parts[1].startsWith(QLatin1Char('%')) ? parts[1].mid(1).toInt(&paneOk) : -1;
+            if (success && windowOk && paneOk) {
+                callback(windowId, paneId);
+                return;
+            }
+            if (allowFallback && !cwd.isEmpty() && gateway) {
+                TmuxCommand fallback(QStringLiteral("new-window"));
+                fallback.flag(QStringLiteral("-d")).flag(QStringLiteral("-P")).format(QStringLiteral("#{window_id} #{pane_id}"));
+                fallback.sessionTarget(sessionId).flag(QStringLiteral("-n")).singleQuotedArg(name);
+                gateway->sendCommand(fallback, [callback](bool fallbackSuccess, const QString &fallbackResponse) mutable {
+                    const QStringList fallbackParts = fallbackResponse.trimmed().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                    bool fallbackWindowOk = false;
+                    bool fallbackPaneOk = false;
+                    const int fallbackWindowId =
+                        fallbackParts.size() == 2 && fallbackParts[0].startsWith(QLatin1Char('@')) ? fallbackParts[0].mid(1).toInt(&fallbackWindowOk) : -1;
+                    const int fallbackPaneId =
+                        fallbackParts.size() == 2 && fallbackParts[1].startsWith(QLatin1Char('%')) ? fallbackParts[1].mid(1).toInt(&fallbackPaneOk) : -1;
+                    callback(fallbackSuccess && fallbackWindowOk ? fallbackWindowId : -1, fallbackSuccess && fallbackPaneOk ? fallbackPaneId : -1);
+                });
+                return;
+            }
+            callback(-1, -1);
+        });
+    };
+    send(directory, true);
+}
+
+void restoreNextWindow(const std::shared_ptr<ColdRestoreOperation> &operation);
+
+void finishRestoringWindow(const std::shared_ptr<ColdRestoreOperation> &operation,
+                           const TmuxWindowSnapshot &savedWindow,
+                           int windowId,
+                           const QList<int> &newPaneIds)
+{
+    if (!operation->gateway) {
+        operation->finished(false, QStringLiteral("the tmux connection closed during workspace restore"));
+        return;
+    }
+
+    const auto remappedLayout = TmuxWorkspaceSnapshot::remapLayout(savedWindow, newPaneIds);
+    auto continueRestore = [operation, savedWindow, windowId, newPaneIds]() {
+        operation->restoredWindowIds.insert(savedWindow.index, windowId);
+        int activePanePosition = -1;
+        for (int i = 0; i < savedWindow.panes.size(); ++i) {
+            if (savedWindow.panes.at(i).active) {
+                activePanePosition = i;
+                break;
+            }
+        }
+        if (activePanePosition >= 0 && activePanePosition < newPaneIds.size() && operation->gateway) {
+            operation->gateway->sendCommand(TmuxCommand(QStringLiteral("select-pane")).paneTarget(newPaneIds.at(activePanePosition)));
+        }
+        ++operation->position;
+        restoreNextWindow(operation);
+    };
+
+    if (!remappedLayout.has_value()) {
+        continueRestore();
+        return;
+    }
+    operation->gateway->sendCommand(TmuxCommand(QStringLiteral("select-layout")).windowTarget(windowId).singleQuotedArg(remappedLayout.value()),
+                                    [continueRestore = std::move(continueRestore)](bool, const QString &) mutable {
+                                        // A saved cell geometry may no longer fit the display. The
+                                        // panes still exist, so keep the safe shell fallback even if
+                                        // tmux rejects the exact old proportions.
+                                        continueRestore();
+                                    });
+}
+
+void addRestoredPanes(const std::shared_ptr<ColdRestoreOperation> &operation,
+                      const TmuxWindowSnapshot &savedWindow,
+                      int windowId,
+                      const std::shared_ptr<QList<int>> &newPaneIds,
+                      int nextPane)
+{
+    if (nextPane >= savedWindow.panes.size()) {
+        finishRestoringWindow(operation, savedWindow, windowId, *newPaneIds);
+        return;
+    }
+    createPane(operation->gateway,
+               newPaneIds->first(),
+               savedWindow.panes.at(nextPane).workingDirectory,
+               [operation, savedWindow, windowId, newPaneIds, nextPane](int paneId) {
+                   if (paneId < 0) {
+                       operation->finished(false, QStringLiteral("could not recreate all panes in tmux window %1").arg(savedWindow.name));
+                       return;
+                   }
+                   newPaneIds->append(paneId);
+                   addRestoredPanes(operation, savedWindow, windowId, newPaneIds, nextPane + 1);
+               });
+}
+
+void restoreWindowContents(const std::shared_ptr<ColdRestoreOperation> &operation,
+                           const TmuxWindowSnapshot &savedWindow,
+                           int windowId,
+                           int firstPaneId,
+                           bool renameWindow)
+{
+    if (!operation->gateway) {
+        operation->finished(false, QStringLiteral("the tmux connection closed during workspace restore"));
+        return;
+    }
+    auto startPanes = [operation, savedWindow, windowId, firstPaneId]() {
+        respawnPane(operation->gateway, firstPaneId, savedWindow.panes.first().workingDirectory, [operation, savedWindow, windowId, firstPaneId](bool success) {
+            if (!success) {
+                operation->finished(false, QStringLiteral("could not restart the restored shell in tmux window %1").arg(savedWindow.name));
+                return;
+            }
+            auto paneIds = std::make_shared<QList<int>>();
+            paneIds->append(firstPaneId);
+            addRestoredPanes(operation, savedWindow, windowId, paneIds, 1);
+        });
+    };
+
+    if (!renameWindow) {
+        startPanes();
+        return;
+    }
+    operation->gateway->sendCommand(TmuxCommand(QStringLiteral("rename-window")).windowTarget(windowId).singleQuotedArg(savedWindow.name),
+                                    [startPanes = std::move(startPanes)](bool, const QString &) mutable {
+                                        startPanes();
+                                    });
+}
+
+void restoreNextWindow(const std::shared_ptr<ColdRestoreOperation> &operation)
+{
+    if (operation->position >= operation->windows.size()) {
+        int activeWindowId = -1;
+        for (const TmuxWindowSnapshot &window : operation->windows) {
+            if (window.active) {
+                activeWindowId = operation->restoredWindowIds.value(window.index, -1);
+                break;
+            }
+        }
+        if (activeWindowId >= 0 && operation->gateway) {
+            operation->gateway->sendCommand(TmuxCommand(QStringLiteral("select-window")).windowTarget(activeWindowId), [operation](bool, const QString &) {
+                operation->finished(true, QString());
+            });
+        } else {
+            operation->finished(true, QString());
+        }
+        return;
+    }
+
+    const TmuxWindowSnapshot savedWindow = operation->windows.at(operation->position);
+    if (operation->position == 0) {
+        restoreWindowContents(operation, savedWindow, operation->initialWindowId, operation->initialPaneId, true);
+        return;
+    }
+    createWindow(operation->gateway,
+                 operation->sessionId,
+                 savedWindow.name,
+                 savedWindow.panes.first().workingDirectory,
+                 [operation, savedWindow](int windowId, int paneId) {
+                     if (windowId < 0 || paneId < 0) {
+                         operation->finished(false, QStringLiteral("could not recreate tmux window %1").arg(savedWindow.name));
+                         return;
+                     }
+                     restoreWindowContents(operation, savedWindow, windowId, paneId, false);
+                 });
+}
 }
 
 TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, QObject *parent)
@@ -675,6 +956,302 @@ const QMap<int, int> &TmuxController::windowToTabIndex() const
     return _windowToTabIndex;
 }
 
+TmuxWorkspaceSnapshot TmuxController::workspaceSnapshot() const
+{
+    return _workspaceSnapshot;
+}
+
+QList<int> TmuxController::visibleWindowIndexes() const
+{
+    QList<int> indexes;
+    for (auto it = _windowToTabIndex.constBegin(); it != _windowToTabIndex.constEnd(); ++it) {
+        const auto indexIt = _windowIndexes.constFind(it.key());
+        if (indexIt != _windowIndexes.constEnd()) {
+            indexes.append(indexIt.value());
+        }
+    }
+    std::sort(indexes.begin(), indexes.end());
+    indexes.erase(std::unique(indexes.begin(), indexes.end()), indexes.end());
+    return indexes;
+}
+
+int TmuxController::activeWindowIndex() const
+{
+    auto *container = _viewManager->activeContainer();
+    if (!container) {
+        return -1;
+    }
+    return _windowIndexes.value(windowIdAtTabIndex(container->currentIndex()), -1);
+}
+
+void TmuxController::restrictToWindowIndexes(const QList<int> &indexes)
+{
+    if (indexes.isEmpty()) {
+        return;
+    }
+    const QSet<int> allowedIndexes(indexes.cbegin(), indexes.cend());
+    const QList<int> visibleWindowIds = _windowToTabIndex.keys();
+    for (int windowId : visibleWindowIds) {
+        bool allowed = allowedIndexes.contains(_windowIndexes.value(windowId, -1));
+        if (!_restoredWindowIds.isEmpty()) {
+            allowed = false;
+            for (int savedIndex : allowedIndexes) {
+                if (_restoredWindowIds.value(savedIndex, -1) == windowId) {
+                    allowed = true;
+                    break;
+                }
+            }
+        }
+        if (!allowed) {
+            hideWindow(windowId);
+        }
+    }
+}
+
+void TmuxController::restoreActiveWindowIndex(int index)
+{
+    int windowId = _restoredWindowIds.value(index, -1);
+    if (windowId < 0) {
+        for (auto it = _windowIndexes.cbegin(); it != _windowIndexes.cend(); ++it) {
+            if (it.value() == index) {
+                windowId = it.key();
+                break;
+            }
+        }
+    }
+    const int tabIndex = tabIndexForWindow(windowId);
+    if (auto *container = _viewManager->activeContainer(); container && tabIndex >= 0) {
+        container->setCurrentIndex(tabIndex, Qt::OtherFocusReason);
+    }
+}
+
+void TmuxController::restoreWorkspace(const TmuxWorkspaceSnapshot &snapshot, const QString &launchToken, WorkspaceRestoreCallback callback)
+{
+    if (!snapshot.isValid() || launchToken.isEmpty() || _gateway == nullptr || _sessionId < 0) {
+        callback(WorkspaceRestoreResult::Failed, QStringLiteral("the saved tmux workspace is incomplete"));
+        return;
+    }
+
+    QPointer<TmuxController> guard(this);
+    auto resyncThenFinish = [guard, snapshot, callback](WorkspaceRestoreResult result, const QString &error) {
+        if (!guard) {
+            callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux window closed during workspace restore"));
+            return;
+        }
+        auto completed = std::make_shared<bool>(false);
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        auto finish = [guard, snapshot, callback, result, error, completed, connection](bool timedOut) {
+            if (*completed) {
+                return;
+            }
+            *completed = true;
+            if (guard) {
+                QObject::disconnect(*connection);
+            }
+            if (timedOut) {
+                callback(WorkspaceRestoreResult::Failed, QStringLiteral("tmux did not finish rebuilding the restored workspace"));
+            } else {
+                guard->_restoredWindowIds.clear();
+                if (result == WorkspaceRestoreResult::ColdRestore) {
+                    QList<TmuxWindowSnapshot> savedWindows = snapshot.windows;
+                    std::sort(savedWindows.begin(), savedWindows.end(), [](const TmuxWindowSnapshot &a, const TmuxWindowSnapshot &b) {
+                        return a.index < b.index;
+                    });
+                    QList<QPair<int, int>> currentWindows;
+                    for (auto it = guard->_windowIndexes.cbegin(); it != guard->_windowIndexes.cend(); ++it) {
+                        currentWindows.append(qMakePair(it.value(), it.key()));
+                    }
+                    std::sort(currentWindows.begin(), currentWindows.end());
+                    if (savedWindows.size() != currentWindows.size()) {
+                        callback(WorkspaceRestoreResult::Failed, QStringLiteral("the rebuilt tmux window set does not match the saved workspace"));
+                        return;
+                    }
+                    for (int i = 0; i < savedWindows.size(); ++i) {
+                        guard->_restoredWindowIds.insert(savedWindows.at(i).index, currentWindows.at(i).second);
+                    }
+                }
+                callback(result, error);
+            }
+        };
+        *connection = QObject::connect(guard, &TmuxController::initialWindowsOpened, guard, [finish]() {
+            finish(false);
+        });
+        QTimer::singleShot(10000, guard, [finish]() {
+            finish(true);
+        });
+        guard->initialize();
+    };
+
+    auto pollForPeerRestore = [guard, snapshot, resyncThenFinish, callback]() {
+        auto attempts = std::make_shared<int>(0);
+        auto poll = std::make_shared<std::function<void()>>();
+        *poll = [guard, snapshot, resyncThenFinish, callback, attempts, poll]() {
+            if (!guard || !guard->_gateway) {
+                *poll = {};
+                callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux connection closed while another window restored the workspace"));
+                return;
+            }
+            guard->_gateway->sendCommand(
+                TmuxCommand(QStringLiteral("show-options"))
+                    .flag(QStringLiteral("-qv"))
+                    .sessionTarget(guard->_sessionId)
+                    .arg(QLatin1String(restoredSourceOption)),
+                [guard, snapshot, resyncThenFinish, callback, attempts, poll](bool, const QString &response) {
+                    const QString restoredSource = response.trimmed();
+                    if (restoredSource == snapshotIdentity(snapshot)) {
+                        *poll = {};
+                        resyncThenFinish(WorkspaceRestoreResult::ColdRestore, QString());
+                        return;
+                    }
+                    if (!restoredSource.isEmpty()) {
+                        *poll = {};
+                        callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux session was already restored from a different saved workspace"));
+                        return;
+                    }
+                    ++*attempts;
+                    if (*attempts >= 150 || !guard) {
+                        *poll = {};
+                        callback(WorkspaceRestoreResult::Failed, QStringLiteral("another kmux window did not finish restoring the shared tmux session"));
+                        return;
+                    }
+                    QTimer::singleShot(100, guard, [poll]() {
+                        (*poll)();
+                    });
+                });
+        };
+        (*poll)();
+    };
+
+    _gateway->sendCommand(
+        TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")).singleQuotedArg(QStringLiteral("#{pid}:#{session_created}")),
+        [this, guard, snapshot, launchToken, callback, resyncThenFinish, pollForPeerRestore](bool success, const QString &response) {
+            const QStringList identityParts = response.trimmed().split(QLatin1Char(':'));
+            bool pidOk = false;
+            const qint64 currentServerPid = identityParts.size() == 2 ? identityParts.at(0).toLongLong(&pidOk) : 0;
+            bool createdOk = false;
+            const qint64 currentSessionCreated = identityParts.size() == 2 ? identityParts.at(1).toLongLong(&createdOk) : 0;
+            if (!success || !pidOk || currentServerPid <= 0 || !createdOk || currentSessionCreated <= 0 || !guard) {
+                callback(WorkspaceRestoreResult::Failed, QStringLiteral("could not identify the current tmux session"));
+                return;
+            }
+            if (currentServerPid == snapshot.serverPid && currentSessionCreated == snapshot.sessionCreated) {
+                callback(WorkspaceRestoreResult::WarmReattach, QString());
+                return;
+            }
+
+            _gateway->sendCommand(
+                TmuxCommand(QStringLiteral("show-options")).flag(QStringLiteral("-qv")).sessionTarget(_sessionId).arg(QLatin1String(restoredSourceOption)),
+                [this, guard, snapshot, launchToken, callback, resyncThenFinish, pollForPeerRestore](bool, const QString &markerResponse) {
+                    const QString restoredSource = markerResponse.trimmed();
+                    if (restoredSource == snapshotIdentity(snapshot)) {
+                        resyncThenFinish(WorkspaceRestoreResult::ColdRestore, QString());
+                        return;
+                    }
+                    if (!restoredSource.isEmpty()) {
+                        callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux session was already restored from a different saved workspace"));
+                        return;
+                    }
+
+                    _gateway->sendCommand(
+                        TmuxCommand(QStringLiteral("show-environment")).sessionTarget(_sessionId).arg(QLatin1String(restoreLaunchEnvironment)),
+                        [this, guard, snapshot, launchToken, callback, resyncThenFinish, pollForPeerRestore](bool envSuccess, const QString &envResponse) {
+                            const QString expectedEnvironment = QLatin1String(restoreLaunchEnvironment) + QLatin1Char('=') + launchToken;
+                            if (!envSuccess || envResponse.trimmed() != expectedEnvironment) {
+                                // A sibling MainWindow may own the launch token for
+                                // this shared session. Wait for it to publish the
+                                // completion marker instead of racing the rebuild.
+                                pollForPeerRestore();
+                                return;
+                            }
+
+                            if (_windowToTabIndex.size() != 1) {
+                                callback(WorkspaceRestoreResult::Failed,
+                                         QStringLiteral("the newly-created tmux session is no longer empty; refusing to overwrite it"));
+                                return;
+                            }
+                            const int initialWindowId = _windowToTabIndex.firstKey();
+                            const QList<int> initialPanes = _windowPanes.value(initialWindowId);
+                            if (initialPanes.size() != 1) {
+                                callback(WorkspaceRestoreResult::Failed,
+                                         QStringLiteral("the newly-created tmux session is no longer empty; refusing to overwrite it"));
+                                return;
+                            }
+
+                            _gateway->sendCommand(
+                                TmuxCommand(QStringLiteral("set-option"))
+                                    .flag(QStringLiteral("-o"))
+                                    .sessionTarget(_sessionId)
+                                    .arg(QLatin1String(restoreInProgressOption))
+                                    .arg(launchToken),
+                                [this,
+                                 guard,
+                                 snapshot,
+                                 launchToken,
+                                 callback,
+                                 resyncThenFinish,
+                                 pollForPeerRestore,
+                                 initialWindowId,
+                                 initialPaneId = initialPanes.first()](bool lockSuccess, const QString &) {
+                                    if (!guard) {
+                                        callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux window closed during workspace restore"));
+                                        return;
+                                    }
+                                    if (!lockSuccess) {
+                                        // set-option -o is an atomic claim. A sibling
+                                        // window won the restore race, so wait for its
+                                        // completion marker rather than rebuilding twice.
+                                        pollForPeerRestore();
+                                        return;
+                                    }
+
+                                    auto operation = std::make_shared<ColdRestoreOperation>();
+                                    operation->gateway = _gateway;
+                                    operation->windows = snapshot.windows;
+                                    std::sort(operation->windows.begin(),
+                                              operation->windows.end(),
+                                              [](const TmuxWindowSnapshot &a, const TmuxWindowSnapshot &b) {
+                                                  return a.index < b.index;
+                                              });
+                                    operation->sessionId = _sessionId;
+                                    operation->initialWindowId = initialWindowId;
+                                    operation->initialPaneId = initialPaneId;
+                                    operation->finished = [this, guard, snapshot, callback, resyncThenFinish](bool restored, const QString &error) {
+                                        if (!guard || !_gateway) {
+                                            callback(WorkspaceRestoreResult::Failed, QStringLiteral("the tmux connection closed during workspace restore"));
+                                            return;
+                                        }
+                                        if (!restored) {
+                                            _gateway->sendCommand(TmuxCommand(QStringLiteral("set-option"))
+                                                                      .flag(QStringLiteral("-u"))
+                                                                      .sessionTarget(_sessionId)
+                                                                      .arg(QLatin1String(restoreInProgressOption)));
+                                            callback(WorkspaceRestoreResult::Failed, error);
+                                            return;
+                                        }
+                                        _gateway->sendCommand(TmuxCommand(QStringLiteral("set-option"))
+                                                                  .sessionTarget(_sessionId)
+                                                                  .arg(QLatin1String(restoredSourceOption))
+                                                                  .arg(snapshotIdentity(snapshot)),
+                                                              [this, guard, callback, resyncThenFinish](bool markerSuccess, const QString &) {
+                                                                  if (!guard || !_gateway || !markerSuccess) {
+                                                                      callback(WorkspaceRestoreResult::Failed,
+                                                                               QStringLiteral("could not finalize the tmux workspace restore"));
+                                                                      return;
+                                                                  }
+                                                                  // Keep the atomic claim for the lifetime of
+                                                                  // this new session. A sibling whose marker
+                                                                  // read raced with completion must not start a
+                                                                  // second rebuild.
+                                                                  resyncThenFinish(WorkspaceRestoreResult::ColdRestore, QString());
+                                                              });
+                                    };
+                                    restoreNextWindow(operation);
+                                });
+                        });
+                });
+        });
+}
+
 int TmuxController::windowIdAtTabIndex(int tabIndex) const
 {
     auto *container = _viewManager->activeContainer();
@@ -971,6 +1548,89 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
 void TmuxController::refreshPaneTitles()
 {
     _paneManager->queryPaneTitleInfo();
+    refreshWorkspaceSnapshot();
+}
+
+void TmuxController::refreshWorkspaceSnapshot()
+{
+    if (_sessionId < 0 || _gateway == nullptr) {
+        return;
+    }
+
+    auto spec = std::make_shared<TmuxFormatSpec>(QStringList{
+        QStringLiteral("pid"),
+        QStringLiteral("session_created"),
+        QStringLiteral("session_name"),
+        QStringLiteral("window_id"),
+        QStringLiteral("window_index"),
+        QStringLiteral("window_name"),
+        QStringLiteral("window_layout"),
+        QStringLiteral("window_active"),
+        QStringLiteral("pane_id"),
+        QStringLiteral("pane_current_path"),
+        QStringLiteral("pane_active"),
+    });
+
+    _gateway->sendCommand(
+        TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).sessionTarget(_sessionId).format(*spec),
+        [this, spec](bool success, const QString &response) {
+            if (!success) {
+                return;
+            }
+
+            TmuxWorkspaceSnapshot snapshot;
+            QMap<int, TmuxWindowSnapshot> windowsById;
+            for (const TmuxFormatSpec::Row &row : spec->parseRows(response)) {
+                bool pidOk = false;
+                const qint64 serverPid = row.value(QStringLiteral("pid")).toLongLong(&pidOk);
+                bool createdOk = false;
+                const qint64 sessionCreated = row.value(QStringLiteral("session_created")).toLongLong(&createdOk);
+                const QString sessionName = row.value(QStringLiteral("session_name"));
+                const QString windowToken = row.value(QStringLiteral("window_id"));
+                const QString paneToken = row.value(QStringLiteral("pane_id"));
+                bool windowOk = false;
+                bool paneOk = false;
+                const int windowId = windowToken.startsWith(QLatin1Char('@')) ? windowToken.mid(1).toInt(&windowOk) : -1;
+                const int paneId = paneToken.startsWith(QLatin1Char('%')) ? paneToken.mid(1).toInt(&paneOk) : -1;
+                bool indexOk = false;
+                const int windowIndex = row.value(QStringLiteral("window_index")).toInt(&indexOk);
+                if (!pidOk || serverPid <= 0 || !createdOk || sessionCreated <= 0 || sessionName.isEmpty() || !windowOk || !paneOk || !indexOk) {
+                    return;
+                }
+
+                if (snapshot.serverPid == 0) {
+                    snapshot.serverPid = serverPid;
+                    snapshot.sessionCreated = sessionCreated;
+                    snapshot.sessionName = sessionName;
+                } else if (snapshot.serverPid != serverPid || snapshot.sessionCreated != sessionCreated || snapshot.sessionName != sessionName) {
+                    return;
+                }
+
+                TmuxWindowSnapshot &window = windowsById[windowId];
+                if (window.windowId < 0) {
+                    window.windowId = windowId;
+                    window.index = windowIndex;
+                    window.name = row.value(QStringLiteral("window_name"));
+                    window.layout = row.value(QStringLiteral("window_layout"));
+                    window.active = row.value(QStringLiteral("window_active")).toInt() != 0;
+                }
+
+                TmuxPaneSnapshot pane;
+                pane.paneId = paneId;
+                pane.workingDirectory = row.value(QStringLiteral("pane_current_path"));
+                pane.active = row.value(QStringLiteral("pane_active")).toInt() != 0;
+                window.panes.append(std::move(pane));
+            }
+
+            QList<TmuxWindowSnapshot> windows = windowsById.values();
+            std::sort(windows.begin(), windows.end(), [](const TmuxWindowSnapshot &a, const TmuxWindowSnapshot &b) {
+                return a.index < b.index;
+            });
+            snapshot.windows = std::move(windows);
+            if (snapshot.isValid()) {
+                _workspaceSnapshot = std::move(snapshot);
+            }
+        });
 }
 
 void TmuxController::handleListWindowsResponse(bool success, const QString &response)
@@ -978,17 +1638,6 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
     if (!success || response.isEmpty()) {
         return;
     }
-
-    // Helper to collect leaf pane dimensions from layout tree
-    std::function<void(const TmuxLayoutNode &)> collectPaneDimensions = [&](const TmuxLayoutNode &node) {
-        if (node.type == TmuxLayoutNodeType::Leaf) {
-            _stateRecovery->setPaneDimensions(node.paneId, node.width, node.height);
-        } else {
-            for (const auto &child : node.children) {
-                collectPaneDimensions(child);
-            }
-        }
-    };
 
     // Helper to collect all pane IDs from a layout tree.
     std::function<void(const TmuxLayoutNode &, QSet<int> &)> collectPaneIds = [&](const TmuxLayoutNode &node, QSet<int> &out) {
@@ -1017,7 +1666,7 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
         auto parsed = TmuxLayoutParser::parse(layout);
         if (parsed.has_value()) {
             _windowIndexes[windowId] = windowIndex;
-            collectPaneDimensions(parsed.value());
+            rememberPaneDimensions(_stateRecovery, parsed.value());
             applyWindowLayout(windowId, parsed.value());
             newWindowIds.insert(windowId);
             collectPaneIds(parsed.value(), newPaneIds);
@@ -1061,6 +1710,11 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
         // onSplitterMoved needs to know the real window dimensions so
         // select-layout doesn't exceed the tmux window size.
         _resizeCoordinator->setWindowSize(windowId, parsed.value().width, parsed.value().height);
+        // Pause recovery captures plain text and then restores terminal state.
+        // Keep its target grid current too; otherwise a resize between initial
+        // attach and a later %pause can shrink the emulation back to stale
+        // dimensions and make resumed output disappear off-screen.
+        rememberPaneDimensions(_stateRecovery, parsed.value());
     }
 
     // Skip layout-change notifications while dragging a splitter — they are

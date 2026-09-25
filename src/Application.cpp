@@ -19,6 +19,7 @@
 #include <QProgressDialog>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QUuid>
 
 #include <memory>
 
@@ -43,11 +44,36 @@
 #include "widgets/ViewContainer.h"
 
 #include "pluginsystem/IKonsolePlugin.h"
+#include "tmux/TmuxConnectionBanner.h"
 #include "tmux/TmuxController.h"
 #include "tmux/TmuxControllerRegistry.h"
 #include "tmux/TmuxProcessBridge.h"
 
 using namespace Konsole;
+
+namespace
+{
+QProcessEnvironment tmuxProcessEnvironment(const QStringList &rshCommand)
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    if (rshCommand.isEmpty()) {
+        return environment;
+    }
+    const QFileInfo rshExecutable(rshCommand.constFirst());
+    if (rshExecutable.fileName() != QLatin1String("ssh")) {
+        return environment;
+    }
+    QString askpass = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("kmux-ssh-askpass"));
+    if (!QFileInfo(askpass).isExecutable()) {
+        askpass = QStandardPaths::findExecutable(QStringLiteral("kmux-ssh-askpass"));
+    }
+    if (!askpass.isEmpty()) {
+        environment.insert(QStringLiteral("SSH_ASKPASS"), askpass);
+        environment.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
+    }
+    return environment;
+}
+}
 
 Application::Application(QSharedPointer<QCommandLineParser> parser, const QStringList &customCommand)
     : _backgroundInstance(nullptr)
@@ -179,6 +205,75 @@ MainWindow *Application::newMainWindow()
     return window;
 }
 
+bool Application::restoreTmuxWindow(MainWindow *window)
+{
+    const std::optional<TmuxRestoreState> savedState = window->tmuxRestoreState();
+    if (!savedState.has_value()) {
+        return false;
+    }
+
+    const TmuxRestoreState state = savedState.value();
+    const QString launchToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QStringList command = {
+        QStringLiteral("new-session"),
+        QStringLiteral("-A"),
+        QStringLiteral("-e"),
+        QStringLiteral("KMUX_RESTORE_LAUNCH=%1").arg(launchToken),
+    };
+    command << QStringLiteral("-s") << state.workspace.sessionName;
+
+    QPointer<MainWindow> windowGuard(window);
+    auto *bridge = new TmuxProcessBridge(window->viewManager(), window);
+    connect(bridge, &TmuxProcessBridge::startupFailed, this, [windowGuard](const QString &reason) {
+        if (!windowGuard) {
+            return;
+        }
+        KMessageBox::error(windowGuard, i18n("Could not restore the tmux workspace.\n\n%1", reason), i18nc("@title:window", "Workspace Restore Failed"));
+        windowGuard->deleteLater();
+    });
+
+    if (!bridge->start(state.tmuxPath, state.tmuxArgs, command, state.rshCommand, tmuxProcessEnvironment(state.rshCommand))) {
+        KMessageBox::error(window, i18n("Could not start tmux while restoring the saved workspace."), i18nc("@title:window", "Workspace Restore Failed"));
+        bridge->deleteLater();
+        window->deleteLater();
+        return true;
+    }
+
+    TmuxController *controller = bridge->controller();
+    auto restoreStarted = std::make_shared<bool>(false);
+    connect(controller, &TmuxController::initialWindowsOpened, window, [controller, windowGuard, state, launchToken, restoreStarted]() {
+        if (*restoreStarted || !windowGuard) {
+            return;
+        }
+        *restoreStarted = true;
+        controller->restoreWorkspace(state.workspace,
+                                     launchToken,
+                                     [controller, windowGuard, state](TmuxController::WorkspaceRestoreResult result, const QString &error) {
+                                         if (!windowGuard) {
+                                             return;
+                                         }
+                                         controller->restrictToWindowIndexes(state.visibleWindowIndexes);
+                                         controller->restoreActiveWindowIndex(state.activeWindowIndex);
+                                         windowGuard->viewManager()->toggleActionsBasedOnState();
+                                         windowGuard->show();
+
+                                         if (result == TmuxController::WorkspaceRestoreResult::ColdRestore) {
+                                             for (Session *session : windowGuard->viewManager()->sessions()) {
+                                                 for (TerminalDisplay *view : session->views()) {
+                                                     view->setTmuxConnectionBanner(TmuxConnectionBanner::RestoredAfterReboot);
+                                                 }
+                                             }
+                                         } else if (result == TmuxController::WorkspaceRestoreResult::Failed) {
+                                             KMessageBox::error(
+                                                 windowGuard,
+                                                 i18n("kmux opened the tmux session but could not safely restore the saved workspace.\n\n%1", error),
+                                                 i18nc("@title:window", "Workspace Restore Incomplete"));
+                                         }
+                                     });
+    });
+    return true;
+}
+
 void Application::openTmuxConnection(MainWindow *requestingWindow, const TmuxConnectionOptions &options)
 {
     if (options.rshCommand.isEmpty()) {
@@ -265,18 +360,7 @@ void Application::openTmuxConnection(MainWindow *requestingWindow, const TmuxCon
                                    i18nc("@title:window", "Remote Connection Failed"));
             });
 
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    const QFileInfo rshExecutable(options.rshCommand.constFirst());
-    if (rshExecutable.fileName() == QLatin1String("ssh")) {
-        QString askpass = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("kmux-ssh-askpass"));
-        if (!QFileInfo(askpass).isExecutable()) {
-            askpass = QStandardPaths::findExecutable(QStringLiteral("kmux-ssh-askpass"));
-        }
-        if (!askpass.isEmpty()) {
-            environment.insert(QStringLiteral("SSH_ASKPASS"), askpass);
-            environment.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
-        }
-    }
+    const QProcessEnvironment environment = tmuxProcessEnvironment(options.rshCommand);
 
     if (!bridge->start(options.tmuxPath, tmuxArgs, tmuxCommand, options.rshCommand, environment)) {
         *connectionFinished = true;

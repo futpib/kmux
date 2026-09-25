@@ -29,6 +29,7 @@ private Q_SLOTS:
     void testClosePaneTabThenGatewayTab();
     void testTmuxControlModeAttach();
     void testTmuxTwoPaneSplitAttach();
+    void testWorkspaceRestoreAfterTmuxServerLoss();
     void testTmuxAttachContentRecovery();
     void testTmuxAttachComplexPromptRecovery();
     void testTmuxAttachAlternateScreenRecovery();

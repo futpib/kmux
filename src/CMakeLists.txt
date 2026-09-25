@@ -200,6 +200,7 @@ target_sources(konsoleprivate PRIVATE
     tmux/TmuxFormatSpec.cpp
     tmux/TmuxTreeRowFormat.cpp
     tmux/TmuxLayoutParser.cpp
+    tmux/TmuxWorkspaceSnapshot.cpp
     tmux/TmuxGateway.cpp
     tmux/TmuxPaneManager.cpp
     tmux/TmuxLayoutManager.cpp

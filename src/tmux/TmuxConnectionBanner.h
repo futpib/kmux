@@ -16,6 +16,7 @@ enum class TmuxConnectionBanner {
     Reconnecting,
     ReconnectingCheckTty,
     Disconnected,
+    RestoredAfterReboot,
 };
 
 }

@@ -430,6 +430,11 @@ void restoreSession(Application &app)
     while (KMainWindow::canBeRestored(n)) {
         auto mainWindow = app.newMainWindow();
         mainWindow->restore(n++);
+        if (app.restoreTmuxWindow(mainWindow)) {
+            // The tmux bridge shows the window only after it has either
+            // reattached to the live server or completed a cold rebuild.
+            continue;
+        }
         mainWindow->viewManager()->toggleActionsBasedOnState();
         mainWindow->show();
 

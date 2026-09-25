@@ -45,6 +45,7 @@ ecm_add_tests(
     TmuxFormatSpecTest.cpp
     TmuxGatewayTest.cpp
     TmuxLayoutParserTest.cpp
+    TmuxWorkspaceSnapshotTest.cpp
     TmuxTreeRowFormatTest.cpp
     LINK_LIBRARIES konsoleprivate Qt::Test ${KONSOLE_TEST_LIBS}
 )

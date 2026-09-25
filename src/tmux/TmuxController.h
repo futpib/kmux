@@ -16,6 +16,7 @@
 
 #include <functional>
 
+#include "TmuxWorkspaceSnapshot.h"
 #include "konsoleprivate_export.h"
 
 namespace Konsole
@@ -119,6 +120,27 @@ public:
 
     const QMap<int, int> &windowToTabIndex() const;
 
+    TmuxWorkspaceSnapshot workspaceSnapshot() const;
+    QList<int> visibleWindowIndexes() const;
+    int activeWindowIndex() const;
+
+    enum class WorkspaceRestoreResult {
+        WarmReattach,
+        ColdRestore,
+        Failed,
+    };
+    using WorkspaceRestoreCallback = std::function<void(WorkspaceRestoreResult, const QString &)>;
+
+    // Rebuild a saved session only when the tmux server PID and session
+    // creation timestamp prove that the original server/session did not
+    // survive. A live tmux session always wins over the disk snapshot.
+    void restoreWorkspace(const TmuxWorkspaceSnapshot &snapshot, const QString &launchToken, WorkspaceRestoreCallback callback);
+
+    // Restore which tmux windows belonged to this kmux MainWindow. The stable
+    // tmux window index is used because @window IDs do not survive a reboot.
+    void restrictToWindowIndexes(const QList<int> &indexes);
+    void restoreActiveWindowIndex(int index);
+
     // Hide a window on this controller's side: remove its tab and pane
     // sessions, and ignore future tmux events for it. The tmux window itself
     // is not touched. Used by detach-tab on the source MainWindow.
@@ -189,6 +211,7 @@ private:
     void maximizePaneInWindow(int windowId, int paneId);
     void clearMaximizeInWindow(int windowId);
     void refreshPaneTitles();
+    void refreshWorkspaceSnapshot();
     void handleListWindowsResponse(bool success, const QString &response);
     void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
     void queryPrefixBindings();
@@ -223,6 +246,8 @@ private:
     QTimer *_tabOrderSyncTimer;
 
     QString _sessionName;
+    TmuxWorkspaceSnapshot _workspaceSnapshot;
+    QMap<int, int> _restoredWindowIds; // saved window index -> rebuilt @window id
     int _sessionId = -1;
     State _state = State::Idle;
     int _activePaneId = -1;

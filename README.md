@@ -43,6 +43,10 @@ KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
   switch to a brand-new tmux session directly from kmux actions.
 - **Working-directory aware creation** — new panes/windows/sessions preserve the
   expected working directory behavior during tmux operations.
+- **Graceful reboot recovery** — Plasma session restore reattaches surviving
+  local or remote tmux servers. If a local server was lost in the reboot, kmux
+  safely rebuilds its windows, panes, layouts, and working directories with
+  fresh shells; it never guesses at or reruns foreground commands.
 - **Remote/socket-aware startup** — attach/create sessions by tmux session name,
   socket name/path, custom tmux binary path, and optional remote shell wrapper
   (`--rsh` / `KMUX_RSH`).
