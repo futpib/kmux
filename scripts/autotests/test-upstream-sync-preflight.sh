@@ -26,8 +26,9 @@ git -C "$UPSTREAM" config user.name test
 git -C "$UPSTREAM" config user.email test@example.com
 mkdir -p "$UPSTREAM/desktop" "$UPSTREAM/po/en" "$UPSTREAM/src"
 echo '[Desktop Entry]' > "$UPSTREAM/desktop/kmuxpart.desktop"
+echo '[Global]' > "$UPSTREAM/desktop/kmux.notifyrc"
 echo '[Desktop Entry]' > "$UPSTREAM/desktop/org.kde.kmux.desktop"
-echo '<releases>' > "$UPSTREAM/desktop/org.kde.kmux.appdata.xml"
+echo '<component>' > "$UPSTREAM/desktop/org.kde.kmux.appdata.xml"
 echo base > "$UPSTREAM/po/en/kmux.po"
 echo base > "$UPSTREAM/src/main.cpp"
 git -C "$UPSTREAM" add .
@@ -73,7 +74,9 @@ assert_result false "$UPSTREAM"
 assert_upstream_tip_absent_from_target
 
 echo 'Comment[nn]=Bruk kommandolinja' >> "$UPSTREAM/desktop/kmuxpart.desktop"
+echo 'Comment[ug]=Konsole' >> "$UPSTREAM/desktop/kmux.notifyrc"
 echo 'Name[he]=פתיחת חלון חדש' >> "$UPSTREAM/desktop/org.kde.kmux.desktop"
+echo '  <name xml:lang="ug">Konsole</name>' >> "$UPSTREAM/desktop/org.kde.kmux.appdata.xml"
 git -C "$UPSTREAM" add desktop
 git -C "$UPSTREAM" commit --quiet -m desktop-localization
 assert_result false "$UPSTREAM"
@@ -97,6 +100,13 @@ git -C "$UPSTREAM" add desktop/org.kde.kmux.desktop
 git -C "$UPSTREAM" commit --quiet -m functional-desktop
 assert_result true "$UPSTREAM" functional-desktop
 assert_upstream_tip_absent_from_target functional-desktop
+
+git -C "$UPSTREAM" switch --quiet --create functional-notifyrc "$BASE"
+echo 'Comment=Changed product notification metadata' >> "$UPSTREAM/desktop/kmux.notifyrc"
+git -C "$UPSTREAM" add desktop/kmux.notifyrc
+git -C "$UPSTREAM" commit --quiet -m functional-notifyrc
+assert_result true "$UPSTREAM" functional-notifyrc
+assert_upstream_tip_absent_from_target functional-notifyrc
 
 git -C "$UPSTREAM" switch --quiet --create substantive-appdata "$BASE"
 echo '  <description>Changed product behavior</description>' >> "$UPSTREAM/desktop/org.kde.kmux.appdata.xml"

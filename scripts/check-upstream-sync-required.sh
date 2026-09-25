@@ -59,7 +59,7 @@ path_has_only_ignorable_metadata_changes() {
         po/*)
             return 0
             ;;
-        desktop/*.desktop)
+        desktop/*.desktop|desktop/*.notifyrc)
             while IFS= read -r line; do
                 case "$line" in
                     '+++ '*|'--- '*)
@@ -69,7 +69,8 @@ path_has_only_ignorable_metadata_changes() {
                         saw_changed_line=true
                         content=${line:1}
                         # KDE's translation sync adds locale-qualified keys
-                        # such as Name[nn], Comment[he], and Keywords[ia].
+                        # such as Name[nn], Comment[he], and Keywords[ia] to
+                        # both desktop entries and notification metadata.
                         if [[ ! $content =~ ^[[:space:]]*[[:alnum:]_-]+\[[^]]+\]= ]]; then
                             return 1
                         fi
@@ -89,13 +90,25 @@ path_has_only_ignorable_metadata_changes() {
                     '+'*|'-'*)
                         saw_changed_line=true
                         content=${line:1}
+                        # AppStream translations are single localized element
+                        # lines. Verify that their opening and closing tags
+                        # match so unrelated XML containing xml:lang still
+                        # forces a sync.
+                        if [[ $content =~ ^[[:space:]]*\<([[:alnum:]_.:-]+)[[:space:]]+xml:lang=\"[^\"]+\"[[:space:]]*\>.*\</([[:alnum:]_.:-]+)\>[[:space:]]*$ ]]; then
+                            if [[ ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]; then
+                                continue
+                            fi
+                        fi
+
                         # AppStream's release list is publication metadata. Be
                         # deliberately strict so descriptions, launchables,
                         # requirements, and other product metadata still sync.
-                        if [[ ! $content =~ ^[[:space:]]*\<release[[:space:]]+version=\"[^\"]+\"[[:space:]]+date=\"[0-9]{4}-[0-9]{2}-[0-9]{2}\"[[:space:]]*/\>[[:space:]]*$ \
-                            && ! $content =~ ^[[:space:]]*\<release[[:space:]]+date=\"[0-9]{4}-[0-9]{2}-[0-9]{2}\"[[:space:]]+version=\"[^\"]+\"[[:space:]]*/\>[[:space:]]*$ ]]; then
-                            return 1
+                        if [[ $content =~ ^[[:space:]]*\<release[[:space:]]+version=\"[^\"]+\"[[:space:]]+date=\"[0-9]{4}-[0-9]{2}-[0-9]{2}\"[[:space:]]*/\>[[:space:]]*$ \
+                            || $content =~ ^[[:space:]]*\<release[[:space:]]+date=\"[0-9]{4}-[0-9]{2}-[0-9]{2}\"[[:space:]]+version=\"[^\"]+\"[[:space:]]*/\>[[:space:]]*$ ]]; then
+                            continue
                         fi
+
+                        return 1
                         ;;
                 esac
             done < <(
