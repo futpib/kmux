@@ -97,6 +97,10 @@ for _ in $(seq 1 60); do
         window_ok=1
     fi
     if [[ "$prompt_ok" -eq 1 && "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]; then
+        if grep -qF 'Could not save tmux reboot state' "$PTY_LOG"; then
+            kmux_test_dump_log "$PTY_LOG"
+            kmux_test_fail "workspace save warning interrupted password authentication"
+        fi
         kmux_test_pass "prompt shown on the terminal, password delivered, tmux up, window shown"
     fi
     # If the driver died early, kmux/pty setup failed — stop waiting.

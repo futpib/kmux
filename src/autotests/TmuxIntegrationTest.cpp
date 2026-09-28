@@ -241,6 +241,44 @@ void TmuxIntegrationTest::testTmuxTwoPaneSplitAttach()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testWorkspaceSaveBeforeTmuxHandshake()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    if (tmuxPath.isEmpty()) {
+        QSKIP("tmux command not found.");
+    }
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    auto window = std::make_unique<SessionStateMainWindow>();
+    auto *bridge = new TmuxProcessBridge(window->viewManager(), window.get());
+    QVERIFY(bridge->start(tmuxPath,
+                          {QStringLiteral("-S"), ctx.socketPath},
+                          {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName}));
+    QCOMPARE(bridge->controller()->sessionId(), -1);
+
+    // Session managers can request the first save before tmux replies, including
+    // while an SSH password prompt is still waiting on the launching terminal.
+    QTest::failOnWarning("Could not save tmux reboot state: the live workspace snapshot is incomplete");
+    KConfig config(m_tmuxTmpDir.path() + QStringLiteral("/pre-handshake-sessionrc"), KConfig::SimpleConfig);
+    KConfigGroup group(&config, QStringLiteral("Window1"));
+    window->saveSessionState(group);
+    QVERIFY(!group.hasKey("TmuxRestoreState"));
+    QCOMPARE(group.readEntry("Tabs", QByteArray()), QByteArrayLiteral("[]"));
+    QVERIFY(!group.hasKey("Sessions"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(bridge->controller()->workspaceSnapshot().isValid(), 10000);
+    window->saveSessionState(group);
+    const auto state = TmuxRestoreState::fromJson(group.readEntry("TmuxRestoreState", QByteArray()));
+    QVERIFY(state.has_value());
+    QCOMPARE(state->workspace.sessionName, ctx.sessionName);
+    QVERIFY(!group.hasKey("Tabs"));
+}
+
 void TmuxIntegrationTest::testWorkspaceRestoreAfterTmuxServerLoss()
 {
     const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();

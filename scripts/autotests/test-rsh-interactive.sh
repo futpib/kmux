@@ -108,6 +108,13 @@ if xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
 fi
 echo "OK: kmux window hidden while wrapper is blocked on FIFO"
 
+# No workspace exists before authentication, so an early desktop session save
+# must not be reported as a broken reboot snapshot.
+if grep -qF 'Could not save tmux reboot state' "$LOGDIR/kmux.log"; then
+    kmux_test_dump_log "$LOGDIR/kmux.log"
+    kmux_test_fail "workspace save warned while --rsh was still authenticating"
+fi
+
 # Provide the "password" — wrapper reads it, validates, execs tmux.
 echo "=== writing password to FIFO ==="
 printf '%s\n' "$PASSWORD" >"$FIFO"

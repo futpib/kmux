@@ -1169,7 +1169,13 @@ void MainWindow::saveProperties(KConfigGroup &group)
             group.deleteEntry("Active");
             return;
         }
-        qCWarning(KonsoleDebug) << "Could not save tmux reboot state: the live workspace snapshot is incomplete";
+        // KDE can request an initial session save before tmux has replied,
+        // including while --rsh is still waiting for an SSH password.
+        if (bridge->controller()->sessionId() < 0) {
+            qCDebug(KonsoleDebug) << "Skipping tmux reboot state while waiting for the initial tmux session";
+        } else {
+            qCWarning(KonsoleDebug) << "Could not save tmux reboot state: the live workspace snapshot is incomplete";
+        }
         group.deleteEntry(tmuxRestoreStateKey);
         group.writeEntry("Tabs", QByteArrayLiteral("[]"));
         group.deleteEntry("Sessions");
