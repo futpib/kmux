@@ -115,11 +115,7 @@ wait_for_tmux_count 3 "total panes after first split" \
 echo "OK: total panes = 3"
 
 echo "=== step 3: switch back to original tab (Shift+Left) ==="
-# "Previous Tab" is bound to Shift+Left and Ctrl+PageUp. Using Shift+Left
-# rather than Ctrl+PageUp because Konsole's default keytab matches Ctrl+PgUp
-# and sends "\E[5;*~" to the pty, swallowing the keystroke. Plain Shift+Left
-# at a bash prompt matches no keytab rule (only +AppScreen / +Alt / +Ctrl
-# variants exist), so it falls through to the previous-tab QAction.
+# The bound "Previous Tab" shortcut takes precedence over the terminal keymap.
 xdotool key --delay "$DELAY_MS" shift+Left
 sleep 0.5
 

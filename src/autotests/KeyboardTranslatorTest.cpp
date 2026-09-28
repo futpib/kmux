@@ -153,6 +153,82 @@ void KeyboardTranslatorTest::testHexKeys()
     QVERIFY(!(entry == translator->findEntry(Qt::Key_Backspace, Qt::NoModifier)));
 }
 
+void KeyboardTranslatorTest::testDefaultArrowKeys_data()
+{
+    QTest::addColumn<QString>("layout");
+    QTest::addColumn<int>("key");
+    QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
+    QTest::addColumn<int>("states");
+    QTest::addColumn<QByteArray>("expectedText");
+    QTest::addColumn<int>("expectedCommand");
+
+    for (const auto &layout : {QStringLiteral("default"), QStringLiteral("macos")}) {
+        for (bool alternateScreen : {false, true}) {
+            for (bool applicationCursor : {false, true}) {
+                int states = KeyboardTranslator::AnsiState;
+                if (alternateScreen) {
+                    states |= KeyboardTranslator::AlternateScreenState;
+                }
+                if (applicationCursor) {
+                    states |= KeyboardTranslator::CursorKeysState;
+                }
+                const QByteArray prefix =
+                    layout.toLatin1() + (alternateScreen ? "-alternate" : "-primary") + (applicationCursor ? "-application-cursor" : "-normal-cursor");
+
+                for (int key : {Qt::Key_Left, Qt::Key_Right}) {
+                    const char suffix = key == Qt::Key_Left ? 'D' : 'C';
+                    const QByteArray name = prefix + (key == Qt::Key_Left ? "-left" : "-right");
+                    QTest::newRow(QByteArray(name + "-plain").constData())
+                        << layout << key << Qt::KeyboardModifiers(Qt::NoModifier) << states
+                        << QByteArray(QByteArray(applicationCursor ? "\033O" : "\033[") + suffix) << int(KeyboardTranslator::NoCommand);
+                    QTest::newRow(QByteArray(name + "-shift").constData()) << layout << key << Qt::KeyboardModifiers(Qt::ShiftModifier) << states
+                                                                           << QByteArray(QByteArray("\033[1;2") + suffix) << int(KeyboardTranslator::NoCommand);
+                    QTest::newRow(QByteArray(name + "-shift-ctrl").constData())
+                        << layout << key << Qt::KeyboardModifiers(Qt::ShiftModifier | Qt::ControlModifier) << states
+                        << QByteArray(QByteArray("\033[1;6") + suffix) << int(KeyboardTranslator::NoCommand);
+                    QTest::newRow(QByteArray(name + "-shift-alt").constData())
+                        << layout << key << Qt::KeyboardModifiers(Qt::ShiftModifier | Qt::AltModifier) << states << QByteArray(QByteArray("\033[1;4") + suffix)
+                        << int(KeyboardTranslator::NoCommand);
+                }
+
+                // Vertical Shift+arrows still scroll the primary screen locally.
+                for (int key : {Qt::Key_Up, Qt::Key_Down}) {
+                    const bool up = key == Qt::Key_Up;
+                    const QByteArray expected = alternateScreen ? QByteArray(up ? "\033[1;2A" : "\033[1;2B") : QByteArray();
+                    const int command = alternateScreen ? KeyboardTranslator::NoCommand
+                                                        : (up ? KeyboardTranslator::ScrollLineUpCommand : KeyboardTranslator::ScrollLineDownCommand);
+                    QTest::newRow(QByteArray(prefix + (up ? "-shift-up" : "-shift-down")).constData())
+                        << layout << key << Qt::KeyboardModifiers(Qt::ShiftModifier) << states << expected << command;
+                }
+            }
+        }
+    }
+}
+
+void KeyboardTranslatorTest::testDefaultArrowKeys()
+{
+    QFETCH(QString, layout);
+    QFETCH(int, key);
+    QFETCH(Qt::KeyboardModifiers, modifiers);
+    QFETCH(int, states);
+    QFETCH(QByteArray, expectedText);
+    QFETCH(int, expectedCommand);
+
+    QFile keytab(QFINDTESTDATA(QStringLiteral("../../data/keyboard-layouts/") + layout + QStringLiteral(".keytab")));
+    QVERIFY(keytab.open(QIODevice::ReadOnly));
+    KeyboardTranslator translator(layout);
+    KeyboardTranslatorReader reader(&keytab);
+    while (reader.hasNextEntry()) {
+        translator.addEntry(reader.nextEntry());
+    }
+    QVERIFY(!reader.parseError());
+
+    const auto entry = translator.findEntry(key, modifiers, KeyboardTranslator::States(states));
+    QVERIFY(!entry.isNull());
+    QCOMPARE(entry.text(true, modifiers), expectedText);
+    QCOMPARE(int(entry.command()), expectedCommand);
+}
+
 QTEST_GUILESS_MAIN(KeyboardTranslatorTest)
 
 #include "moc_KeyboardTranslatorTest.cpp"

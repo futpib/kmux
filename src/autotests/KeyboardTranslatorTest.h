@@ -19,6 +19,8 @@ private Q_SLOTS:
     void testEntryTextWildcards();
     void testEntryTextWildcards_data();
     void testHexKeys();
+    void testDefaultArrowKeys_data();
+    void testDefaultArrowKeys();
 };
 
 }
