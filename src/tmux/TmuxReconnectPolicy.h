@@ -40,11 +40,13 @@ public:
     State state() const;
     bool isReady() const;
     bool isReconnecting() const;
+    static bool hasControllingTty();
 
     void setHasRsh(bool hasRsh);
     void setHasSessionName(bool hasSessionName);
     void setExplicitDetach(bool explicitDetach);
     void setHandshakeTimeoutMs(int ms);
+    void setGuiPromptVisible(bool visible);
 
     void onSpawnStarted();
     void onReady();
@@ -68,7 +70,6 @@ private:
     void startReconnect();
     void scheduleAutoReconnect();
     bool shouldAutoReconnect() const;
-    static bool hasControllingTty();
     static bool looksLikeSessionGone(const QString &reason);
     void stopWatchdogs();
     void onHandshakeTimeout();
@@ -76,6 +77,7 @@ private:
 
     State _state = State::Starting;
     bool _hasRsh = false;
+    bool _guiPromptVisible = false;
     bool _hasSessionName = false;
     bool _explicitDetach = false;
     bool _sawExit = false;

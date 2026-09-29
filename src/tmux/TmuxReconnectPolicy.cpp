@@ -69,6 +69,14 @@ void TmuxReconnectPolicy::setHandshakeTimeoutMs(int ms)
     _handshakeTimeoutMs = ms;
 }
 
+void TmuxReconnectPolicy::setGuiPromptVisible(bool visible)
+{
+    _guiPromptVisible = visible;
+    if (visible) {
+        stopWatchdogs();
+    }
+}
+
 void TmuxReconnectPolicy::onSpawnStarted()
 {
     if (_state != State::Reconnecting) {
@@ -197,9 +205,9 @@ void TmuxReconnectPolicy::armReconnectWatchdogs()
         return;
     }
     // First launch waits forever so --rsh can prompt on the controlling TTY.
-    // Reconnect does the same when that TTY still exists. No TTY keeps the
-    // deadline so "Reconnecting…" cannot hang forever.
-    if (_handshakeTimeoutMs > 0 && !hasControllingTty()) {
+    // Reconnect does the same with a controlling TTY or a visible GUI prompt.
+    // Otherwise keep the deadline so "Reconnecting…" cannot hang forever.
+    if (_handshakeTimeoutMs > 0 && !hasControllingTty() && !_guiPromptVisible) {
         _handshakeTimer->start(_handshakeTimeoutMs);
     }
     _ttyHintTimer->stop();

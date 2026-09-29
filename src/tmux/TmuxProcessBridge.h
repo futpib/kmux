@@ -21,6 +21,7 @@ namespace Konsole
 class TmuxGateway;
 class TmuxController;
 class TmuxReconnectPolicy;
+class TmuxRshProcess;
 class ViewManager;
 enum class TmuxConnectionBanner;
 
@@ -28,8 +29,8 @@ enum class TmuxConnectionBanner;
  * Spawns tmux in plain control mode (-C) as a QProcess and wires
  * its stdout/stdin to TmuxGateway and TmuxController.
  *
- * No PTY, no Session, no terminal emulation — the tmux subprocess
- * is completely hidden from the user. Drop/retry policy lives in
+ * The tmux protocol stays hidden. Remote wrappers get an authentication
+ * terminal when no controlling TTY exists. Drop/retry policy lives in
  * TmuxReconnectPolicy.
  */
 class KONSOLEPRIVATE_EXPORT TmuxProcessBridge : public QObject
@@ -68,7 +69,7 @@ public:
     /// Kill a hung/dead client and attach-session to the learned session name.
     void requestReconnect();
     /// Handshake deadline for reconnect attempts when there is no controlling
-    /// TTY (not first launch; not interactive password prompts). 0 disables.
+    /// TTY or GUI prompt (not first launch). 0 disables.
     void setHandshakeTimeoutMs(int ms);
 
 Q_SIGNALS:
@@ -105,6 +106,7 @@ private:
     ViewManager *_viewManager;
     TmuxReconnectPolicy *_policy = nullptr;
     QProcess *_process = nullptr;
+    TmuxRshProcess *_rshProcess = nullptr;
     TmuxGateway *_gateway = nullptr;
     TmuxController *_controller = nullptr;
     QSocketNotifier *_readNotifier = nullptr;

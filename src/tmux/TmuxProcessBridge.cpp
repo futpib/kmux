@@ -11,6 +11,7 @@
 #include "TmuxControllerRegistry.h"
 #include "TmuxGateway.h"
 #include "TmuxReconnectPolicy.h"
+#include "TmuxRshProcess.h"
 
 #include "ViewManager.h"
 #include "session/Session.h"
@@ -22,6 +23,8 @@
 #include <QProcessEnvironment>
 #include <QSocketNotifier>
 #include <QStandardPaths>
+
+#include <KPtyDevice>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -56,7 +59,11 @@ TmuxProcessBridge::~TmuxProcessBridge()
         disconnect(_process, nullptr, this, nullptr);
         if (_process->state() != QProcess::NotRunning) {
             qWarning() << "TmuxProcessBridge: destructor terminating tmux process";
-            _process->terminate();
+            if (_rshProcess) {
+                _rshProcess->killTransport();
+            } else {
+                _process->terminate();
+            }
             _process->waitForFinished(3000);
         }
     }
@@ -113,8 +120,8 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
         }
         executable = _rshCommand.first();
         leadingArgs = _rshCommand.mid(1);
-        // SSH does not forward TERM without a PTY. The control connection has
-        // no PTY by design, so set the terminal type in the remote command too.
+        // SSH does not forward TERM without a remote PTY. Set the terminal
+        // type explicitly for the remote control connection.
         leadingArgs << QStringLiteral("env") << QStringLiteral("TERM=%1").arg(CONTROL_CLIENT_TERM) << resolvedTmuxPath;
     }
 
@@ -129,16 +136,35 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
 
     fcntl(_socketFd, F_SETFL, fcntl(_socketFd, F_GETFL) | O_NONBLOCK);
 
-    _process = new QProcess(this);
-    // tmux records the control process's TERM as client_termname. kmux has no
-    // PTY here, but it presents the same xterm-compatible terminal as a normal
+    const bool needsTerminal = !_rshCommand.isEmpty() && !TmuxReconnectPolicy::hasControllingTty();
+    _policy->setGuiPromptVisible(false);
+    if (needsTerminal) {
+        _rshProcess = new TmuxRshProcess(_rshCommand.join(QLatin1Char(' ')), this);
+        _process = _rshProcess;
+        if (_rshProcess->pty()->masterFd() < 0) {
+            ::close(childFd);
+            teardownTransport();
+            return false;
+        }
+        connect(_rshProcess, &TmuxRshProcess::promptShown, this, [this]() {
+            _policy->setGuiPromptVisible(true);
+        });
+    } else {
+        _process = new QProcess(this);
+    }
+    // tmux records the control process's TERM as client_termname. kmux
+    // presents the same xterm-compatible terminal as a normal
     // Konsole profile; leaving TERM absent or inherited as "dumb" makes clients
     // such as Codex reject an otherwise fully capable pane.
     _processEnvironment.insert(QStringLiteral("TERM"), CONTROL_CLIENT_TERM.toString());
     _process->setProcessEnvironment(_processEnvironment);
     _process->setProcessChannelMode(QProcess::ForwardedOutputChannel);
 
-    _process->setChildProcessModifier([childFd, fds]() {
+    auto parentModifier = _process->childProcessModifier();
+    _process->setChildProcessModifier([childFd, fds, parentModifier]() {
+        if (parentModifier) {
+            parentModifier();
+        }
         dup2(childFd, STDOUT_FILENO);
         ::close(childFd);
         ::close(fds[0]);
@@ -165,6 +191,7 @@ bool TmuxProcessBridge::spawnProcess(const QStringList &command)
     ::close(childFd);
 
     if (!_process->waitForStarted(5000)) {
+        teardownTransport();
         return false;
     }
 
@@ -178,7 +205,11 @@ void TmuxProcessBridge::createGateway(bool bindController)
 {
     _gateway = new TmuxGateway(TmuxGateway::WriteCallback([this](const QByteArray &data) {
                                    if (_process && _process->state() == QProcess::Running) {
-                                       _process->write(data);
+                                       if (_rshProcess) {
+                                           _rshProcess->writeControlData(data);
+                                       } else {
+                                           _process->write(data);
+                                       }
                                    }
                                }),
                                this);
@@ -192,14 +223,17 @@ void TmuxProcessBridge::createGateway(bool bindController)
 
 void TmuxProcessBridge::connectGatewayBridgeSignals()
 {
-    connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
     connect(_gateway, &TmuxGateway::ready, this, [this]() {
+        if (_rshProcess) {
+            _rshProcess->finishAuthentication();
+        }
         _startupOutput.clear();
         if (_controller) {
             _controller->clearExplicitDetach();
         }
         _policy->onReady();
     });
+    connect(_gateway, &TmuxGateway::ready, _controller, &TmuxController::initialize);
     connect(_gateway, &TmuxGateway::ready, this, &TmuxProcessBridge::ready);
     connect(_gateway, &TmuxGateway::exitReceived, this, [this](const QString &) {
         _policy->onExitNotification();
@@ -275,6 +309,22 @@ void TmuxProcessBridge::onReadyRead()
         }
     }
 
+    if (_rshProcess && !_policy->isReady()) {
+        // Prompts need not end in a newline. Keep only a possible split tmux
+        // handshake prefix; display all preceding stdout immediately.
+        const QByteArray prefix("%begin ");
+        int promptLength = _readBuffer.indexOf(prefix);
+        if (promptLength < 0) {
+            int retained = qMin(_readBuffer.size(), prefix.size() - 1);
+            while (retained > 0 && !_readBuffer.endsWith(prefix.left(retained))) {
+                --retained;
+            }
+            promptLength = _readBuffer.size() - retained;
+        }
+        _rshProcess->receiveOutput(_readBuffer.left(promptLength));
+        _readBuffer.remove(0, promptLength);
+    }
+
     int pos;
     while ((pos = _readBuffer.indexOf('\n')) != -1) {
         QByteArray line = _readBuffer.left(pos);
@@ -289,7 +339,8 @@ void TmuxProcessBridge::onReadyRead()
 QString TmuxProcessBridge::processExitReason(int exitCode, QProcess::ExitStatus exitStatus) const
 {
     const QString out = QString::fromUtf8(_startupOutput).trimmed();
-    const QString err = _process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString();
+    const QString err = _rshProcess ? QString::fromUtf8(_rshProcess->diagnosticOutput()).trimmed()
+                                    : (_process ? QString::fromUtf8(_process->readAllStandardError()).trimmed() : QString());
     QString reason = QStringLiteral("exit code %1").arg(exitCode);
     if (exitStatus == QProcess::CrashExit) {
         reason += QStringLiteral(" (process crashed)");
@@ -310,6 +361,9 @@ void TmuxProcessBridge::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 {
     if (_ignoringProcessFinished) {
         return;
+    }
+    if (_rshProcess) {
+        _rshProcess->closePrompt();
     }
 
     char buf[4096];
@@ -366,12 +420,17 @@ void TmuxProcessBridge::teardownTransport()
     if (_process) {
         disconnect(_process, nullptr, this, nullptr);
         if (_process->state() != QProcess::NotRunning) {
-            _process->kill();
+            if (_rshProcess) {
+                _rshProcess->killTransport();
+            } else {
+                _process->kill();
+            }
             _process->waitForFinished(2000);
         }
         _process->setParent(nullptr);
         _process->deleteLater();
         _process = nullptr;
+        _rshProcess = nullptr;
     }
     _ignoringProcessFinished = false;
     _readBuffer.clear();
@@ -406,7 +465,11 @@ void TmuxProcessBridge::spawnReconnectClient()
 void TmuxProcessBridge::killControlProcess()
 {
     if (_process && _process->state() != QProcess::NotRunning) {
-        _process->kill();
+        if (_rshProcess) {
+            _rshProcess->killTransport();
+        } else {
+            _process->kill();
+        }
         return;
     }
     _policy->onHandshakeFailed(QStringLiteral("handshake timed out"));

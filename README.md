@@ -50,6 +50,10 @@ KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
 - **Remote/socket-aware startup** — attach/create sessions by tmux session name,
   socket name/path, custom tmux binary path, and optional remote shell wrapper
   (`--rsh` / `KMUX_RSH`).
+- **Interactive remote login from the desktop** — when launched without a
+  controlling terminal, `--rsh` opens a terminal window for passwords, host
+  confirmations, and other input. It closes when tmux connects; Cancel stops
+  the connection. Launches from a terminal keep using that terminal.
 - **Remote host manager** — open a host from the SSH Manager as a remote tmux
   workspace, with `~/.ssh/config` aliases, GUI authentication prompts, and
   per-host tmux session/socket/path overrides.

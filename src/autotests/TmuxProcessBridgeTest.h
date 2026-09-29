@@ -26,6 +26,8 @@ private Q_SLOTS:
     void testRshSingleTokenWrapper();
     void testRshMultiTokenWrapperAndDefaultTmuxPath();
     void testRshAdvertisesTerminalTypeWithoutForwardedTerm();
+    void testRshGuiPrompt();
+    void testRshGuiCancel();
 
 private:
     void killTmuxServer();

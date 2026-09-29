@@ -6,21 +6,57 @@
 
 #include "TmuxProcessBridgeTest.h"
 
+#include <QDialog>
 #include <QPointer>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTest>
 
 #include "../MainWindow.h"
+#include "../Screen.h"
+#include "../ScreenWindow.h"
 #include "../ViewManager.h"
 #include "../terminalDisplay/TerminalDisplay.h"
 #include "../tmux/TmuxController.h"
 #include "../tmux/TmuxControllerRegistry.h"
+#include "../tmux/TmuxGateway.h"
 #include "../tmux/TmuxProcessBridge.h"
 #include "../widgets/ViewContainer.h"
 #include "TmuxTestFixture.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 using namespace Konsole;
+
+namespace
+{
+QDialog *rshPrompt()
+{
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (widget->objectName() == QLatin1String("tmuxRshPrompt") && widget->isVisible()) {
+            return qobject_cast<QDialog *>(widget);
+        }
+    }
+    return nullptr;
+}
+
+QString terminalText(TerminalDisplay *display)
+{
+    const auto *screen = display->screenWindow()->screen();
+    return screen->text(0, screen->getLines() * screen->getColumns(), Screen::PlainText);
+}
+
+bool hasControllingTerminal()
+{
+    const int fd = ::open("/dev/tty", O_RDONLY | O_NOCTTY);
+    if (fd < 0) {
+        return false;
+    }
+    ::close(fd);
+    return true;
+}
+}
 
 void TmuxProcessBridgeTest::initTestCase()
 {
@@ -319,6 +355,103 @@ void TmuxProcessBridgeTest::testRshAdvertisesTerminalTypeWithoutForwardedTerm()
     QCOMPARE(QString::fromUtf8(listClients.readAllStandardOutput()).trimmed(), QStringLiteral("xterm-256color"));
 
     delete mwGuard.data();
+}
+
+void TmuxProcessBridgeTest::testRshGuiPrompt()
+{
+    if (hasControllingTerminal()) {
+        QSKIP("Run with setsid to exercise a launch without a controlling terminal.");
+    }
+    MainWindow mw;
+    auto *bridge = new TmuxProcessBridge(mw.viewManager(), &mw);
+    const QString script = QStringLiteral(
+        "printf 'Confirm host: '\n"
+        "read -r answer\n"
+        "[ \"$answer\" = yes ] || exit 3\n"
+        "exec 9<>/dev/tty\n"
+        "stty -echo <&9\n"
+        "printf 'Password: ' >&9\n"
+        "read -r secret <&9\n"
+        "stty echo <&9\n"
+        "[ \"$secret\" = GUI-secret-42 ] || exit 4\n"
+        "exec 9>&-\n"
+        "exec \"$@\"\n");
+    QSignalSpy ready(bridge, &TmuxProcessBridge::ready);
+    QVERIFY(bridge->start(m_tmuxPath,
+                          {QStringLiteral("-S"), tmuxSocketPath()},
+                          {QStringLiteral("new-session"), QStringLiteral("-A")},
+                          {QStringLiteral("bash"), QStringLiteral("-c"), script, QStringLiteral("rsh-test")}));
+
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        QTRY_VERIFY_WITH_TIMEOUT(rshPrompt(), 5000);
+        QPointer<QDialog> prompt(rshPrompt());
+        auto *display = prompt->findChild<TerminalDisplay *>();
+        QVERIFY(display);
+        bool earlyReply = false;
+        bridge->controller()->gateway()->sendCommand(TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")), [&](bool, const QString &) {
+            earlyReply = true;
+        });
+        QTRY_VERIFY(terminalText(display).contains(QLatin1String("Confirm host:")));
+        QTest::keyClicks(display, QStringLiteral("yes"));
+        QTest::keyClick(display, Qt::Key_Return);
+        QTRY_VERIFY(terminalText(display).contains(QLatin1String("Password:")));
+        QTest::keyClicks(display, QStringLiteral("GUI-secret-42"));
+        QTest::qWait(150);
+        QVERIFY(!terminalText(display).contains(QLatin1String("GUI-secret-42")));
+        // On reconnect, a visible prompt must suspend the handshake deadline.
+        QTest::qWait(300);
+        QCOMPARE(ready.count(), attempt);
+        QVERIFY(!earlyReply);
+        QVERIFY(prompt && prompt->isVisible());
+        QTest::keyClick(display, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), attempt + 1, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(earlyReply, 5000);
+        QVERIFY(!prompt->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(bridge->controller()->sessionId() >= 0, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!mw.viewManager()->sessions().isEmpty(), 5000);
+
+        // A PTY left in canonical mode truncates long control commands at 4K.
+        const QString payload(10000, QLatin1Char('x'));
+        bool replied = false;
+        bool success = false;
+        QString response;
+        bridge->controller()->gateway()->sendCommand(TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")).format(payload),
+                                                     [&](bool ok, const QString &output) {
+                                                         success = ok;
+                                                         response = output;
+                                                         replied = true;
+                                                     });
+        QTRY_VERIFY_WITH_TIMEOUT(replied, 5000);
+        QVERIFY(success);
+        QCOMPARE(response, payload);
+        if (attempt == 0) {
+            bridge->setHandshakeTimeoutMs(200);
+            bridge->requestReconnect();
+        }
+    }
+}
+
+void TmuxProcessBridgeTest::testRshGuiCancel()
+{
+    if (hasControllingTerminal()) {
+        QSKIP("Run with setsid to exercise a launch without a controlling terminal.");
+    }
+    MainWindow mw;
+    auto *bridge = new TmuxProcessBridge(mw.viewManager(), &mw);
+    QSignalSpy failed(bridge, &TmuxProcessBridge::startupFailed);
+    // No output: the delayed terminal must still make silent input possible.
+    QVERIFY(bridge->start(m_tmuxPath,
+                          {QStringLiteral("-S"), tmuxSocketPath()},
+                          {QStringLiteral("new-session"), QStringLiteral("-A")},
+                          {QStringLiteral("bash"), QStringLiteral("-c"), QStringLiteral("read -r answer; exec \"$@\""), QStringLiteral("rsh-test")}));
+    QTRY_VERIFY_WITH_TIMEOUT(rshPrompt(), 5000);
+    rshPrompt()->reject();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 5000);
+    QVERIFY(!rshPrompt());
+    QProcess probe;
+    probe.start(m_tmuxPath, {QStringLiteral("-S"), tmuxSocketPath(), QStringLiteral("list-sessions")});
+    QVERIFY(probe.waitForFinished(5000));
+    QVERIFY(probe.exitCode() != 0);
 }
 
 QTEST_MAIN(TmuxProcessBridgeTest)

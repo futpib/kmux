@@ -13,7 +13,7 @@
 #   1. While the wrapper blocks on the FIFO, the tmux socket does NOT
 #      exist — proves the wrapper actually ran (kmux didn't bypass it
 #      and spawn tmux directly).
-#   2. While the wrapper blocks, the kmux GUI window is NOT visible —
+#   2. While the wrapper blocks, the kmux workspace is NOT visible —
 #      proves Application defers window->show() until tmux's first
 #      reply so --rsh prompts (ssh password) don't lose terminal focus.
 #   3. After writing the password, tmux -S $socket list-sessions
@@ -40,6 +40,7 @@ export QT_LOGGING_RULES="org.kde.konsole.debug=true"
 export QT_ASSUME_STDERR_HAS_CONSOLE=1
 
 kmux_test_setup --x11 --require tmux
+export LC_ALL=C.UTF-8
 
 FIFO="$HOMEDIR/rsh-fifo"
 WRAPPER="$HOMEDIR/rsh-wrapper.sh"
@@ -91,7 +92,7 @@ if [[ -e "$SOCKET" ]]; then
 fi
 echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 
-# Assertion 2: kmux window must NOT be visible yet. If it is, the
+# Assertion 2: the kmux workspace must NOT be visible yet. If it is, the
 # Application short-circuited the show-deferral and would steal focus
 # from a still-prompting ssh in the real use case.
 #
@@ -101,8 +102,18 @@ echo "OK: tmux socket absent while wrapper is blocked on FIFO"
 # it before any MainWindow exists. WM_CLASS=kmux is set only on the
 # real top-level windows. Combine with --onlyvisible so we distinguish
 # the deferred-hidden MainWindow (which exists but is unmapped) from
-# the post-show one.
-if xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
+# the post-show one. A desktop launch may show its separate remote shell
+# input window while this wrapper waits on the FIFO.
+workspace_visible() {
+    local window
+    while IFS= read -r window; do
+        if [[ $(xdotool getwindowname "$window") != 'Remote Shell — '* ]]; then
+            return 0
+        fi
+    done < <(xdotool search --onlyvisible --class kmux 2>/dev/null || true)
+    return 1
+}
+if workspace_visible; then
     echo "FAIL: kmux window appeared before tmux's first reply — show-deferral regressed" >&2
     kmux_test_fail
 fi
@@ -128,7 +139,7 @@ authenticated_session_ready() {
     if [[ "$tmux_ok" -eq 0 ]] && tmux -S "$SOCKET" list-sessions >/dev/null 2>&1; then
         tmux_ok=1
     fi
-    if [[ "$window_ok" -eq 0 ]] && xdotool search --onlyvisible --class kmux >/dev/null 2>&1; then
+    if [[ "$window_ok" -eq 0 ]] && workspace_visible; then
         window_ok=1
     fi
     [[ "$tmux_ok" -eq 1 && "$window_ok" -eq 1 ]]
