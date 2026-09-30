@@ -61,11 +61,8 @@ fi
 echo "OK: fixture printed first frame"
 
 echo "=== launching kmux to attach to existing session ==="
-# Use the short -s/-S forms: Qt's QApplication greedily eats `--session` (it's
-# Qt's session-manager option), so kmux's --session never reaches our parser
-# and the bridge runs `tmux new-session -A` with no session name — landing on
-# a stray session and leaving our pre-created one untouched. The short flags
-# are not Qt-reserved and pass through cleanly.
+# -s (or --tmux-session) selects the tmux session; --session belongs to Qt's
+# desktop session manager.
 #
 # --qwindowgeometry to force a non-trivial pane size: bare Xvfb has no window
 # manager enforcing initial sizes, so kmux's default size hint resolves to a

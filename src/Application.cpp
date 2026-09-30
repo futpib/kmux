@@ -115,7 +115,9 @@ void Application::populateCommandLineParser(QCommandLineParser *parser)
          QStringLiteral("cmd")},
         {{QStringLiteral("force-reuse")},
          i18nc("@info:shell", "Force re-using the existing instance even if it breaks functionality, e. g. --new-tab. Mostly for debugging.")},
-        {{QStringLiteral("s"), QStringLiteral("session")}, i18nc("@info:shell", "Name of the tmux session to attach to or create"), QStringLiteral("name")},
+        {{QStringLiteral("s"), QStringLiteral("tmux-session")},
+         i18nc("@info:shell", "Name of the tmux session to attach to or create (not Qt's --session)"),
+         QStringLiteral("name")},
         {{QStringLiteral("L"), QStringLiteral("socket-name")},
          i18nc("@info:shell", "Name of the tmux server socket, in tmux's default socket directory ($TMUX_TMPDIR or /tmp)"),
          QStringLiteral("name")},
@@ -554,8 +556,8 @@ int Application::newInstance()
     // log dir when -vvvv is on, and without an explicit -c the first
     // pane would inherit that log dir as its working directory.
     QStringList tmuxCommand = {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-c"), QDir::currentPath()};
-    if (m_parser->isSet(QStringLiteral("session"))) {
-        tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("session"));
+    if (m_parser->isSet(QStringLiteral("tmux-session"))) {
+        tmuxCommand << QStringLiteral("-s") << m_parser->value(QStringLiteral("tmux-session"));
     }
 
     // Optional remote-shell wrapper (rsync-style): --rsh overrides

@@ -49,7 +49,9 @@ KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
   fresh shells; it never guesses at or reruns foreground commands.
 - **Remote/socket-aware startup** — attach/create sessions by tmux session name,
   socket name/path, custom tmux binary path, and optional remote shell wrapper
-  (`--rsh` / `KMUX_RSH`).
+  (`--rsh` / `KMUX_RSH`). Select the tmux session with `-s NAME` or
+  `--tmux-session NAME`; `--session` is reserved for Qt desktop-session restore.
+  For example: `kmux --rsh 'ssh user@host' --socket /path/to/tmux.sock --tmux-session work`.
 - **Interactive remote login from the desktop** — when launched without a
   controlling terminal, `--rsh` opens a terminal window for passwords, host
   confirmations, and other input. It closes when tmux connects; Cancel stops
