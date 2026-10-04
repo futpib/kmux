@@ -99,6 +99,11 @@ ecm_add_test(
 )
 
 ecm_add_test(
+    TerminalDisplayAccessibleTest.cpp
+    LINK_LIBRARIES konsoleprivate konsolecolorscheme Qt::Test ${KONSOLE_TEST_LIBS}
+)
+
+ecm_add_test(
     MainWindowTest.cpp
     LINK_LIBRARIES konsoleapp konsoleprivate KF6::Parts Qt::Test ${KONSOLE_TEST_LIBS}
 )

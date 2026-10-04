@@ -689,7 +689,7 @@ void TerminalDisplay::updateImage()
 
         Q_ASSERT(endDirtyIndex <= maxIndex);
         Q_ASSERT(endDirtyIndex >= startDirtyIndex);
-        const QString newText = screenWindow()->screen()->text(*startDirtyIndex, *endDirtyIndex, Screen::PreserveLineBreaks);
+        const QString newText = screenWindow()->screen()->text(*startDirtyIndex, *endDirtyIndex, Screen::PreserveLineBreaks | Screen::IgnoreBlockSelection);
         QAccessibleTextUpdateEvent textUpdateEvent(this, 0, QString(), newText);
         QAccessible::updateAccessibility(&textUpdateEvent);
     }
