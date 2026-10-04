@@ -58,7 +58,7 @@ struct PaneCells {
     int rows;
 };
 
-static PaneCells maxCellsForWidget(QWidget *w)
+static PaneCells maxCellsForWidget(QWidget *w, const QSize &availableSize = QSize())
 {
     // Peel the container wrapper (kTerminalContainerProperty) around a leaf.
     // Use the wrapper's outer size — it owns the layout we resize against —
@@ -69,7 +69,7 @@ static PaneCells maxCellsForWidget(QWidget *w)
         if (fontW <= 0 || fontH <= 0) {
             return {0, 0};
         }
-        QSize size = (w == td) ? td->size() : w->size();
+        const QSize size = availableSize.isValid() ? availableSize : w->size();
         QSize chrome = td->cellChromeSize();
         int cols = qMax(0, (size.width() - chrome.width()) / fontW);
         int rows = qMax(0, (size.height() - chrome.height()) / fontH);
@@ -81,10 +81,30 @@ static PaneCells maxCellsForWidget(QWidget *w)
     }
     bool horizontal = splitter->orientation() == Qt::Horizontal;
     int n = splitter->count();
+    const bool measureAvailable = availableSize.isValid();
+    const QMargins margins = splitter->contentsMargins();
+    const QSize contentsSize = availableSize - QSize(margins.left() + margins.right(), margins.top() + margins.bottom());
+    const int availablePixels = qMax(0, (horizontal ? contentsSize.width() : contentsSize.height()) - splitter->handleWidth() * (n - 1));
+    int totalPixels = 0;
+    for (int i = 0; i < n; ++i) {
+        const QSize size = splitter->widget(i)->size();
+        totalPixels += horizontal ? size.width() : size.height();
+    }
+    int consumedPixels = 0;
+    int allocatedPixels = 0;
     int sumCols = 0, sumRows = 0;
     int maxCols = 0, maxRows = 0;
     for (int i = 0; i < n; ++i) {
-        PaneCells child = maxCellsForWidget(splitter->widget(i));
+        QWidget *widget = splitter->widget(i);
+        QSize size;
+        if (measureAvailable) {
+            consumedPixels += horizontal ? widget->width() : widget->height();
+            const int cumulativePixels = totalPixels > 0 ? int(qint64(availablePixels) * consumedPixels / totalPixels) : availablePixels * (i + 1) / n;
+            size =
+                horizontal ? QSize(cumulativePixels - allocatedPixels, contentsSize.height()) : QSize(contentsSize.width(), cumulativePixels - allocatedPixels);
+            allocatedPixels = cumulativePixels;
+        }
+        PaneCells child = maxCellsForWidget(widget, size);
         sumCols += child.cols;
         sumRows += child.rows;
         maxCols = qMax(maxCols, child.cols);
@@ -393,7 +413,18 @@ void TmuxResizeCoordinator::sendClientSize()
         }
 
         TmuxLayoutNode node = TmuxLayoutManager::buildLayoutNode(windowSplitter, _paneManager);
-        PaneCells pixelCells = maxCellsForWidget(windowSplitter);
+        // A smaller client can pin the splitter to tmux's layout while the
+        // page still has room. Measure that room without changing the rendered
+        // layout: distribute the unused pixels through the existing splits,
+        // preserving each pane's chrome and the splitter handles. Advertising
+        // the constrained widgets would make this client retain the smaller
+        // client's size even after that client disconnects.
+        // Hidden pages may not have processed their resize events yet. The
+        // current page has the space all tabs share in this container.
+        const bool hiddenTab = !page->isVisible() && page->window()->isVisible();
+        const QSize pageSize = hiddenTab ? container->currentWidget()->size() : page->size();
+        const QSize availableSize = page->isConstrained() || hiddenTab ? pageSize : QSize();
+        PaneCells pixelCells = maxCellsForWidget(windowSplitter, availableSize);
         int totalCols = qBound(1, qMax(node.width, pixelCells.cols), 1023);
         int totalLines = qMax(1, qMax(node.height, pixelCells.rows));
 
