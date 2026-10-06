@@ -24,13 +24,24 @@ UNRELATED="$TEST_ROOT/unrelated"
 git init --quiet --initial-branch=master "$UPSTREAM"
 git -C "$UPSTREAM" config user.name test
 git -C "$UPSTREAM" config user.email test@example.com
-mkdir -p "$UPSTREAM/desktop" "$UPSTREAM/po/en" "$UPSTREAM/src"
+mkdir -p \
+    "$UPSTREAM/desktop" \
+    "$UPSTREAM/po/en" \
+    "$UPSTREAM/src/plugins/SSHManager"
 echo '[Desktop Entry]' > "$UPSTREAM/desktop/kmuxpart.desktop"
 echo '[Global]' > "$UPSTREAM/desktop/kmux.notifyrc"
 echo '[Desktop Entry]' > "$UPSTREAM/desktop/org.kde.kmux.desktop"
 echo '<component>' > "$UPSTREAM/desktop/org.kde.kmux.appdata.xml"
 echo base > "$UPSTREAM/po/en/kmux.po"
 echo base > "$UPSTREAM/src/main.cpp"
+printf '%s\n' \
+    '{' \
+    '  "KPlugin": {' \
+    '    "Name": "SSH Manager",' \
+    '    "Name[ru]": "Менеджер SSH",' \
+    '    "EnabledByDefault": true' \
+    '  }' \
+    '}' > "$UPSTREAM/src/plugins/SSHManager/konsole_sshmanager.in.json"
 git -C "$UPSTREAM" add .
 git -C "$UPSTREAM" commit --quiet -m base
 BASE=$(git -C "$UPSTREAM" rev-parse HEAD)
@@ -88,6 +99,13 @@ git -C "$UPSTREAM" commit --quiet -m appstream-release
 assert_result false "$UPSTREAM"
 assert_upstream_tip_absent_from_target
 
+sed -i 's/Менеджер SSH/Диспетчер SSH/' \
+    "$UPSTREAM/src/plugins/SSHManager/konsole_sshmanager.in.json"
+git -C "$UPSTREAM" add src/plugins/SSHManager/konsole_sshmanager.in.json
+git -C "$UPSTREAM" commit --quiet -m plugin-metadata-localization
+assert_result false "$UPSTREAM"
+assert_upstream_tip_absent_from_target
+
 echo source >> "$UPSTREAM/src/main.cpp"
 git -C "$UPSTREAM" add src/main.cpp
 git -C "$UPSTREAM" commit --quiet -m source
@@ -114,6 +132,14 @@ git -C "$UPSTREAM" add desktop/org.kde.kmux.appdata.xml
 git -C "$UPSTREAM" commit --quiet -m substantive-appdata
 assert_result true "$UPSTREAM" substantive-appdata
 assert_upstream_tip_absent_from_target substantive-appdata
+
+git -C "$UPSTREAM" switch --quiet --create substantive-json "$BASE"
+sed -i 's/"EnabledByDefault": true/"EnabledByDefault": false/' \
+    "$UPSTREAM/src/plugins/SSHManager/konsole_sshmanager.in.json"
+git -C "$UPSTREAM" add src/plugins/SSHManager/konsole_sshmanager.in.json
+git -C "$UPSTREAM" commit --quiet -m substantive-json
+assert_result true "$UPSTREAM" substantive-json
+assert_upstream_tip_absent_from_target substantive-json
 
 git init --quiet --initial-branch=master "$UNRELATED"
 git -C "$UNRELATED" config user.name test

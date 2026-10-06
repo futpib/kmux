@@ -116,6 +116,29 @@ path_has_only_ignorable_metadata_changes() {
                     "$merge_base" "$upstream_ref" -- "$path"
             )
             ;;
+        src/konsolepart.json|src/plugins/*.json)
+            while IFS= read -r line; do
+                case "$line" in
+                    '+++ '*|'--- '*)
+                        continue
+                        ;;
+                    '+'*|'-'*)
+                        saw_changed_line=true
+                        content=${line:1}
+                        # KDE plugin metadata keeps translations in
+                        # locale-qualified JSON string properties such as
+                        # "Name[ru]". Do not let translation-only churn force
+                        # a merge of the fork's independently branded files.
+                        if [[ ! $content =~ ^[[:space:]]*\"[[:alnum:]_.:-]+\[[^]]+\]\"[[:space:]]*:[[:space:]]*\".*\"[[:space:]]*,?[[:space:]]*$ ]]; then
+                            return 1
+                        fi
+                        ;;
+                esac
+            done < <(
+                git -C "$preflight_repository" diff --no-ext-diff --unified=0 \
+                    "$merge_base" "$upstream_ref" -- "$path"
+            )
+            ;;
         *)
             return 1
             ;;
