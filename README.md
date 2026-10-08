@@ -101,6 +101,47 @@ yay -S kmux-git        # or: paru -S kmux-git
 4. Build: `cmake --build kmux/build`
 5. Install: `cmake --install kmux/build`
 
+## Troubleshooting
+
+### Modified keys stop working after a tmux reconnect
+
+In a long-lived tmux pane, terminal applications such as Codex can stop
+distinguishing modified keys after kmux reconnects. For example, `Shift+Enter`,
+`Ctrl+Enter`, `Alt+Enter`, `Shift+Tab`, or `Shift+Backspace` may be received as
+their unmodified or legacy equivalents. This can affect both local sessions and
+remote sessions opened with `kmux --rsh`.
+
+These applications enable the
+[Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+when they enter their interactive terminal mode. kmux records the protocol state
+it observes in the tmux pane option `@kmux-kitty-keyboard-state`, then restores
+that state when it attaches again. Check the current pane from a shell inside it:
+
+```sh
+tmux show-options -p -v -t "$TMUX_PANE" @kmux-kitty-keyboard-state
+```
+
+A value such as `5/` means kmux has recorded the state. No output means it has
+not. This commonly happens when the application enabled the protocol before a
+state-aware kmux client attached, such as in a pane that survived a kmux upgrade.
+
+For Codex, press `Ctrl+Z` once. Codex leaves and re-enters its terminal mode,
+causing it to send the protocol setup again while kmux is present. If this
+suspends Codex and returns to a shell prompt, run `fg`. Restarting Codex has the
+same effect. Check the pane option again; once it contains a value, later kmux
+reconnects can restore the mode. Other terminal applications may have their own
+suspend/resume behavior, so save important input before trying it.
+
+kmux deliberately does not guess when the pane option is absent. An ordinary
+shell and an application that negotiated before kmux attached look identical at
+that point, while forcing the protocol on can break input in shells and editors.
+
+tmux 3.7c provides xterm-style `extended-keys`, but it does not retain the Kitty
+keyboard protocol's per-pane flag stack. Native tmux support is being tracked in
+[tmux PR 5615](https://github.com/tmux/tmux/pull/5615); the related design and
+status discussion is in
+[tmux discussion 4644](https://github.com/orgs/tmux/discussions/4644).
+
 ## Directory Structure
 
 | Directory        | Description                                                                                                              |
