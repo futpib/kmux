@@ -53,6 +53,7 @@ private Q_SLOTS:
     void testKittyKeyboardLegacyKeys();
     void testKittyKeyboardCtrlLetters();
     void testKittyKeyboardTextKeys();
+    void testKittyKeyboardStateRoundTrip();
 
 private:
     static void sendAndCompare(TestEmulation *em, const char *input, size_t inputLen, const QString &expectedPrint, const QByteArray &expectedSent);

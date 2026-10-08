@@ -8,10 +8,12 @@
 
 #include "TmuxCommand.h"
 #include "TmuxGateway.h"
+#include "TmuxPaneOptions.h"
 
 #include "Emulation.h"
-#include "session/Session.h"
+#include "Vt102Emulation.h"
 #include "profile/ProfileManager.h"
+#include "session/Session.h"
 #include "session/SessionManager.h"
 #include "session/VirtualSession.h"
 
@@ -47,6 +49,19 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
     connect(session->emulation(), &Emulation::imageSizeChanged, this, [this](int, int) {
         Q_EMIT paneViewSizeChanged();
     });
+
+    if (auto *vtEmulation = qobject_cast<Vt102Emulation *>(session->emulation())) {
+        connect(vtEmulation, &Vt102Emulation::kittyKeyboardStateChanged, this, [this, paneId](const QString &state) {
+            TmuxCommand command(QStringLiteral("set-option"));
+            command.flag(QStringLiteral("-p")).paneTarget(paneId);
+            if (state.isEmpty()) {
+                command.flag(QStringLiteral("-u")).arg(QLatin1String(TmuxKittyKeyboardStateOption));
+            } else {
+                command.arg(QLatin1String(TmuxKittyKeyboardStateOption)).singleQuotedArg(state);
+            }
+            _gateway->sendCommand(command);
+        });
+    }
 
     connect(session, &Session::finished, this, [this, paneId]() {
         // If the pane is still tracked, the close was initiated by the user

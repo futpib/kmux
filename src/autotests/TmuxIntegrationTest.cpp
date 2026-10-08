@@ -55,6 +55,7 @@
 #include "../tmux/TmuxLayoutManager.h"
 #include "../tmux/TmuxLayoutParser.h"
 #include "../tmux/TmuxPaneManager.h"
+#include "../tmux/TmuxPaneOptions.h"
 #include "../tmux/TmuxPrefixPalette.h"
 #include "../tmux/TmuxProcessBridge.h"
 #include "../tmux/TmuxTreeModel.h"
@@ -649,6 +650,98 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttach()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult firstAttach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, firstAttach);
+    Session *firstSession = firstAttach.mw->viewManager()->sessions().first();
+    QVERIFY(firstSession);
+    firstSession->setKittyKeyboardEnabled(true);
+
+    QProcess readyCommand;
+    readyCommand.start(tmuxPath,
+                       {QStringLiteral("-S"),
+                        ctx.socketPath,
+                        QStringLiteral("send-keys"),
+                        QStringLiteral("-t"),
+                        ctx.sessionName,
+                        QStringLiteral("echo KITTY_STATE_READY"),
+                        QStringLiteral("Enter")});
+    QVERIFY(readyCommand.waitForFinished(5000));
+    QCOMPARE(readyCommand.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(firstSession).contains(QStringLiteral("KITTY_STATE_READY")), 10000);
+
+    const QString inputFile = m_tmuxTmpDir.path() + QStringLiteral("/kitty-keyboard-input.bin");
+    QProcess startTui;
+    startTui.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("printf '\\033[>5u'; stty raw -echo; exec cat >> %1").arg(inputFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(startTui.waitForFinished(5000));
+    QCOMPARE(startTui.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(inputFile), 5000);
+
+    auto paneOption = [&]() {
+        QProcess showOption;
+        showOption.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("show-options"),
+                          QStringLiteral("-pv"),
+                          QStringLiteral("-t"),
+                          ctx.sessionName,
+                          QLatin1String(TmuxKittyKeyboardStateOption)});
+        if (!showOption.waitForFinished(3000) || showOption.exitCode() != 0) {
+            return QString();
+        }
+        return QString::fromUtf8(showOption.readAllStandardOutput()).trimmed();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(paneOption(), QStringLiteral("5/"), 10000);
+
+    const QByteArray shiftReturn("\033[13;2u");
+    const auto firstViews = firstSession->views();
+    QVERIFY(!firstViews.isEmpty());
+    QTest::keyClick(firstViews.first(), Qt::Key_Return, Qt::ShiftModifier);
+
+    auto readInput = [&]() {
+        QFile file(inputFile);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QByteArray();
+        }
+        return file.readAll();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readInput(), shiftReturn, 10000);
+
+    delete firstAttach.mw.data();
+    QTRY_VERIFY_WITH_TIMEOUT(firstAttach.mw.isNull(), 5000);
+
+    TmuxTestFixture::AttachResult secondAttach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, secondAttach);
+    Session *secondSession = secondAttach.mw->viewManager()->sessions().first();
+    QVERIFY(secondSession);
+    secondSession->setKittyKeyboardEnabled(true);
+    QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(secondSession).contains(QStringLiteral("KITTY_STATE_READY")), 10000);
+
+    const auto secondViews = secondSession->views();
+    QVERIFY(!secondViews.isEmpty());
+    QTest::keyClick(secondViews.first(), Qt::Key_Return, Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(readInput(), shiftReturn + shiftReturn, 10000);
+
+    delete secondAttach.mw.data();
 }
 
 // Covers the pause -> resume round trip behind the suspend fix. When tmux pauses
@@ -8842,6 +8935,7 @@ void TmuxIntegrationTest::testTransportDeathAutoReconnects()
 
     Session *paneSession = attach.mw->viewManager()->sessions().first();
     QVERIFY(paneSession);
+    Session *const paneSessionBeforeReconnect = paneSession;
     QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("RECONNECT_MARKER")), 10000);
 
     auto *proc = bridgeProcess(attach.bridge);
@@ -8856,6 +8950,7 @@ void TmuxIntegrationTest::testTransportDeathAutoReconnects()
     QCOMPARE(attach.bridge->controller()->sessionName(), sessionName);
     paneSession = attach.mw->viewManager()->sessions().first();
     QVERIFY(paneSession);
+    QCOMPARE(paneSession, paneSessionBeforeReconnect);
     QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("RECONNECT_MARKER")), 10000);
 
     QProcess listSessions;

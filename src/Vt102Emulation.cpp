@@ -158,6 +158,8 @@ void Vt102Emulation::reset(bool softReset, bool preservePrompt)
 {
     Q_EMIT updateDroppedLines(_currentScreen->getLines());
 
+    const bool hadKittyKeyboardState = !_kittyKeyboardFlagsStack[0].isEmpty() || !_kittyKeyboardFlagsStack[1].isEmpty();
+
     // Save the current codec so we can set it later.
     // Ideally we would want to use the profile setting
     const QByteArray currentCodec(encoder().name());
@@ -175,6 +177,9 @@ void Vt102Emulation::reset(bool softReset, bool preservePrompt)
     // Clear kitty keyboard flag stacks for both screens
     _kittyKeyboardFlagsStack[0].clear();
     _kittyKeyboardFlagsStack[1].clear();
+    if (hadKittyKeyboardState) {
+        Q_EMIT kittyKeyboardStateChanged(QString());
+    }
 
     resetCharset(0);
     _screen[0]->reset(softReset, preservePrompt);
@@ -4238,6 +4243,62 @@ int Vt102Emulation::currentKittyKeyboardFlags() const
     return stack.isEmpty() ? 0 : stack.last();
 }
 
+QString Vt102Emulation::kittyKeyboardState() const
+{
+    auto encodeStack = [](const QVector<int> &stack) {
+        QStringList flags;
+        flags.reserve(stack.size());
+        for (int flag : stack) {
+            flags.append(QString::number(flag));
+        }
+        return flags.join(QLatin1Char(','));
+    };
+
+    if (_kittyKeyboardFlagsStack[0].isEmpty() && _kittyKeyboardFlagsStack[1].isEmpty()) {
+        return {};
+    }
+    return encodeStack(_kittyKeyboardFlagsStack[0]) + QLatin1Char('/') + encodeStack(_kittyKeyboardFlagsStack[1]);
+}
+
+bool Vt102Emulation::restoreKittyKeyboardState(const QString &state)
+{
+    QVector<int> restoredStacks[2];
+
+    if (!state.isEmpty()) {
+        const QStringList encodedStacks = state.split(QLatin1Char('/'), Qt::KeepEmptyParts);
+        if (encodedStacks.size() != 2) {
+            return false;
+        }
+        for (int screen = 0; screen < 2; ++screen) {
+            if (encodedStacks[screen].isEmpty()) {
+                continue;
+            }
+            const QStringList encodedFlags = encodedStacks[screen].split(QLatin1Char(','), Qt::KeepEmptyParts);
+            if (encodedFlags.size() > 64) {
+                return false;
+            }
+            restoredStacks[screen].reserve(encodedFlags.size());
+            for (const QString &encodedFlag : encodedFlags) {
+                bool ok = false;
+                const int flag = encodedFlag.toInt(&ok);
+                if (!ok || flag < 0) {
+                    return false;
+                }
+                restoredStacks[screen].append(flag);
+            }
+        }
+    }
+
+    if (_kittyKeyboardFlagsStack[0] == restoredStacks[0] && _kittyKeyboardFlagsStack[1] == restoredStacks[1]) {
+        return true;
+    }
+
+    _kittyKeyboardFlagsStack[0] = std::move(restoredStacks[0]);
+    _kittyKeyboardFlagsStack[1] = std::move(restoredStacks[1]);
+    Q_EMIT kittyKeyboardStateChanged(kittyKeyboardState());
+    return true;
+}
+
 void Vt102Emulation::handleKittyKeyboardQuery()
 {
     // Respond with CSI ? flags u
@@ -4251,13 +4312,18 @@ void Vt102Emulation::handleKittyKeyboardPush(int flags)
 {
     auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
     stack.append(flags);
+    Q_EMIT kittyKeyboardStateChanged(kittyKeyboardState());
 }
 
 void Vt102Emulation::handleKittyKeyboardPop(int count)
 {
     auto &stack = _kittyKeyboardFlagsStack[currentScreenIndex()];
+    const int previousSize = stack.size();
     for (int i = 0; i < count && !stack.isEmpty(); ++i) {
         stack.removeLast();
+    }
+    if (stack.size() != previousSize) {
+        Q_EMIT kittyKeyboardStateChanged(kittyKeyboardState());
     }
 }
 
@@ -4282,6 +4348,7 @@ void Vt102Emulation::handleKittyKeyboardSet(int flags, int mode)
         stack.last() = flags;
         break;
     }
+    Q_EMIT kittyKeyboardStateChanged(kittyKeyboardState());
 }
 
 bool Vt102Emulation::handleKittyKeyEvent(QKeyEvent *event)

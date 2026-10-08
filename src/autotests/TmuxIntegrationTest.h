@@ -32,6 +32,7 @@ private Q_SLOTS:
     void testWorkspaceSaveBeforeTmuxHandshake();
     void testWorkspaceRestoreAfterTmuxServerLoss();
     void testTmuxAttachContentRecovery();
+    void testKittyKeyboardStateSurvivesFreshAttach();
     void testTmuxAttachComplexPromptRecovery();
     void testTmuxAttachAlternateScreenRecovery();
     void testTmuxAttachPrimaryScreenRowAlignment();

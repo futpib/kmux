@@ -9,8 +9,10 @@
 #include "TmuxCommand.h"
 #include "TmuxGateway.h"
 #include "TmuxPaneManager.h"
+#include "TmuxPaneOptions.h"
 
 #include "Emulation.h"
+#include "Vt102Emulation.h"
 #include "session/VirtualSession.h"
 
 namespace Konsole
@@ -48,6 +50,7 @@ TmuxFormatSpec paneStateSpec()
         QStringLiteral("mouse_button_flag"),
         QStringLiteral("mouse_any_flag"),
         QStringLiteral("mouse_sgr_flag"),
+        QLatin1String(TmuxKittyKeyboardStateOption),
     });
 }
 } // namespace
@@ -92,6 +95,7 @@ void TmuxPaneStateRecovery::handlePaneStateResponse(int windowId, bool success, 
         state.mouseButton = row.value(QStringLiteral("mouse_button_flag")) == QLatin1String("1");
         state.mouseAny = row.value(QStringLiteral("mouse_any_flag")) == QLatin1String("1");
         state.mouseSGR = row.value(QStringLiteral("mouse_sgr_flag")) == QLatin1String("1");
+        state.kittyKeyboardState = row.value(QLatin1String(TmuxKittyKeyboardStateOption));
 
         _paneStates[paneId] = state;
     }
@@ -200,6 +204,10 @@ void TmuxPaneStateRecovery::applyPaneState(int paneId)
 
     const TmuxPaneState &state = _paneStates[paneId];
     QByteArray seq;
+
+    if (auto *vtEmulation = qobject_cast<Vt102Emulation *>(session->emulation()); vtEmulation && !state.kittyKeyboardState.isEmpty()) {
+        vtEmulation->restoreKittyKeyboardState(state.kittyKeyboardState);
+    }
 
     // Note: entering the alternate screen (\033[?1049h) is NOT done here. For an
     // alternate-screen pane handleCapturePaneResponse switches to it *before*

@@ -85,6 +85,9 @@ public:
     void reset(bool softReset = false, bool preservePrompt = false) override;
     char eraseChar() const override;
 
+    QString kittyKeyboardState() const;
+    bool restoreKittyKeyboardState(const QString &state);
+
 public Q_SLOTS:
     // reimplemented from Emulation
     void sendString(const QByteArray &string) override;
@@ -100,6 +103,7 @@ Q_SIGNALS:
     void tmuxControlModeStarted();
     void tmuxControlModeLineReceived(const QByteArray &line);
     void tmuxControlModeEnded();
+    void kittyKeyboardStateChanged(const QString &state);
 
 protected:
     // reimplemented from Emulation

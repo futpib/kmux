@@ -1067,6 +1067,37 @@ void Vt102EmulationTest::testKittyKeyboardTextKeys()
     }
 }
 
+void Vt102EmulationTest::testKittyKeyboardStateRoundTrip()
+{
+    TestEmulation source;
+    source.reset();
+    source.setCodec(TestEmulation::Utf8Codec);
+
+    const char pushPrimary5[] = "\033[>5u";
+    source.receiveData(pushPrimary5, sizeof(pushPrimary5) - 1);
+    const char pushPrimary3[] = "\033[>3u";
+    source.receiveData(pushPrimary3, sizeof(pushPrimary3) - 1);
+    const char enterAlternateScreen[] = "\033[?1049h";
+    source.receiveData(enterAlternateScreen, sizeof(enterAlternateScreen) - 1);
+    const char pushAlternate1[] = "\033[>1u";
+    source.receiveData(pushAlternate1, sizeof(pushAlternate1) - 1);
+
+    QCOMPARE(source.kittyKeyboardState(), QStringLiteral("5,3/1"));
+
+    TestEmulation restored;
+    restored.reset();
+    restored.setCodec(TestEmulation::Utf8Codec);
+    QVERIFY(restored.restoreKittyKeyboardState(source.kittyKeyboardState()));
+    QCOMPARE(restored.kittyKeyboardState(), QStringLiteral("5,3/1"));
+
+    QKeyEvent shiftReturn(QEvent::KeyPress, Qt::Key_Return, Qt::ShiftModifier, QStringLiteral("\r"));
+    restored.sendKeyEvent(&shiftReturn);
+    QCOMPARE(restored.lastSent, QByteArray("\033[13;2u"));
+
+    QVERIFY(!restored.restoreKittyKeyboardState(QStringLiteral("5/not-a-number")));
+    QCOMPARE(restored.kittyKeyboardState(), QStringLiteral("5,3/1"));
+}
+
 QTEST_GUILESS_MAIN(Vt102EmulationTest)
 
 #include "moc_Vt102EmulationTest.cpp"

@@ -35,6 +35,7 @@ struct TmuxPaneState {
     bool mouseButton = false;
     bool mouseAny = false;
     bool mouseSGR = false;
+    QString kittyKeyboardState;
 };
 
 class TmuxPaneStateRecovery : public QObject
