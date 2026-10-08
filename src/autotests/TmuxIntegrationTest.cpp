@@ -744,6 +744,96 @@ void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttach()
     delete secondAttach.mw.data();
 }
 
+void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttachWithBlankScreen()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString inputFile = m_tmuxTmpDir.path() + QStringLiteral("/blank-kitty-keyboard-input.bin");
+    const QString tuiCommand = QStringLiteral("bash -c \"read; printf '\\033[?1049h\\033[>5u\\033[2J\\033[H'; stty raw -echo; exec cat >> %1\"").arg(inputFile);
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(tuiCommand, tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult firstAttach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, firstAttach);
+    Session *firstSession = firstAttach.mw->viewManager()->sessions().first();
+    QVERIFY(firstSession);
+    firstSession->setKittyKeyboardEnabled(true);
+
+    QProcess startTui;
+    startTui.start(tmuxPath,
+                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("Enter")});
+    QVERIFY(startTui.waitForFinished(5000));
+    QCOMPARE(startTui.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(inputFile), 5000);
+
+    auto paneOption = [&]() {
+        QProcess showOption;
+        showOption.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("show-options"),
+                          QStringLiteral("-pv"),
+                          QStringLiteral("-t"),
+                          ctx.sessionName,
+                          QLatin1String(TmuxKittyKeyboardStateOption)});
+        if (!showOption.waitForFinished(3000) || showOption.exitCode() != 0) {
+            return QString();
+        }
+        return QString::fromUtf8(showOption.readAllStandardOutput()).trimmed();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(paneOption(), QStringLiteral("/5"), 10000);
+
+    QProcess capturePane;
+    capturePane.start(tmuxPath,
+                      {QStringLiteral("-S"),
+                       ctx.socketPath,
+                       QStringLiteral("capture-pane"),
+                       QStringLiteral("-p"),
+                       QStringLiteral("-J"),
+                       QStringLiteral("-e"),
+                       QStringLiteral("-t"),
+                       ctx.sessionName,
+                       QStringLiteral("-S"),
+                       QStringLiteral("-")});
+    QVERIFY(capturePane.waitForFinished(5000));
+    QCOMPARE(capturePane.exitCode(), 0);
+    const QByteArray capturedScreen = capturePane.readAllStandardOutput();
+    QVERIFY2(capturedScreen.trimmed().isEmpty(), qPrintable(QString::fromLatin1(capturedScreen.toHex(' '))));
+
+    const QByteArray shiftReturn("\033[13;2u");
+    const auto firstViews = firstSession->views();
+    QVERIFY(!firstViews.isEmpty());
+    QTest::keyClick(firstViews.first(), Qt::Key_Return, Qt::ShiftModifier);
+
+    auto readInput = [&]() {
+        QFile file(inputFile);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QByteArray();
+        }
+        return file.readAll();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readInput(), shiftReturn, 10000);
+
+    delete firstAttach.mw.data();
+    QTRY_VERIFY_WITH_TIMEOUT(firstAttach.mw.isNull(), 5000);
+
+    TmuxTestFixture::AttachResult secondAttach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, secondAttach);
+    Session *secondSession = secondAttach.mw->viewManager()->sessions().first();
+    QVERIFY(secondSession);
+    secondSession->setKittyKeyboardEnabled(true);
+
+    const auto secondViews = secondSession->views();
+    QVERIFY(!secondViews.isEmpty());
+    QTest::keyClick(secondViews.first(), Qt::Key_Return, Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(readInput(), shiftReturn + shiftReturn, 10000);
+
+    delete secondAttach.mw.data();
+}
+
 // Covers the pause -> resume round trip behind the suspend fix. When tmux pauses
 // a pane (control-mode flow control — what happens once kmux enables pause-after
 // and the client falls behind during a suspend), kmux must resume the pane and

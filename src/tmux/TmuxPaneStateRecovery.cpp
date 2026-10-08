@@ -130,7 +130,7 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
 {
     _pendingCapture.remove(paneId);
 
-    if (!success || response.isEmpty()) {
+    if (!success) {
         Q_EMIT paneRecoveryComplete(paneId);
         return;
     }
