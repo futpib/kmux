@@ -6,9 +6,7 @@
 
 #include "TmuxPrefixPalette.h"
 
-#include "TmuxCommand.h"
 #include "TmuxController.h"
-#include "TmuxGateway.h"
 
 #include "ViewManager.h"
 #include "widgets/ViewContainer.h"
@@ -32,6 +30,15 @@
 
 namespace Konsole
 {
+
+namespace
+{
+bool isCopyModeCommand(const QString &command)
+{
+    const QString trimmed = command.trimmed();
+    return trimmed == QLatin1String("copy-mode") || trimmed.startsWith(QLatin1String("copy-mode "));
+}
+}
 
 TmuxPrefixPalette::TmuxPrefixPalette(ViewManager *viewManager, TmuxController *controller, const QList<TmuxPrefixBinding> &bindings)
     : QFrame(viewManager->activeContainer()->window())
@@ -167,6 +174,13 @@ void TmuxPrefixPalette::populateModel()
 
 void TmuxPrefixPalette::triggerBinding(const TmuxPrefixBinding &binding)
 {
+    if (_controller && isCopyModeCommand(binding.command)) {
+        _controller->enterCopyMode();
+        hide();
+        deleteLater();
+        return;
+    }
+
     const QString interceptName = interceptedActionName(binding.command);
     auto *actionCollection = _viewManager ? _viewManager->actionCollection() : nullptr;
     if (!interceptName.isEmpty() && actionCollection) {
@@ -188,8 +202,8 @@ void TmuxPrefixPalette::triggerBinding(const TmuxPrefixBinding &binding)
             return;
         }
     }
-    if (_controller && _controller->gateway()) {
-        _controller->gateway()->sendCommand(TmuxCommand(binding.command));
+    if (_controller) {
+        _controller->executePrefixCommand(binding.command);
     }
     hide();
     deleteLater();

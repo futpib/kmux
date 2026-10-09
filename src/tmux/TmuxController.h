@@ -171,6 +171,8 @@ public:
     // of the prefix key when a modifier was dropped (see TmuxPrefixPalette).
     QString prefixToken() const;
     const QList<PrefixBinding> &prefixBindings() const;
+    void enterCopyMode();
+    void executePrefixCommand(const QString &command);
 
 Q_SIGNALS:
     void initialWindowsOpened();

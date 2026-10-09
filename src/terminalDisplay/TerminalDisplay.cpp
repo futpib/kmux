@@ -2905,6 +2905,62 @@ void TerminalDisplay::setTmuxConnectionBanner(TmuxConnectionBanner banner)
     _tmuxUnresponsiveMessageWidget->animatedShow();
 }
 
+void TerminalDisplay::setTmuxMode(const QString &mode)
+{
+    if (mode.isEmpty()) {
+        if (_tmuxModeMessageWidget != nullptr) {
+            _tmuxModeMessageWidget->animatedHide();
+        }
+        return;
+    }
+
+    if (_tmuxModeMessageWidget == nullptr) {
+        _tmuxModeMessageWidget = createMessageWidget(QString());
+        _tmuxModeMessageWidget->setObjectName(QStringLiteral("tmuxModeBanner"));
+        _tmuxModeMessageWidget->setCloseButtonVisible(false);
+    }
+
+    if (mode == QLatin1String("copy-mode")) {
+        _tmuxModeMessageWidget->setMessageType(KMessageWidget::Information);
+        _tmuxModeMessageWidget->setIcon(QIcon::fromTheme(QStringLiteral("edit-select")));
+        _tmuxModeMessageWidget->setText(
+            i18n("tmux copy mode: move with the arrow keys or hjkl, press v to select, y or Enter to copy, and q or Escape to exit."));
+    } else {
+        _tmuxModeMessageWidget->setMessageType(KMessageWidget::Warning);
+        _tmuxModeMessageWidget->setIcon(QIcon::fromTheme(QStringLiteral("dialog-warning")));
+        _tmuxModeMessageWidget->setText(i18n("tmux %1 is active. Pane input is paused in kmux; press Escape to exit the mode.", mode));
+    }
+    _tmuxModeMessageWidget->animatedShow();
+}
+
+void TerminalDisplay::setTmuxCopyModeState(int cursorX,
+                                           int cursorY,
+                                           int scrollPosition,
+                                           bool selectionPresent,
+                                           bool selectionActive,
+                                           int selectionStartX,
+                                           int selectionStartY,
+                                           int selectionEndX,
+                                           int selectionEndY,
+                                           const QString &selectionMode)
+{
+    Screen *screen = screenWindow()->screen();
+    const int historyLines = screen->getHistLines();
+    screen->setSelCursorPosition(cursorX, cursorY - scrollPosition);
+    screen->clearSelection();
+    if (selectionPresent || selectionActive) {
+        screen->setSelectionStart(selectionStartX, qBound(0, selectionStartY, historyLines + screen->getLines() - 1), selectionMode == QLatin1String("block"));
+    }
+    if (selectionPresent) {
+        screen->setSelectionEnd(selectionEndX, qBound(0, selectionEndY, historyLines + screen->getLines() - 1), false);
+    }
+    _actSel = selectionActive ? 2 : 0;
+    _lineSelectionMode = selectionMode == QLatin1String("line");
+    screenWindow()->setTrackOutput(false);
+    screenWindow()->scrollTo(historyLines - scrollPosition);
+    screenWindow()->notifyOutputChanged();
+}
+
 #define SELECT_BY_MODIFIERS                                                                                                                                    \
     if (startSelect) {                                                                                                                                         \
         clearSelection();                                                                                                                                      \
@@ -2938,6 +2994,15 @@ void TerminalDisplay::keyPressEvent(QKeyEvent *event)
         }
         switch (event->key()) {
         case Qt::Key_Escape:
+        case Qt::Key_Q:
+            sessionController()->setSelectMode(false);
+            break;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Y:
+            if (screen->hasSelection()) {
+                copyToClipboard();
+            }
             sessionController()->setSelectMode(false);
             break;
         case Qt::Key_Left:

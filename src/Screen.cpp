@@ -190,6 +190,12 @@ void Screen::initSelCursor()
     _selCuY = _cuY;
 }
 
+void Screen::setSelCursorPosition(int x, int y)
+{
+    _selCuX = qBound(0, x, _columns - 1);
+    _selCuY = qBound(-_history->getLines(), y, _lines - 1);
+}
+
 int Screen::selCursorUp(int n)
 {
     if (n == 0) {

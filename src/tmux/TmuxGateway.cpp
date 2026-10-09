@@ -482,13 +482,12 @@ void TmuxGateway::sendKeys(int paneId, const QByteArray &data)
         return 0;
     };
 
-    // Well-known terminal escape sequences → tmux key names. Sending these
-    // as named keys instead of raw bytes is important when the target pane
-    // is in a tmux mode (copy-mode, tree-mode, …): tmux dispatches named
-    // keys through the mode's key table, while raw bytes bypass mode
-    // handling entirely. In non-mode contexts, tmux converts the key name
-    // back to its byte sequence before delivering to the pane program, so
-    // this translation is safe to apply unconditionally.
+    // Well-known terminal escape sequences → tmux key names. In normal pane
+    // input tmux converts the key name back to its byte sequence before
+    // delivering it to the pane program. TmuxPaneManager never calls this
+    // method while a pane mode is active: a mode binding can open an
+    // interactive tmux prompt on the command-only control client and consume
+    // subsequent protocol commands as prompt input.
     auto matchNamedKey = [&](int start) -> QPair<int, const char *> {
         const int remaining = data.size() - start;
         auto at = [&](int off) {

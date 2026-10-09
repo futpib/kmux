@@ -334,12 +334,19 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     // than pause-after seconds behind — e.g. the laptop slept over --rsh. We
     // resume it and resync its contents (see onPanePaused). %continue then
     // arrives once tmux resumes; it needs no action of its own.
-    // Do not turn %pane-mode-changed into local UI. tmux broadcasts it without
-    // identifying the client that entered the mode, so it commonly belongs to
-    // a separate ordinary `tmux attach`. kmux-owned choose-tree bindings are
-    // intercepted in TmuxPrefixPalette and open TmuxTreeSwitcher directly.
+    // tmux broadcasts pane mode changes without identifying the client that
+    // entered the mode. Refresh the mode state as seen by this control client,
+    // but do not assume the transition originated in kmux or open client-local
+    // UI such as the tree switcher for it.
     // Unsuppress output when pane state recovery completes
-    connect(_stateRecovery, &TmuxPaneStateRecovery::paneRecoveryComplete, _paneManager, &TmuxPaneManager::unsuppressOutput);
+    connect(_stateRecovery, &TmuxPaneStateRecovery::paneRecoveryComplete, _paneManager, &TmuxPaneManager::completePaneRecovery);
+    connect(_paneManager, &TmuxPaneManager::copyModeFinished, this, [this](int paneId) {
+        const int windowId = windowIdForPane(paneId);
+        if (windowId >= 0) {
+            _stateRecovery->queryPaneStates(windowId);
+        }
+        _stateRecovery->capturePaneHistory(paneId);
+    });
 
     // Pane view size changes → resize coordinator
     connect(_paneManager, &TmuxPaneManager::paneViewSizeChanged, this, [this]() {
@@ -400,6 +407,27 @@ void TmuxController::connectGatewaySignals()
     connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::onSubscriptionChanged);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
     connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
+    connect(_gateway, &TmuxGateway::paneModeChanged, this, [this](int paneId) {
+        _paneManager->invalidatePaneMode(paneId);
+        _paneManager->queryPaneTitleInfo();
+    });
+}
+
+void TmuxController::enterCopyMode()
+{
+    if (_activePaneId >= 0) {
+        _paneManager->enterCopyMode(_activePaneId);
+    }
+}
+
+void TmuxController::executePrefixCommand(const QString &command)
+{
+    if (_activePaneId >= 0) {
+        _paneManager->invalidatePaneMode(_activePaneId);
+    }
+    _gateway->sendCommand(TmuxCommand(command), [this](bool, const QString &) {
+        _paneManager->queryPaneTitleInfo();
+    });
 }
 
 void TmuxController::rebindGateway(TmuxGateway *gateway)
@@ -1543,6 +1571,12 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
             }
         }
     }
+
+    // Pane input stays closed until this authoritative query establishes
+    // whether the control client currently owns a tmux mode. Query immediately
+    // after creating the views so a newly split pane does not wait for the
+    // periodic metadata refresh before it can accept normal input.
+    _paneManager->queryPaneTitleInfo();
 }
 
 void TmuxController::refreshPaneTitles()

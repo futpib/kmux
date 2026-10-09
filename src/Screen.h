@@ -156,6 +156,7 @@ public:
     void setCursorYX(int y, int x);
 
     void initSelCursor();
+    void setSelCursorPosition(int x, int y);
     int selCursorUp(int n);
     int selCursorDown(int n);
     int selCursorLeft(int n);

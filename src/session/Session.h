@@ -899,6 +899,9 @@ Q_SIGNALS:
     /** Emitted when the session gets locked / unlocked. */
     void readOnlyChanged();
 
+    /** Emitted when keyboard selection mode is entered or left. */
+    void selectModeChanged(bool mode);
+
     /**
      * Emitted when the current working directory of this session changes.
      *

@@ -1342,7 +1342,6 @@ void SessionController::setSelectMode(bool mode)
 {
     if (!session().isNull()) {
         session()->setSelectMode(mode);
-        view()->setSelectMode(mode);
     }
 }
 

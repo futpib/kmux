@@ -15,6 +15,7 @@
 #include <KMessageWidget>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDir>
@@ -7337,6 +7338,152 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteCbCbLostWhenUnfocused()
     // than being reopened by the prefix QAction.
     QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 8000);
     QVERIFY(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testControlClientCopyModeDoesNotCaptureControlProtocol()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString inputFile = m_tmuxTmpDir.path() + QStringLiteral("/copy-mode-other-pane-input");
+    const QString copyFile = m_tmuxTmpDir.path() + QStringLiteral("/copy-mode-pane-input");
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupTmuxSession(
+        TmuxTestFixture::horizontal(
+            {TmuxTestFixture::pane(QStringLiteral("stty raw -echo; exec cat > %1").arg(inputFile), 30, 8),
+             TmuxTestFixture::pane(QStringLiteral("printf 'copy mode source'; stty raw -echo; exec cat > %1").arg(copyFile), 30, 8, true)}),
+        tmuxPath,
+        m_tmuxTmpDir.path(),
+        ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    QProcess listPanes;
+    listPanes.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("list-panes"),
+                     QStringLiteral("-t"),
+                     ctx.sessionName,
+                     QStringLiteral("-F"),
+                     QStringLiteral("#{pane_id}")});
+    QVERIFY(listPanes.waitForFinished(5000));
+    QCOMPARE(listPanes.exitCode(), 0);
+    const QStringList paneTokens = QString::fromUtf8(listPanes.readAllStandardOutput()).trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QCOMPARE(paneTokens.size(), 2);
+    const int inputPaneId = paneTokens[0].mid(1).toInt();
+    const int copyPaneId = paneTokens[1].mid(1).toInt();
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(copyPaneId) && controller->sessionForPane(inputPaneId), 10000);
+    Session *copySession = controller->sessionForPane(copyPaneId);
+    Session *inputSession = controller->sessionForPane(inputPaneId);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->activePaneId(), copyPaneId, 5000);
+    QVERIFY(!copySession->views().isEmpty());
+    auto *copyDisplay = copySession->views().first();
+
+    // Exercise the transition race too: the keystroke is generated before the
+    // copy-mode command reply. It must be held until mode state is known and
+    // then discarded, never emitted as a second control-protocol command.
+    controller->executePrefixCommand(QStringLiteral("copy-mode"));
+    QTest::keyClick(copyDisplay, Qt::Key_F);
+    QTRY_VERIFY_WITH_TIMEOUT(copySession->getSelectMode(), 10000);
+    auto *modeBanner = copyDisplay->findChild<KMessageWidget *>(QStringLiteral("tmuxModeBanner"));
+    QTRY_VERIFY_WITH_TIMEOUT(modeBanner && modeBanner->isVisible(), 5000);
+
+    // In tmux's vi copy table, `f` opens an interactive jump prompt. If kmux
+    // forwards it through its command-only control client, every later command
+    // is consumed as prompt input and all panes appear to stop accepting keys.
+    bool gatewayAnswered = false;
+    controller->gateway()->sendCommand(TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")).arg(QStringLiteral("copy-mode-gateway-alive")),
+                                       [&gatewayAnswered](bool success, const QString &response) {
+                                           gatewayAnswered = success && response.trimmed() == QLatin1String("copy-mode-gateway-alive");
+                                       });
+    QTRY_VERIFY_WITH_TIMEOUT(gatewayAnswered, 5000);
+    QVERIFY(copySession->getSelectMode());
+
+    // Leaving the native view cancels the server-side mode with send-keys -X,
+    // then resynchronizes the pane before ordinary pane input resumes.
+    QTest::keyClick(copyDisplay, Qt::Key_Escape);
+    QTRY_VERIFY_WITH_TIMEOUT(!copySession->getSelectMode(), 5000);
+
+    QVERIFY(!inputSession->views().isEmpty());
+    auto *inputDisplay = inputSession->views().first();
+    QTest::keyClicks(inputDisplay, QStringLiteral("A"));
+    QTest::keyClick(inputDisplay, Qt::Key_Return);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        [&inputFile]() {
+            QFile file(inputFile);
+            return file.open(QIODevice::ReadOnly) && file.readAll().contains('A');
+        }(),
+        5000);
+
+    delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testTmuxPrefixCopyModeUsesNativeSelection()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("printf 'COPYMODE'; exec sleep 60"), tmuxPath, m_tmuxTmpDir.path(), ctx, 40, 8);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixBindings().isEmpty(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->activePaneId() >= 0, 10000);
+    Session *session = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(session);
+    QTRY_VERIFY_WITH_TIMEOUT(session->getCurrentScreenLines().join(QLatin1Char('\n')).contains(QLatin1String("COPYMODE")), 10000);
+
+    QTest::keyClick(attach.mw, Qt::Key_B, Qt::ControlModifier);
+    TmuxPrefixPalette *palette = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((palette = attach.mw->findChild<TmuxPrefixPalette *>()) != nullptr, 5000);
+    QTest::keyClick(palette, Qt::Key_BracketLeft);
+    QTRY_VERIFY_WITH_TIMEOUT(session->getSelectMode(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
+
+    // kmux's prefix binding is a local selection UI, not a hidden server mode
+    // attached to the control client.
+    QProcess paneMode;
+    paneMode.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("display-message"),
+                    QStringLiteral("-p"),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(controller->activePaneId()),
+                    QStringLiteral("#{pane_mode}")});
+    QVERIFY(paneMode.waitForFinished(5000));
+    QCOMPARE(paneMode.exitCode(), 0);
+    QCOMPARE(QString::fromUtf8(paneMode.readAllStandardOutput()).trimmed(), QString());
+
+    QVERIFY(!session->views().isEmpty());
+    auto *display = session->views().first();
+    QTest::keyClick(display, Qt::Key_Home);
+    QTest::keyClick(display, Qt::Key_V);
+    QTest::keyClick(display, Qt::Key_End);
+    const QString selectedText = display->screenWindow()->selectedText(Screen::PlainText);
+    QVERIFY2(selectedText.contains(QLatin1String("COPYMODE")), qPrintable(QStringLiteral("native copy selection was: '%1'").arg(selectedText)));
+    QTest::keyClick(display, Qt::Key_Y);
+    QTRY_VERIFY_WITH_TIMEOUT(!session->getSelectMode(), 5000);
+    QVERIFY(QApplication::clipboard()->text().contains(QLatin1String("COPYMODE")));
 
     delete attach.mw.data();
 }

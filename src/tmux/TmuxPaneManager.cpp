@@ -16,6 +16,9 @@
 #include "session/Session.h"
 #include "session/SessionManager.h"
 #include "session/VirtualSession.h"
+#include "terminalDisplay/TerminalDisplay.h"
+
+#include <utility>
 
 namespace Konsole
 {
@@ -29,6 +32,20 @@ TmuxPaneManager::TmuxPaneManager(TmuxGateway *gateway, QObject *parent)
 void TmuxPaneManager::setGateway(TmuxGateway *gateway)
 {
     _gateway = gateway;
+    for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
+        ++_paneModeEpoch[it.key()];
+    }
+    _paneModeKnown.clear();
+    _paneModes.clear();
+    _paneModeStates.clear();
+    _pendingInput.clear();
+    _serverBackedCopyPanes.clear();
+    _copyRecoveryPending.clear();
+    for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
+        if (!_nativeCopyPanes.contains(it.key())) {
+            showPaneMode(it.key(), QString());
+        }
+    }
 }
 
 Session *TmuxPaneManager::createPaneSession(int paneId)
@@ -43,7 +60,31 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
     session->emulation()->setSuppressTerminalResponsesDuringReceive(true);
 
     connect(session->emulation(), &Emulation::sendData, this, [this, paneId](const QByteArray &data) {
+        if (!_paneModeKnown.contains(paneId)) {
+            auto &pending = _pendingInput[paneId];
+            qsizetype pendingSize = 0;
+            for (const QByteArray &chunk : std::as_const(pending)) {
+                pendingSize += chunk.size();
+            }
+            if (pendingSize + data.size() <= 64 * 1024) {
+                pending.append(data);
+            }
+            return;
+        }
+        const QString mode = _paneModes.value(paneId);
+        if (!mode.isEmpty()) {
+            if (data == QByteArray(1, '\x1b')) {
+                _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
+            }
+            return;
+        }
         _gateway->sendKeys(paneId, data);
+    });
+
+    connect(session, &Session::selectModeChanged, this, [this, paneId](bool enabled) {
+        if (!enabled && _nativeCopyPanes.contains(paneId)) {
+            leaveCopyMode(paneId, _serverBackedCopyPanes.contains(paneId));
+        }
     });
 
     connect(session->emulation(), &Emulation::imageSizeChanged, this, [this](int, int) {
@@ -75,8 +116,18 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
 
     connect(session, &QObject::destroyed, this, [this, paneId]() {
         _paneToSession.remove(paneId);
+        _paneModeKnown.remove(paneId);
+        _paneModeEpoch.remove(paneId);
+        _paneModes.remove(paneId);
+        _paneModeStates.remove(paneId);
+        _pendingInput.remove(paneId);
+        _nativeCopyPanes.remove(paneId);
+        _serverBackedCopyPanes.remove(paneId);
+        _copyRecoveryPending.remove(paneId);
+        _suppressedPanes.remove(paneId);
     });
 
+    _paneModeEpoch.insert(paneId, 0);
     _paneToSession[paneId] = session;
     return session;
 }
@@ -125,7 +176,35 @@ void TmuxPaneManager::suppressAllOutput()
 
 void TmuxPaneManager::unsuppressOutput(int paneId)
 {
-    _suppressedPanes.remove(paneId);
+    if (!_nativeCopyPanes.contains(paneId)) {
+        _suppressedPanes.remove(paneId);
+    }
+}
+
+void TmuxPaneManager::completePaneRecovery(int paneId)
+{
+    unsuppressOutput(paneId);
+    if (!_serverBackedCopyPanes.contains(paneId) || !_paneModeStates.contains(paneId)) {
+        return;
+    }
+
+    Session *session = _paneToSession.value(paneId, nullptr);
+    if (!session) {
+        return;
+    }
+    const TmuxPaneModeState &state = _paneModeStates[paneId];
+    for (TerminalDisplay *display : session->views()) {
+        display->setTmuxCopyModeState(state.copyCursorX,
+                                      state.copyCursorY,
+                                      state.scrollPosition,
+                                      state.selectionPresent,
+                                      state.selectionActive,
+                                      state.selectionStartX,
+                                      state.selectionStartY,
+                                      state.selectionEndX,
+                                      state.selectionEndY,
+                                      state.selectionMode);
+    }
 }
 
 bool TmuxPaneManager::hasPane(int paneId) const
@@ -171,41 +250,191 @@ void TmuxPaneManager::queryPaneTitleInfo()
         QStringLiteral("pane_current_path"),
         QStringLiteral("pane_title"),
         QStringLiteral("pane_pid"),
+        QStringLiteral("pane_mode"),
+        QStringLiteral("copy_cursor_x"),
+        QStringLiteral("copy_cursor_y"),
+        QStringLiteral("scroll_position"),
+        QStringLiteral("selection_present"),
+        QStringLiteral("selection_active"),
+        QStringLiteral("selection_start_x"),
+        QStringLiteral("selection_start_y"),
+        QStringLiteral("selection_end_x"),
+        QStringLiteral("selection_end_y"),
+        QStringLiteral("selection_mode"),
     });
 
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec), [this, spec](bool success, const QString &response) {
-        if (!success || response.isEmpty()) {
-            return;
+    const QMap<int, quint64> requestedEpochs = _paneModeEpoch;
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec),
+                          [this, spec, requestedEpochs](bool success, const QString &response) {
+                              if (!success || response.isEmpty()) {
+                                  return;
+                              }
+                              for (const auto &row : spec.parseRows(response)) {
+                                  const QString paneIdStr = row.value(QStringLiteral("pane_id"));
+                                  if (!paneIdStr.startsWith(QLatin1Char('%'))) {
+                                      continue;
+                                  }
+                                  int paneId = paneIdStr.mid(1).toInt();
+                                  if (!requestedEpochs.contains(paneId) || requestedEpochs.value(paneId) != _paneModeEpoch.value(paneId)) {
+                                      continue;
+                                  }
+                                  auto *session = qobject_cast<VirtualSession *>(_paneToSession.value(paneId, nullptr));
+                                  if (!session) {
+                                      continue;
+                                  }
+                                  const QString command = row.value(QStringLiteral("pane_current_command"));
+                                  const QString path = row.value(QStringLiteral("pane_current_path"));
+                                  const QString title = row.value(QStringLiteral("pane_title"));
+                                  bool pidOk = false;
+                                  const int panePid = row.value(QStringLiteral("pane_pid")).toInt(&pidOk);
+                                  if (pidOk && panePid > 0) {
+                                      session->setExternalPid(panePid);
+                                  }
+                                  if (!command.isEmpty()) {
+                                      session->setExternalProcessName(command);
+                                  }
+                                  if (!path.isEmpty()) {
+                                      session->setExternalCurrentDir(path);
+                                  }
+                                  if (!title.isEmpty()) {
+                                      session->setExternalPaneTitle(title);
+                                  }
+
+                                  TmuxPaneModeState modeState;
+                                  modeState.name = row.value(QStringLiteral("pane_mode"));
+                                  modeState.copyCursorX = row.value(QStringLiteral("copy_cursor_x")).toInt();
+                                  modeState.copyCursorY = row.value(QStringLiteral("copy_cursor_y")).toInt();
+                                  modeState.scrollPosition = row.value(QStringLiteral("scroll_position")).toInt();
+                                  modeState.selectionPresent = row.value(QStringLiteral("selection_present")) == QLatin1String("1");
+                                  modeState.selectionActive = row.value(QStringLiteral("selection_active")) == QLatin1String("1");
+                                  modeState.selectionStartX = row.value(QStringLiteral("selection_start_x")).toInt();
+                                  modeState.selectionStartY = row.value(QStringLiteral("selection_start_y")).toInt();
+                                  modeState.selectionEndX = row.value(QStringLiteral("selection_end_x")).toInt();
+                                  modeState.selectionEndY = row.value(QStringLiteral("selection_end_y")).toInt();
+                                  modeState.selectionMode = row.value(QStringLiteral("selection_mode"));
+                                  updatePaneMode(paneId, modeState);
+                              }
+                          });
+}
+
+void TmuxPaneManager::enterCopyMode(int paneId)
+{
+    Session *session = _paneToSession.value(paneId, nullptr);
+    if (!session || _nativeCopyPanes.contains(paneId)) {
+        return;
+    }
+
+    _copyRecoveryPending.remove(paneId);
+    _nativeCopyPanes.insert(paneId);
+    suppressOutput(paneId);
+    showPaneMode(paneId, QStringLiteral("copy-mode"));
+    session->setSelectMode(true);
+}
+
+void TmuxPaneManager::invalidatePaneMode(int paneId)
+{
+    if (_paneToSession.contains(paneId)) {
+        ++_paneModeEpoch[paneId];
+        _paneModeKnown.remove(paneId);
+    }
+}
+
+void TmuxPaneManager::updatePaneMode(int paneId, const TmuxPaneModeState &state)
+{
+    Session *session = _paneToSession.value(paneId, nullptr);
+    if (!session) {
+        return;
+    }
+
+    _paneModeKnown.insert(paneId);
+    _paneModes[paneId] = state.name;
+    _paneModeStates[paneId] = state;
+
+    const QList<QByteArray> pendingInput = _pendingInput.take(paneId);
+    if (state.name.isEmpty()) {
+        for (const QByteArray &data : pendingInput) {
+            _gateway->sendKeys(paneId, data);
         }
-        for (const auto &row : spec.parseRows(response)) {
-            const QString paneIdStr = row.value(QStringLiteral("pane_id"));
-            if (!paneIdStr.startsWith(QLatin1Char('%'))) {
-                continue;
-            }
-            int paneId = paneIdStr.mid(1).toInt();
-            auto *session = qobject_cast<VirtualSession *>(_paneToSession.value(paneId, nullptr));
-            if (!session) {
-                continue;
-            }
-            const QString command = row.value(QStringLiteral("pane_current_command"));
-            const QString path = row.value(QStringLiteral("pane_current_path"));
-            const QString title = row.value(QStringLiteral("pane_title"));
-            bool pidOk = false;
-            const int panePid = row.value(QStringLiteral("pane_pid")).toInt(&pidOk);
-            if (pidOk && panePid > 0) {
-                session->setExternalPid(panePid);
-            }
-            if (!command.isEmpty()) {
-                session->setExternalProcessName(command);
-            }
-            if (!path.isEmpty()) {
-                session->setExternalCurrentDir(path);
-            }
-            if (!title.isEmpty()) {
-                session->setExternalPaneTitle(title);
+    } else {
+        for (const QByteArray &data : pendingInput) {
+            if (data == QByteArray(1, '\x1b')) {
+                _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
+                break;
             }
         }
-    });
+    }
+
+    if (state.name == QLatin1String("copy-mode")) {
+        const bool entering = !_nativeCopyPanes.contains(paneId);
+        _serverBackedCopyPanes.insert(paneId);
+        if (entering) {
+            enterCopyMode(paneId);
+            for (TerminalDisplay *display : session->views()) {
+                display->setTmuxCopyModeState(state.copyCursorX,
+                                              state.copyCursorY,
+                                              state.scrollPosition,
+                                              state.selectionPresent,
+                                              state.selectionActive,
+                                              state.selectionStartX,
+                                              state.selectionStartY,
+                                              state.selectionEndX,
+                                              state.selectionEndY,
+                                              state.selectionMode);
+            }
+        }
+        return;
+    }
+
+    if (_serverBackedCopyPanes.contains(paneId)) {
+        _serverBackedCopyPanes.remove(paneId);
+        if (_nativeCopyPanes.remove(paneId)) {
+            session->setSelectMode(false);
+            requestCopyModeRecovery(paneId);
+        }
+    }
+
+    if (!_nativeCopyPanes.contains(paneId)) {
+        showPaneMode(paneId, state.name);
+    }
+}
+
+void TmuxPaneManager::showPaneMode(int paneId, const QString &mode)
+{
+    Session *session = _paneToSession.value(paneId, nullptr);
+    if (!session) {
+        return;
+    }
+    for (TerminalDisplay *display : session->views()) {
+        display->setTmuxMode(mode);
+    }
+}
+
+void TmuxPaneManager::leaveCopyMode(int paneId, bool cancelServerMode)
+{
+    if (!_nativeCopyPanes.remove(paneId)) {
+        return;
+    }
+
+    if (!cancelServerMode) {
+        showPaneMode(paneId, _paneModes.value(paneId));
+        requestCopyModeRecovery(paneId);
+        return;
+    }
+
+    _serverBackedCopyPanes.remove(paneId);
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")),
+                          [this, paneId](bool, const QString &) {
+                              requestCopyModeRecovery(paneId);
+                          });
+}
+
+void TmuxPaneManager::requestCopyModeRecovery(int paneId)
+{
+    if (_copyRecoveryPending.contains(paneId)) {
+        return;
+    }
+    _copyRecoveryPending.insert(paneId);
+    Q_EMIT copyModeFinished(paneId);
 }
 
 } // namespace Konsole

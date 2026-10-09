@@ -424,6 +424,17 @@ public:
     // the same lazily-created KMessageWidget mechanism as the read-only banner.
     void setTmuxUnresponsive(bool unresponsive);
     void setTmuxConnectionBanner(TmuxConnectionBanner banner);
+    void setTmuxMode(const QString &mode);
+    void setTmuxCopyModeState(int cursorX,
+                              int cursorY,
+                              int scrollPosition,
+                              bool selectionPresent,
+                              bool selectionActive,
+                              int selectionStartX,
+                              int selectionStartY,
+                              int selectionEndX,
+                              int selectionEndY,
+                              const QString &selectionMode);
 
     void setSelectMode(bool readonly);
 
@@ -843,6 +854,7 @@ private: // data members
 
     KMessageWidget *_readOnlyMessageWidget = nullptr; // Message shown at the top when read-only mode gets activated
     KMessageWidget *_tmuxUnresponsiveMessageWidget = nullptr; // Shown when the tmux control link stops responding
+    KMessageWidget *_tmuxModeMessageWidget = nullptr; // Shown while tmux owns pane input through a mode
 
     // Needed to know whether the mode really changed between update calls
     bool _readOnly = false;

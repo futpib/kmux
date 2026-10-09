@@ -387,6 +387,9 @@ void Session::addView(TerminalDisplay *widget)
 
     widget->setScreenWindow(_emulation->createWindow());
 
+    connect(this, &Konsole::Session::selectModeChanged, widget, &Konsole::TerminalDisplay::setSelectMode);
+    widget->setSelectMode(_selectMode);
+
     _emulation->setCurrentTerminalDisplay(widget);
 
     // connect view signals and slots
@@ -416,6 +419,7 @@ void Session::removeView(TerminalDisplay *widget)
     _views.removeAll(widget);
 
     disconnect(widget, nullptr, this, nullptr);
+    disconnect(this, &Session::selectModeChanged, widget, &TerminalDisplay::setSelectMode);
 
     // disconnect
     //  - key presses signals from widget
@@ -2477,6 +2481,7 @@ void Session::setSelectMode(bool mode)
 {
     if (_selectMode != mode) {
         _selectMode = mode;
+        Q_EMIT selectModeChanged(mode);
     }
 }
 
