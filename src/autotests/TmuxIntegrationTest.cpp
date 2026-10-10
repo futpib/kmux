@@ -7492,8 +7492,9 @@ void TmuxIntegrationTest::testTmuxPrefixCopyModeUsesNativeSelection()
 // its prefix table belongs to that client alone. In particular, C-b w enters
 // tree-mode in the ordinary client. tmux broadcasts %pane-mode-changed to all
 // control clients, so kmux sees the transition too; it must not mistake that
-// broadcast for a request to open its own native tree switcher.
-void TmuxIntegrationTest::testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher()
+// broadcast for a request to open its own native tree switcher. Escape in kmux
+// must still close the pane's tree mode.
+void TmuxIntegrationTest::testExternalTmuxChooseTreeEscapeClosesMode()
 {
     const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     const QString scriptPath = QStandardPaths::findExecutable(QStringLiteral("script"));
@@ -7527,6 +7528,7 @@ void TmuxIntegrationTest::testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher()
 
     auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
     QVERIFY(controller);
+    attach.mw->viewManager()->activeContainer()->setCurrentIndex(0, Qt::OtherFocusReason);
 
     // `script` supplies the pty required by a real interactive tmux attach.
     // Its stdin remains writable, letting the test type the same C-b w chord as
@@ -7573,11 +7575,39 @@ void TmuxIntegrationTest::testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher()
     QVERIFY(ordinaryClient.waitForBytesWritten(3000));
 
     // Prove the external client's tree-mode transition reached kmux, then give
-    // the asynchronous mode query enough time to settle. The regression is the
-    // absence of a kmux-side drawer despite receiving that broadcast.
+    // the asynchronous mode query enough time to settle.
     QTRY_VERIFY_WITH_TIMEOUT(paneModeChanged.count() >= 1, 5000);
     QTest::qWait(1000);
     QVERIFY2(attach.mw->findChildren<TmuxTreeSwitcher *>().isEmpty(), "an ordinary tmux client's choose-tree opened a kmux tree switcher");
+
+    Session *session = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(session);
+    QVERIFY(!session->views().isEmpty());
+    TerminalDisplay *display = session->views().first();
+    QTRY_VERIFY_WITH_TIMEOUT(display->isVisible(), 5000);
+    auto *banner = display->findChild<KMessageWidget *>(QStringLiteral("tmuxModeBanner"));
+    QTRY_VERIFY_WITH_TIMEOUT(banner && banner->isVisible(), 5000);
+    QVERIFY(banner->text().contains(QStringLiteral("tmux tree-mode is active")));
+
+    auto currentMode = [&]() {
+        QProcess mode;
+        mode.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("display-message"),
+                    QStringLiteral("-p"),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(controller->activePaneId()),
+                    QStringLiteral("#{pane_mode}")});
+        if (!mode.waitForFinished(3000) || mode.exitCode() != 0) {
+            return QStringLiteral("query failed");
+        }
+        return QString::fromUtf8(mode.readAllStandardOutput()).trimmed();
+    };
+    QCOMPARE(currentMode(), QStringLiteral("tree-mode"));
+    QTest::keyClick(display, Qt::Key_Escape);
+    QTRY_COMPARE_WITH_TIMEOUT(currentMode(), QString(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!banner->isVisible(), 5000);
 
     delete attach.mw.data();
 }

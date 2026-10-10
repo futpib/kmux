@@ -68,6 +68,7 @@ Q_SIGNALS:
     void copyModeFinished(int paneId);
 
 private:
+    void cancelPaneMode(int paneId, const QString &mode);
     void updatePaneMode(int paneId, const TmuxPaneModeState &state);
     void showPaneMode(int paneId, const QString &mode);
     void leaveCopyMode(int paneId, bool cancelServerMode);

@@ -74,7 +74,7 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
         const QString mode = _paneModes.value(paneId);
         if (!mode.isEmpty()) {
             if (data == QByteArray(1, '\x1b')) {
-                _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
+                cancelPaneMode(paneId, mode);
             }
             return;
         }
@@ -339,6 +339,23 @@ void TmuxPaneManager::invalidatePaneMode(int paneId)
     }
 }
 
+void TmuxPaneManager::cancelPaneMode(int paneId, const QString &mode)
+{
+    if (mode == QLatin1String("copy-mode")) {
+        _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
+        return;
+    }
+
+    // Tree mode handles keys but does not expose a -X command. Check the
+    // server's current mode so a delayed Escape cannot reach the pane program.
+    const QString escape = TmuxCommand(QStringLiteral("send-keys")).paneTarget(paneId).arg(QStringLiteral("Escape")).build();
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("if-shell"))
+                              .flag(QStringLiteral("-F"))
+                              .paneTarget(paneId)
+                              .singleQuotedArg(QStringLiteral("#{pane_in_mode}"))
+                              .singleQuotedArg(escape));
+}
+
 void TmuxPaneManager::updatePaneMode(int paneId, const TmuxPaneModeState &state)
 {
     Session *session = _paneToSession.value(paneId, nullptr);
@@ -358,7 +375,7 @@ void TmuxPaneManager::updatePaneMode(int paneId, const TmuxPaneModeState &state)
     } else {
         for (const QByteArray &data : pendingInput) {
             if (data == QByteArray(1, '\x1b')) {
-                _gateway->sendCommand(TmuxCommand(QStringLiteral("send-keys")).flag(QStringLiteral("-X")).paneTarget(paneId).arg(QStringLiteral("cancel")));
+                cancelPaneMode(paneId, state.name);
                 break;
             }
         }

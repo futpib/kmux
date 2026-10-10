@@ -72,7 +72,7 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteCbCbLostWhenUnfocused();
     void testControlClientCopyModeDoesNotCaptureControlProtocol();
     void testTmuxPrefixCopyModeUsesNativeSelection();
-    void testExternalTmuxChooseTreeDoesNotOpenKmuxSwitcher();
+    void testExternalTmuxChooseTreeEscapeClosesMode();
     void testTreeSwitcherEscapeAfterExternalWindowSwitchDoesNotReachPane();
     void testRshSilentHangShowsUnresponsiveBanner();
     void testBreakPane();
