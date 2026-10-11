@@ -29,6 +29,9 @@ def main() -> int:
     # tmux client orphaned after its local ssh transport disappears.
     keeper_pid = os.fork()
     if keeper_pid == 0:
+        # A remote peer does not share the local transport's controlling PTY
+        # or receive its hangup when the session leader is killed.
+        os.setsid()
         remote_socket.close()
         while True:
             signal.pause()
@@ -38,6 +41,7 @@ def main() -> int:
         stdin=remote_socket.fileno(),
         stdout=remote_socket.fileno(),
         close_fds=True,
+        start_new_session=True,
     )
     remote_socket.close()
 

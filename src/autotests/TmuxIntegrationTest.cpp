@@ -903,6 +903,10 @@ void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttachWithBlankScre
     QVERIFY(secondSession);
     secondSession->setKittyKeyboardEnabled(true);
 
+    // A blank capture has no text to signal readiness. Wait for recovery to
+    // restore the alternate screen before testing its keyboard state.
+    QTRY_VERIFY_WITH_TIMEOUT(!secondSession->isPrimaryScreen(), 10000);
+
     const auto secondViews = secondSession->views();
     QVERIFY(!secondViews.isEmpty());
     QTest::keyClick(secondViews.first(), Qt::Key_Return, Qt::ShiftModifier);
