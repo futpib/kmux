@@ -34,6 +34,7 @@ private Q_SLOTS:
     void testTmuxAttachContentRecovery();
     void testKittyKeyboardStateSurvivesFreshAttach();
     void testKittyKeyboardStateSurvivesFreshAttachWithBlankScreen();
+    void testKittyKeyboardPreservesScrollCommands();
     void testTmuxAttachComplexPromptRecovery();
     void testTmuxAttachAlternateScreenRecovery();
     void testTmuxAttachPrimaryScreenRowAlignment();

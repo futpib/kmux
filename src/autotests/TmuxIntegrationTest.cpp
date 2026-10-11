@@ -653,6 +653,82 @@ void TmuxIntegrationTest::testTmuxAttachContentRecovery()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testKittyKeyboardPreservesScrollCommands()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 28, 3);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    Session *session = attach.mw->viewManager()->sessions().first();
+    QVERIFY(session);
+    session->setKittyKeyboardEnabled(true);
+
+    const QString inputFile = m_tmuxTmpDir.path() + QStringLiteral("/kitty-scroll-input.bin");
+    QProcess startTui;
+    startTui.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("send-keys"),
+                    QStringLiteral("-t"),
+                    ctx.sessionName,
+                    QStringLiteral("seq 1 120; printf '\\033[>5u'; stty raw -echo; exec cat > %1").arg(inputFile),
+                    QStringLiteral("Enter")});
+    QVERIFY(startTui.waitForFinished(5000));
+    QCOMPARE(startTui.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(inputFile), 5000);
+    auto paneOption = [&]() {
+        QProcess showOption;
+        showOption.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("show-options"),
+                          QStringLiteral("-pv"),
+                          QStringLiteral("-t"),
+                          ctx.sessionName,
+                          QLatin1String(TmuxKittyKeyboardStateOption)});
+        if (!showOption.waitForFinished(3000) || showOption.exitCode() != 0) {
+            return QString();
+        }
+        return QString::fromUtf8(showOption.readAllStandardOutput()).trimmed();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(paneOption(), QStringLiteral("5/"), 10000);
+
+    const auto views = session->views();
+    QVERIFY(!views.isEmpty());
+    TerminalDisplay *view = views.first();
+    ScreenWindow *screenWindow = view->screenWindow();
+    QVERIFY(screenWindow);
+    QTRY_VERIFY_WITH_TIMEOUT(screenWindow->currentLine() > 0, 10000);
+    const int bottomLine = screenWindow->currentLine();
+
+    auto readInput = [&]() {
+        QFile file(inputFile);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QByteArray();
+        }
+        return file.readAll();
+    };
+
+    // Scroll commands must still act on the view with Kitty reporting active.
+    QTest::keyClick(view, Qt::Key_PageUp, Qt::ShiftModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(screenWindow->currentLine() < bottomLine, 5000);
+    QTest::keyClick(view, Qt::Key_PageDown, Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(screenWindow->currentLine(), bottomLine, 5000);
+
+    // A subsequent application key proves both encoding and absence of leaked
+    // scroll-key bytes through the real tmux input path.
+    QTest::keyClick(view, Qt::Key_Return, Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(readInput(), QByteArray("\033[13;2u"), 10000);
+
+    delete attach.mw.data();
+}
+
 void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttach()
 {
     const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
