@@ -158,6 +158,14 @@ status discussion is in
 
 ## Upstream
 
+The desktop metadata in `desktop/org.kde.konsole.*`, `konsole.notifyrc`,
+`konsolepart.desktop`, and `konsolerun.desktop` retains KDE's upstream names
+and contents. CMake generates the kmux versions in `build/desktop/` using
+`desktop/kmux-metadata.cmake` and installs those generated files. Keep branding
+changes in that CMake file so incoming translations can merge unchanged.
+The CI shell suite checks generation, installation, incremental updates, and
+merging an upstream translation update together with a source change.
+
 kmux is based on [Konsole](https://invent.kde.org/utilities/konsole). Bug
 reports and feature requests that are not specific to the tmux integration
 should be directed to the [Konsole project](https://bugs.kde.org/describecomponents.cgi?product=konsole).
