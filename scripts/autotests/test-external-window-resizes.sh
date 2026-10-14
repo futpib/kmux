@@ -65,6 +65,7 @@ initial_window_sized() {
 sleep 1
 for _ in 1 2 3; do
     xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+    xdotool windowfocus --sync "$WIN"
     xdotool windowsize --sync "$WIN" 900 600 2>/dev/null || true
     sleep 0.2
     xdotool windowsize --sync "$WIN" 1000 650 2>/dev/null || true
@@ -84,6 +85,7 @@ echo "OK: initial window negotiated to $ORIGINAL_SIZE"
 # the original client hides that window. This is the multi-client state in
 # which externally added slopd windows have remained at 80x24.
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN"
 xdotool key --delay 150 ctrl+shift+n
 
 second_kmux_window_ready() {

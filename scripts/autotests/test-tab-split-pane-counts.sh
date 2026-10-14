@@ -68,10 +68,10 @@ fi
 WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
-# Activate the kmux window so subsequent xdotool keystrokes land on it.
-# Under twm's focus-follows-mouse the pointer (parked at 0,0 by Xvfb)
-# decides who gets keystrokes unless we force it.
+# Focus the kmux window so subsequent xdotool keystrokes land on it.
+# twm ignores the EWMH activation request, so also set X input focus directly.
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN"
 # Give the bridge time to finish its initial control-mode handshake.
 sleep 1.5
 

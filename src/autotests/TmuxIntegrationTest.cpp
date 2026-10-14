@@ -922,9 +922,9 @@ void TmuxIntegrationTest::testKittyKeyboardStateSurvivesFreshAttachWithBlankScre
 //
 // We pause the pane for real through kmux's own control connection, produce
 // output the paused pane drops, then deliver the %pause to the gateway the way
-// tmux would asynchronously after a suspend. (The %pause acknowledging our own
-// pause request arrives inside that command's response block and is consumed as
-// response data — the async delivery is the path onPanePaused reacts to.)
+// tmux would asynchronously after a suspend. Hold the controller's pause handler
+// during setup: tmux 3.8 delivers the acknowledgement outside the response block,
+// so the production handler would otherwise resume before we produce output.
 // onPanePaused must then (a) resync, recovering the output dropped while paused —
 // only capture-pane can, the live stream dropped it — and (b) resume the pane so
 // new output flows again.
@@ -965,13 +965,28 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
     sendKeys(QStringLiteral("echo BEFORE_RT_MARKER"));
     QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("BEFORE_RT_MARKER")), 10000);
 
-    // Pause the pane (quoted form — tmux's control-command parser rejects a bare
-    // %id:pause). tmux acknowledges with %pause inside this command's own
-    // response block, so kmux's notification handler doesn't act on it here.
+    // Keep output delivery connected while deferring only automatic recovery.
+    QVERIFY(QObject::disconnect(gateway, &TmuxGateway::panePaused, controller, nullptr));
+    QSignalSpy pausedSpy(gateway, &TmuxGateway::panePaused);
+    bool pauseFinished = false;
+    bool pauseSucceeded = false;
+    QString pauseResponse;
     gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
                              .flag(QStringLiteral("-A"))
-                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")));
-    QTest::qWait(1000);
+                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")),
+                         [&](bool success, const QString &response) {
+                             pauseSucceeded = success;
+                             pauseResponse = response;
+                             pauseFinished = true;
+                         });
+    QTRY_VERIFY_WITH_TIMEOUT(pauseFinished, 5000);
+    QVERIFY(pauseSucceeded);
+    // Older tmux returns %pause as response data; newer tmux emits a signal.
+    const QString pauseNotification = QStringLiteral("%pause %") + QString::number(paneId);
+    QTRY_VERIFY_WITH_TIMEOUT(pauseResponse.contains(pauseNotification) || !pausedSpy.isEmpty(), 5000);
+    if (!pausedSpy.isEmpty()) {
+        QCOMPARE(pausedSpy.first().first().toInt(), paneId);
+    }
 
     // Output produced now is withheld by the paused pane and dropped from the
     // live stream — confirm it does not reach kmux.
@@ -982,6 +997,7 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTrip()
 
     // Deliver the %pause to kmux as tmux would asynchronously after a suspend.
     // This drives onPanePaused: resume (refresh-client -A %id:continue) + resync.
+    QVERIFY(QObject::connect(gateway, SIGNAL(panePaused(int)), controller, SLOT(onPanePaused(int))));
     gateway->processLine(QByteArray("%pause %") + QByteArray::number(paneId));
 
     // (a) The resync recovers the output dropped while paused.
@@ -1051,13 +1067,33 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
 
     // kmux recovered the TUI's current frame on attach.
     QTRY_VERIFY_WITH_TIMEOUT(readSessionScreenText(paneSession).contains(QStringLiteral("TUI_BEFORE_MARKER")), 10000);
+    // Initial size negotiation grows the six-row fixture to the kmux frame.
+    // A resize can discard an alternate-screen frame, so finish it before
+    // drawing the output whose recovery this test checks.
+    QTRY_VERIFY_WITH_TIMEOUT(paneSession->emulation()->lineCount() > 6, 10000);
 
     // Pause the pane, then repaint the TUI frame — the paused pane withholds it,
     // so it must not reach kmux via the live stream.
+    QVERIFY(QObject::disconnect(gateway, &TmuxGateway::panePaused, controller, nullptr));
+    QSignalSpy pausedSpy(gateway, &TmuxGateway::panePaused);
+    bool pauseFinished = false;
+    bool pauseSucceeded = false;
+    QString pauseResponse;
     gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
                              .flag(QStringLiteral("-A"))
-                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")));
-    QTest::qWait(1000);
+                             .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")),
+                         [&](bool success, const QString &response) {
+                             pauseSucceeded = success;
+                             pauseResponse = response;
+                             pauseFinished = true;
+                         });
+    QTRY_VERIFY_WITH_TIMEOUT(pauseFinished, 5000);
+    QVERIFY(pauseSucceeded);
+    const QString pauseNotification = QStringLiteral("%pause %") + QString::number(paneId);
+    QTRY_VERIFY_WITH_TIMEOUT(pauseResponse.contains(pauseNotification) || !pausedSpy.isEmpty(), 5000);
+    if (!pausedSpy.isEmpty()) {
+        QCOMPARE(pausedSpy.first().first().toInt(), paneId);
+    }
     sendKeys(QStringLiteral("printf '\\033[5;1HTUI_AFTER_MARKER'"));
     QTest::qWait(1000);
     QVERIFY2(!readSessionScreenText(paneSession).contains(QStringLiteral("TUI_AFTER_MARKER")),
@@ -1065,6 +1101,7 @@ void TmuxIntegrationTest::testTmuxPauseResumeRoundTripTui()
 
     // Deliver the %pause as tmux would asynchronously after a suspend, driving
     // onPanePaused (resume + resync).
+    QVERIFY(QObject::connect(gateway, SIGNAL(panePaused(int)), controller, SLOT(onPanePaused(int))));
     gateway->processLine(QByteArray("%pause %") + QByteArray::number(paneId));
 
     // The resync re-enters the alt screen and repaints the captured frame, so the

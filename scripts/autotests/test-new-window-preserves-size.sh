@@ -117,6 +117,7 @@ WIN=$KMUX_TEST_WINDOW_ID
 echo "OK: kmux window appeared (winid=$WIN)"
 
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN"
 sleep 1  # control-mode handshake
 # Force a clean, deterministic size negotiation. On a fresh attach kmux can
 # latch the window to the session's spawn size before its widgets are laid
@@ -195,6 +196,7 @@ dump_state "after new window opened (before close)"
 # --- step 2: close the new window -----------------------------------------
 echo "=== closing the new window ==="
 xdotool windowactivate --sync "$NEWWIN" 2>/dev/null || true
+xdotool windowfocus --sync "$NEWWIN"
 sleep 0.3
 xdotool key --delay 150 ctrl+shift+q  # kmux "Close Window"; 1 tab → no confirm
 window_is_closed() {
@@ -213,6 +215,7 @@ echo "OK: new window closed (kmux windows now: $(count_kmux_windows))"
 # change is what nudges TmuxResizeCoordinator to re-emit the client size, so
 # this is where a fix would restore the original — give it every chance.
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN"
 echo "--- original size after close (window | pane | X-pixels) ---"
 for _ in $(seq 1 15); do
     printf '  win=%-9s pane=%-9s x=%s\n' \
@@ -235,6 +238,7 @@ echo "=== splitting the original window (Ctrl+( ) ==="
 PANES_ORIG_PRE=$(panes_in "$ORIG_WID")
 PANES_TOTAL_PRE=$(tmux -S "$SOCKET" list-panes -s -t "$SESSION" 2>/dev/null | wc -l)
 xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+xdotool windowfocus --sync "$WIN"
 sleep 0.3
 xdotool key --delay 150 ctrl+parenleft
 
