@@ -1771,6 +1771,12 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
     // applying the full layout would re-apply setForcedSize, shrinking the
     // zoomed display back to its tmux grid size.
     if (zoomed && _zoomedWindows.contains(windowId)) {
+        // The visible layout contains the zoomed pane's full window grid.
+        // Keep it current when tmux resizes a window that is already zoomed.
+        const auto visible = TmuxLayoutParser::parse(visibleLayout);
+        if (visible.has_value() && visible->type == TmuxLayoutNodeType::Leaf) {
+            maximizePaneInWindow(windowId, visible->paneId, QSize(visible->width, visible->height));
+        }
         return;
     }
 
@@ -1823,7 +1829,7 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
                 };
                 int zoomedPaneId = findLeafPane(visibleParsed.value());
                 if (zoomedPaneId >= 0) {
-                    maximizePaneInWindow(windowId, zoomedPaneId);
+                    maximizePaneInWindow(windowId, zoomedPaneId, QSize(visibleParsed->width, visibleParsed->height));
                 }
             }
         }
@@ -1962,7 +1968,7 @@ bool TmuxController::focusPane(int paneId)
     return false;
 }
 
-void TmuxController::maximizePaneInWindow(int windowId, int paneId)
+void TmuxController::maximizePaneInWindow(int windowId, int paneId, const QSize &gridSize)
 {
     int tabIndex = tabIndexForWindow(windowId);
     if (tabIndex < 0) {
@@ -1985,6 +1991,8 @@ void TmuxController::maximizePaneInWindow(int windowId, int paneId)
         return;
     }
     splitter->setMaximizedTerminal(displays.first());
+    displays.first()->setForcedSize(gridSize.width(), gridSize.height());
+    _stateRecovery->setPaneDimensions(paneId, gridSize.width(), gridSize.height());
 }
 
 void TmuxController::clearMaximizeInWindow(int windowId)

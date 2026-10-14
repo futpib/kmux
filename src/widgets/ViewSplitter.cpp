@@ -527,9 +527,10 @@ void ViewSplitter::handleMinimizeMaximize(bool maximize, bool zoom)
                 maybeParentSplitter->hideRecurse(currentTerminalDisplay);
             }
 
-            if (auto maybeTerminalDisplay = qobject_cast<TerminalDisplay *>(widgetAt)) {
+            if (auto maybeTerminalDisplay = terminalDisplayFromWidget(widgetAt)) {
                 if (maybeTerminalDisplay != currentTerminalDisplay) {
                     maybeTerminalDisplay->setVisible(false);
+                    containerWidgetForDisplay(maybeTerminalDisplay)->setVisible(false);
                 }
             }
         }
@@ -562,9 +563,10 @@ void ViewSplitter::setMaximizedTerminal(TerminalDisplay *display)
         if (auto *maybeSplitter = qobject_cast<ViewSplitter *>(widgetAt)) {
             maybeSplitter->hideRecurse(display);
         }
-        if (auto maybeTerminalDisplay = qobject_cast<TerminalDisplay *>(widgetAt)) {
+        if (auto maybeTerminalDisplay = terminalDisplayFromWidget(widgetAt)) {
             if (maybeTerminalDisplay != display) {
                 maybeTerminalDisplay->setVisible(false);
+                containerWidgetForDisplay(maybeTerminalDisplay)->setVisible(false);
             }
         }
     }

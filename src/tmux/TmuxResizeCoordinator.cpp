@@ -425,6 +425,18 @@ void TmuxResizeCoordinator::sendClientSize()
         const QSize pageSize = hiddenTab ? container->currentWidget()->size() : page->size();
         const QSize availableSize = page->isConstrained() || hiddenTab ? pageSize : QSize();
         PaneCells pixelCells = maxCellsForWidget(windowSplitter, availableSize);
+        if (windowSplitter->terminalMaximized()) {
+            // Only the zoomed pane occupies this frame. Summing hidden panes
+            // would repeatedly grow tmux's window after each zoomed resize.
+            for (auto *display : displays) {
+                if (display->isVisibleTo(windowSplitter)) {
+                    node.width = display->columns();
+                    node.height = display->lines();
+                    pixelCells = maxCellsForWidget(ViewSplitter::containerWidgetForDisplay(display), availableSize);
+                    break;
+                }
+            }
+        }
         int totalCols = qBound(1, qMax(node.width, pixelCells.cols), 1023);
         int totalLines = qMax(1, qMax(node.height, pixelCells.rows));
 

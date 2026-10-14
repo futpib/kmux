@@ -12,6 +12,7 @@
 #include <QMap>
 #include <QObject>
 #include <QSet>
+#include <QSize>
 #include <QTimer>
 
 #include <functional>
@@ -210,7 +211,7 @@ private:
     void refreshWindowIndexesForTabSync();
     void enableWindowIndexSubscription();
     bool focusPane(int paneId);
-    void maximizePaneInWindow(int windowId, int paneId);
+    void maximizePaneInWindow(int windowId, int paneId, const QSize &gridSize);
     void clearMaximizeInWindow(int windowId);
     void refreshPaneTitles();
     void refreshWorkspaceSnapshot();

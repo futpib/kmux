@@ -3769,8 +3769,11 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     TmuxTestFixture::AttachResult attach;
     TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
 
-    auto layoutSpec = TmuxTestFixture::horizontal({TmuxTestFixture::pane(), TmuxTestFixture::pane()});
-    TmuxTestFixture::applyKonsoleLayout(layoutSpec, attach.mw->viewManager());
+    // Exercise a shown frame so Qt actually reallocates space to the zoomed
+    // pane; a hidden splitter can become maximized without resizing its grid.
+    attach.mw->resize(900, 600);
+    attach.mw->show();
+    QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->sessions().size(), 2, 10000);
 
     // Find the splitter with 2 displays
     ViewSplitter *paneSplitter = nullptr;
@@ -3798,19 +3801,31 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     auto *zoomedDisplay = qobject_cast<TerminalDisplay *>(paneViews.first());
     QVERIFY(zoomedDisplay);
 
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(paneSession);
+    QVERIFY(controller);
+    const int paneId = controller->paneIdForSession(paneSession);
+    QVERIFY(paneId >= 0);
+    QTRY_VERIFY_WITH_TIMEOUT(zoomedDisplay->columns() > 14, 10000);
     int preZoomColumns = zoomedDisplay->columns();
 
     // Zoom from tmux
     QProcess zoomProc;
     zoomProc.start(tmuxPath,
-                   {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("resize-pane"), QStringLiteral("-Z"), QStringLiteral("-t"), ctx.sessionName});
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("resize-pane"),
+                    QStringLiteral("-Z"),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(paneId)});
     QVERIFY(zoomProc.waitForFinished(5000));
     QCOMPARE(zoomProc.exitCode(), 0);
 
     // Wait for Konsole to enter maximized state
     QTRY_VERIFY_WITH_TIMEOUT(paneSplitter->terminalMaximized(), 10000);
 
-    // Record the zoomed display's grid size right after maximize is applied
+    // Maximized state is set before the asynchronous terminal resize completes.
+    // Wait for the grid to expand before recording the size to preserve.
+    QTRY_VERIFY_WITH_TIMEOUT(zoomedDisplay->columns() > preZoomColumns, 10000);
     int zoomedColumns = zoomedDisplay->columns();
     int zoomedLines = zoomedDisplay->lines();
 
@@ -3828,6 +3843,23 @@ void TmuxIntegrationTest::testTmuxZoomSurvivesLayoutChanges()
     QVERIFY2(zoomedDisplay->lines() == zoomedLines,
              qPrintable(QStringLiteral("Expected zoomed lines to remain %1 but got %2")
                             .arg(zoomedLines).arg(zoomedDisplay->lines())));
+
+    // Unzoom must restore both terminal containers and the split pane's grid.
+    zoomProc.start(tmuxPath,
+                   {QStringLiteral("-S"),
+                    ctx.socketPath,
+                    QStringLiteral("resize-pane"),
+                    QStringLiteral("-Z"),
+                    QStringLiteral("-t"),
+                    QLatin1Char('%') + QString::number(paneId)});
+    QVERIFY(zoomProc.waitForFinished(5000));
+    QCOMPARE(zoomProc.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!paneSplitter->terminalMaximized(), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(zoomedDisplay->columns(), preZoomColumns, 10000);
+    for (auto *display : paneSplitter->findChildren<TerminalDisplay *>()) {
+        QVERIFY(display->isVisible());
+        QVERIFY(ViewSplitter::containerWidgetForDisplay(display)->isVisible());
+    }
 
     // Cleanup
     TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
