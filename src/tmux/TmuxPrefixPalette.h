@@ -60,6 +60,7 @@ protected:
 
 private:
     void populateModel();
+    void closePalette(bool restoreTerminalFocus = true);
     void triggerBinding(const TmuxPrefixBinding &binding);
     bool tryTriggerByKey(const QKeyEvent *event);
     // Dispatch a single post-prefix keystroke: trigger the matching binding,

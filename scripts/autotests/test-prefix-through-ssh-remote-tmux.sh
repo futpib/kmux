@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Exercise the nested path: kmux -> local tmux -> ssh -> remote tmux. The
-# remote prefix+x binding records whether C-b C-b passed through the local
-# tmux and became the remote tmux prefix.
+# remote prefix+x binding and prefix+c window creation check that C-b C-b
+# passes through local tmux and becomes the remote tmux prefix.
 # Poll predicates are invoked indirectly by kmux_test_wait_until.
 # shellcheck disable=SC2329
 
@@ -144,6 +144,8 @@ for delay in 0.15 0 0 0 0; do
     if ! kmux_test_wait_until 5 'remote tmux prefix binding' remote_prefix_seen; then
         kmux_test_dump_tmux "$LOCAL_SOCKET" "$LOCAL_SESSION"
         kmux_test_dump_tmux "$REMOTE_SOCKET" "$REMOTE_SESSION"
+        tmux -S "$REMOTE_SOCKET" list-clients -t "$REMOTE_SESSION" -F 'key-table=#{client_key_table} prefix=#{client_prefix}' >&2
+        tmux -S "$REMOTE_SOCKET" capture-pane -pt "$REMOTE_SESSION" >&2
         kmux_test_dump_log "$LOGDIR/kmux.log" 70
         kmux_test_fail "C-b C-b did not reach remote tmux with ${delay}s between presses"
     fi
@@ -160,16 +162,20 @@ if ! kmux_test_wait_until 5 'remote prefix with Ctrl held between B presses' rem
 fi
 
 # Exercise tmux's default prefix+c binding with no pause between the keys.
-send_key Escape
-send_key ctrl+b
-send_key ctrl+b
-send_key c
-remote_window_created() {
-    [[ $(tmux -S "$REMOTE_SOCKET" list-windows -t "$REMOTE_SESSION" -F '#{window_index}' | wc -l) == 2 ]]
-}
-if ! kmux_test_wait_until 5 'remote tmux prefix+c window' remote_window_created; then
-    kmux_test_dump_tmux "$REMOTE_SOCKET" "$REMOTE_SESSION"
-    kmux_test_fail 'C-b C-b c did not create a remote tmux window'
-fi
+for expected_window_count in {2..11}; do
+    send_key ctrl+b
+    send_key ctrl+b
+    send_key c
+    remote_window_created() {
+        [[ $(tmux -S "$REMOTE_SOCKET" list-windows -t "$REMOTE_SESSION" -F '#{window_index}' | wc -l) == "$expected_window_count" ]]
+    }
+    if ! kmux_test_wait_until 5 'remote tmux prefix+c window' remote_window_created; then
+        kmux_test_dump_tmux "$REMOTE_SOCKET" "$REMOTE_SESSION"
+        tmux -S "$REMOTE_SOCKET" list-clients -t "$REMOTE_SESSION" -F 'key-table=#{client_key_table} prefix=#{client_prefix}' >&2
+        tmux -S "$REMOTE_SOCKET" capture-pane -pt "$REMOTE_SESSION" >&2
+        kmux_test_dump_log "$LOGDIR/kmux.log" 80
+        kmux_test_fail "C-b C-b c did not create remote tmux window $expected_window_count"
+    fi
+done
 
 kmux_test_pass 'C-b C-b passed through local tmux and SSH to remote tmux on all trials'

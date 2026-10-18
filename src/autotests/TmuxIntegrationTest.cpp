@@ -7324,12 +7324,15 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     // Second C-b — the palette resolves "C-b" to the default `send-prefix`
     // binding and hands it to the gateway, then closes itself.
     QTest::keyClick(palette, Qt::Key_B, Qt::ControlModifier);
+    Session *paneSession = controller->sessionForPane(controller->activePaneId());
+    QVERIFY(paneSession);
+    const auto views = paneSession->views();
+    QVERIFY(!views.isEmpty());
+    QTest::keyClick(views.first(), Qt::Key_C);
     QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
 
-    // Raw mode: the byte is delivered to cat without a newline, so unlike the
-    // cooked sibling test we do NOT send Enter — the bare prefix byte must
-    // arrive on its own. A failure here (timeout / empty file) would confirm
-    // the reported "send-prefix doesn't reach a TUI" bug.
+    // Raw mode delivers both bytes without Enter. The next key must not be
+    // consumed by the closing palette's still-installed application filter.
     auto readFile = [&]() -> QByteArray {
         QFile f(outFile);
         if (!f.open(QIODevice::ReadOnly)) {
@@ -7337,7 +7340,8 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
         }
         return f.readAll();
     };
-    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray("\x02"), 10000);
+    const QByteArray expected = QByteArray(1, '\x02') + 'c';
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), expected, 10000);
 
     delete attach.mw.data();
 }

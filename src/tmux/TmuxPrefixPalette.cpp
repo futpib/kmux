@@ -9,7 +9,9 @@
 #include "TmuxController.h"
 
 #include "ViewManager.h"
+#include "terminalDisplay/TerminalDisplay.h"
 #include "widgets/ViewContainer.h"
+#include "widgets/ViewSplitter.h"
 
 #include <KActionCollection>
 #include <KLocalizedString>
@@ -172,12 +174,27 @@ void TmuxPrefixPalette::populateModel()
     }
 }
 
+void TmuxPrefixPalette::closePalette(bool restoreTerminalFocus)
+{
+    // deleteLater leaves this application filter active until the next event
+    // loop turn. Release it before another key can be routed to the pane.
+    qApp->removeEventFilter(this);
+    hide();
+    if (restoreTerminalFocus && _viewManager) {
+        if (auto *splitter = _viewManager->activeContainer()->activeViewSplitter()) {
+            if (auto *display = splitter->activeTerminalDisplay()) {
+                display->setFocus(Qt::OtherFocusReason);
+            }
+        }
+    }
+    deleteLater();
+}
+
 void TmuxPrefixPalette::triggerBinding(const TmuxPrefixBinding &binding)
 {
     if (_controller && isCopyModeCommand(binding.command)) {
         _controller->enterCopyMode();
-        hide();
-        deleteLater();
+        closePalette();
         return;
     }
 
@@ -197,16 +214,14 @@ void TmuxPrefixPalette::triggerBinding(const TmuxPrefixBinding &binding)
                     guarded->trigger();
                 }
             });
-            hide();
-            deleteLater();
+            closePalette();
             return;
         }
     }
     if (_controller) {
         _controller->executePrefixCommand(binding.command);
     }
-    hide();
-    deleteLater();
+    closePalette();
 }
 
 bool TmuxPrefixPalette::tryTriggerByKey(const QKeyEvent *event)
@@ -376,8 +391,7 @@ bool isModifierKey(int key)
 void TmuxPrefixPalette::handleKey(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
-        hide();
-        deleteLater();
+        closePalette();
         return;
     }
     if (tryTriggerByKey(event)) {
@@ -385,8 +399,7 @@ void TmuxPrefixPalette::handleKey(QKeyEvent *event)
     }
     // Unknown key — close the palette; matches tmux behaviour (an unknown key
     // after the prefix is a no-op that leaves prefix mode).
-    hide();
-    deleteLater();
+    closePalette();
 }
 
 void TmuxPrefixPalette::keyPressEvent(QKeyEvent *event)
@@ -439,8 +452,7 @@ bool TmuxPrefixPalette::eventFilter(QObject *obj, QEvent *event)
             // the branch checked obj == this.)
             auto *w = qobject_cast<QWidget *>(obj);
             if (w != nullptr && w != this && !isAncestorOf(w)) {
-                hide();
-                deleteLater();
+                closePalette(false);
             }
         }
     }
