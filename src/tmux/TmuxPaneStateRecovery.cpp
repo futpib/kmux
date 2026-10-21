@@ -109,13 +109,18 @@ void TmuxPaneStateRecovery::setPaneDimensions(int paneId, int width, int height)
 void TmuxPaneStateRecovery::capturePaneHistory(int paneId)
 {
     _pendingCapture.insert(paneId);
+    const auto *session = _paneManager->sessionForPane(paneId);
+    const int historyLimit = session ? session->historySize() : -1;
+    // tmux counts -S in physical history rows. Fetch only the history this
+    // session can retain; zero still captures the entire visible screen.
+    const QString start = historyLimit < 0 ? QStringLiteral("-") : QString::number(-historyLimit);
     _gateway->sendCommand(TmuxCommand(QStringLiteral("capture-pane"))
                               .flag(QStringLiteral("-p"))
                               .flag(QStringLiteral("-J"))
                               .flag(QStringLiteral("-e"))
                               .paneTarget(paneId)
                               .flag(QStringLiteral("-S"))
-                              .arg(QStringLiteral("-")),
+                              .arg(start),
                           [this, paneId](bool success, const QString &response) {
                               handleCapturePaneResponse(paneId, success, response);
                           });
@@ -167,8 +172,6 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
     static const char clearSeq[] = "\033[2J\033[H";
     session->injectData(clearSeq, sizeof(clearSeq) - 1);
 
-    QStringList lines = response.split(QLatin1Char('\n'));
-
     // Do NOT trim trailing blank lines. `capture-pane -p -S -` returns the full
     // scrollback plus the visible screen (history + pane_height rows); the blank
     // rows below the cursor are part of the visible screen, not spurious padding.
@@ -179,12 +182,24 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
     // line was pushed to the bottom while the cursor stayed on its original row,
     // so typed input rendered on the wrong row (e.g. on a TUI's box border).
 
-    for (int i = 0; i < lines.size(); ++i) {
-        QByteArray lineData = lines[i].toUtf8();
-        if (i < lines.size() - 1) {
-            lineData.append("\r\n");
+    // Replay in batches rather than allocating every QString row and
+    // restarting the emulator's output timers for each one.
+    QByteArray data;
+    data.reserve(64 * 1024);
+    bool first = true;
+    for (const QStringView line : QStringView(response).tokenize(QLatin1Char('\n'))) {
+        if (!first) {
+            data.append("\r\n");
         }
-        session->injectData(lineData.constData(), lineData.size());
+        first = false;
+        data.append(line.toUtf8());
+        if (data.size() >= 64 * 1024) {
+            session->injectData(data.constData(), data.size());
+            data.clear();
+        }
+    }
+    if (!data.isEmpty()) {
+        session->injectData(data.constData(), data.size());
     }
 
     applyPaneState(paneId);
