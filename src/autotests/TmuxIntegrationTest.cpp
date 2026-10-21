@@ -2515,6 +2515,9 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
                                       tmuxPath,
                                       m_tmuxTmpDir.path(),
                                       ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
 
     // 2. Attach Konsole and apply the same layout
     auto initialLayout = TmuxTestFixture::horizontal(
@@ -2571,17 +2574,20 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     QCoreApplication::sendEvent(bottomRightDisplay, &bottomResizeEvent);
     QCoreApplication::processEvents();
 
+    // Compare the requested cell grid, not the pixel ratio: subtracting each
+    // pane's chrome and rounding to whole rows can turn 3:1 pixels into 21:6
+    // cells. Capture this before tmux's reply can resize the displays again.
+    const int requestedTopLines = topRightDisplay->lines();
+    const int requestedBottomLines = bottomRightDisplay->lines();
+    QVERIFY(requestedTopLines > requestedBottomLines);
+
     // Trigger splitterMoved signal on the nested splitter
     Q_EMIT rightSplitter->splitterMoved(newTop, 1);
 
     QVERIFY2(topRightDisplay->lines() != bottomRightDisplay->lines(),
              qPrintable(QStringLiteral("Expected different line counts but both are %1").arg(topRightDisplay->lines())));
 
-    // 5. Verify the 3:1 nested split propagated to tmux. Assert the ratio
-    // rather than equality with display->lines(): display metrics exclude
-    // the widget's inner margin while tmux's pane_height derives from the
-    // page-wide window size, so they differ by ~1 cell per pane by design
-    // (see TmuxResizeCoordinator::sendClientSize).
+    // 5. Verify the requested nested split propagated to tmux exactly.
     auto readPaneHeights = [&]() -> QList<int> {
         QProcess check;
         check.start(tmuxPath,
@@ -2601,7 +2607,6 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
     };
     QList<int> lastNestedHeights;
     int lastNestedTopH = -1, lastNestedBotH = -1;
-    double lastNestedRatio = -1.0;
     QTRY_VERIFY2_WITH_TIMEOUT(
         [&]() {
             lastNestedHeights = readPaneHeights();
@@ -2610,28 +2615,24 @@ void TmuxIntegrationTest::testNestedResizePropagatedToPty()
             // Pane order: %0 (left), %1 (top-right), %2 (bottom-right)
             lastNestedTopH = lastNestedHeights[1];
             lastNestedBotH = lastNestedHeights[2];
-            if (lastNestedTopH <= lastNestedBotH)
-                return false; // top must be taller (we set 3:1)
-            lastNestedRatio = double(lastNestedTopH) / double(lastNestedBotH);
-            return lastNestedRatio > 2.7 && lastNestedRatio < 3.3;
+            return lastNestedTopH == requestedTopLines && lastNestedBotH == requestedBottomLines;
         }(),
-        qPrintable(QStringLiteral("tmux pane heights: size=%1 h[0]=%2 h[1]=%3 h[2]=%4 | topH=%5 botH=%6 ratio=%7 | topRightDisplay->lines()=%8 "
-                                  "bottomRightDisplay->lines()=%9 newTop=%10 newBottom=%11")
+        qPrintable(QStringLiteral("tmux pane heights: size=%1 h[0]=%2 h[1]=%3 h[2]=%4 | topH=%5 botH=%6 | requestedTop=%7 "
+                                  "requestedBottom=%8 newTop=%9 newBottom=%10")
                        .arg(lastNestedHeights.size())
                        .arg(lastNestedHeights.size() > 0 ? lastNestedHeights[0] : -1)
                        .arg(lastNestedHeights.size() > 1 ? lastNestedHeights[1] : -1)
                        .arg(lastNestedHeights.size() > 2 ? lastNestedHeights[2] : -1)
                        .arg(lastNestedTopH)
                        .arg(lastNestedBotH)
-                       .arg(lastNestedRatio)
-                       .arg(topRightDisplay->lines())
-                       .arg(bottomRightDisplay->lines())
+                       .arg(requestedTopLines)
+                       .arg(requestedBottomLines)
                        .arg(newTop)
                        .arg(newBottom)),
         10000);
 
     // 6. Run 'stty size' in each nested pane and verify the pty size reflects
-    // the ratio. tmux's TIOCSWINSZ passes its pane_height through verbatim, so
+    // the requested grid. tmux's TIOCSWINSZ passes its pane_height through verbatim, so
     // stty size matches pane_height (not display->lines()).
     QList<int> heights = readPaneHeights();
     QCOMPARE(heights.size(), 3);
