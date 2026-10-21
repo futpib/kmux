@@ -41,7 +41,7 @@ void TmuxResizeCoordinator::setGateway(TmuxGateway *gateway)
 // Cells the widget tree could draw if tmux gave it the chance, derived
 // from each leaf's current pixel size minus chrome divided by font. The
 // caller takes max() of this and the layout's already-in-use cell count
-// (TmuxLayoutManager::buildLayoutNode), so:
+// (TmuxLayoutManager::layoutSize), so:
 //
 //   - On a fresh attach the pixel capacity wins over a tmux session that
 //     spawned at the default 80x24, telling tmux to grow the pane to fit
@@ -116,80 +116,6 @@ static PaneCells maxCellsForWidget(QWidget *w, const QSize &availableSize = QSiz
     return {maxCols, sumRows + (n - 1)};
 }
 
-static void setSubtreeHeight(TmuxLayoutNode &node, int height)
-{
-    node.height = height;
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        return;
-    }
-    if (node.type == TmuxLayoutNodeType::HSplit) {
-        for (auto &child : node.children) {
-            setSubtreeHeight(child, height);
-        }
-    } else {
-        if (!node.children.isEmpty()) {
-            int currentSum = 0;
-            for (const auto &child : node.children) {
-                currentSum += child.height;
-            }
-            currentSum += node.children.size() - 1;
-            int diff = currentSum - height;
-            if (diff != 0) {
-                auto &last = node.children.last();
-                int newH = qMax(1, last.height - diff);
-                setSubtreeHeight(last, newH);
-            }
-        }
-    }
-}
-
-static void setSubtreeWidth(TmuxLayoutNode &node, int width)
-{
-    node.width = width;
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        return;
-    }
-    if (node.type == TmuxLayoutNodeType::VSplit) {
-        for (auto &child : node.children) {
-            setSubtreeWidth(child, width);
-        }
-    } else {
-        if (!node.children.isEmpty()) {
-            int currentSum = 0;
-            for (const auto &child : node.children) {
-                currentSum += child.width;
-            }
-            currentSum += node.children.size() - 1;
-            int diff = currentSum - width;
-            if (diff != 0) {
-                auto &last = node.children.last();
-                int newW = qMax(1, last.width - diff);
-                setSubtreeWidth(last, newW);
-            }
-        }
-    }
-}
-
-static void computeAbsoluteOffsets(TmuxLayoutNode &node, int baseX, int baseY)
-{
-    node.xOffset = baseX;
-    node.yOffset = baseY;
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        return;
-    }
-    bool horizontal = (node.type == TmuxLayoutNodeType::HSplit);
-    int offset = 0;
-    for (auto &child : node.children) {
-        if (horizontal) {
-            computeAbsoluteOffsets(child, baseX + offset, baseY);
-            offset += child.width + 1;
-        } else {
-            computeAbsoluteOffsets(child, baseX, baseY + offset);
-            offset += child.height + 1;
-        }
-    }
-}
-
 TmuxResizeCoordinator::TmuxResizeCoordinator(TmuxGateway *gateway, TmuxController *controller, TmuxPaneManager *paneManager, TmuxLayoutManager *layoutManager, ViewManager *viewManager, QObject *parent)
     : QObject(parent)
     , _gateway(gateway)
@@ -218,72 +144,6 @@ void TmuxResizeCoordinator::onPaneViewSizeChanged(bool suppressResize)
         return;
     }
     _resizeTimer.start();
-}
-
-// Recursively clamp a layout tree so that its root dimensions match targetW x targetH.
-// The difference between the node's current size and the target is absorbed by the
-// last child along the split axis; the cross-axis is propagated to all children.
-static void clampLayoutToSize(TmuxLayoutNode &node, int targetW, int targetH)
-{
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        node.width = targetW;
-        node.height = targetH;
-        return;
-    }
-
-    bool horizontal = (node.type == TmuxLayoutNodeType::HSplit);
-    node.width = targetW;
-    node.height = targetH;
-
-    if (node.children.isEmpty()) {
-        return;
-    }
-
-    if (horizontal) {
-        // Cross-axis: all children get the same height
-        for (auto &child : node.children) {
-            setSubtreeHeight(child, targetH);
-        }
-        // Split axis: compute current total width of children
-        int currentTotal = 0;
-        for (const auto &child : node.children) {
-            currentTotal += child.width;
-        }
-        currentTotal += node.children.size() - 1; // separators
-        int diff = currentTotal - targetW;
-        if (diff != 0) {
-            // Absorb the difference in the last child
-            auto &last = node.children.last();
-            int newWidth = last.width - diff;
-            if (newWidth < 1) {
-                newWidth = 1;
-            }
-            clampLayoutToSize(last, newWidth, targetH);
-        }
-    } else {
-        // Cross-axis: all children get the same width
-        for (auto &child : node.children) {
-            setSubtreeWidth(child, targetW);
-        }
-        // Split axis: compute current total height of children
-        int currentTotal = 0;
-        for (const auto &child : node.children) {
-            currentTotal += child.height;
-        }
-        currentTotal += node.children.size() - 1; // separators
-        int diff = currentTotal - targetH;
-        if (diff != 0) {
-            auto &last = node.children.last();
-            int newHeight = last.height - diff;
-            if (newHeight < 1) {
-                newHeight = 1;
-            }
-            clampLayoutToSize(last, targetW, newHeight);
-        }
-    }
-
-    // Recompute absolute offsets after clamping
-    computeAbsoluteOffsets(node, node.xOffset, node.yOffset);
 }
 
 void TmuxResizeCoordinator::onSplitterMoved(ViewSplitter *splitter)
@@ -332,7 +192,7 @@ void TmuxResizeCoordinator::onSplitterMoved(ViewSplitter *splitter)
                                    << node.width << "x" << node.height
                                    << "to" << clampW << "x" << clampH
                                    << "(tmux window size)";
-        clampLayoutToSize(node, clampW, clampH);
+        TmuxLayoutManager::resizeLayout(node, clampW, clampH);
     }
 
     QString layoutString = TmuxLayoutParser::serialize(node);
@@ -374,7 +234,7 @@ void TmuxResizeCoordinator::sendClientSize()
 
         // Two views of "what does this client want as a window size?":
         //
-        //   layoutCells = TmuxLayoutManager::buildLayoutNode(...)
+        //   layoutCells = TmuxLayoutManager::layoutSize(...)
         //     The cells already in use — display->columns()/lines() summed
         //     up the splitter tree the same way select-layout encodes them.
         //     Stable across calls (driven by tmux's setForcedSize), so
@@ -412,7 +272,7 @@ void TmuxResizeCoordinator::sendClientSize()
             continue;
         }
 
-        TmuxLayoutNode node = TmuxLayoutManager::buildLayoutNode(windowSplitter, _paneManager);
+        QSize layoutCells = TmuxLayoutManager::layoutSize(windowSplitter);
         // A smaller client can pin the splitter to tmux's layout while the
         // page still has room. Measure that room without changing the rendered
         // layout: distribute the unused pixels through the existing splits,
@@ -430,19 +290,18 @@ void TmuxResizeCoordinator::sendClientSize()
             // would repeatedly grow tmux's window after each zoomed resize.
             for (auto *display : displays) {
                 if (display->isVisibleTo(windowSplitter)) {
-                    node.width = display->columns();
-                    node.height = display->lines();
+                    layoutCells = QSize(display->columns(), display->lines());
                     pixelCells = maxCellsForWidget(ViewSplitter::containerWidgetForDisplay(display), availableSize);
                     break;
                 }
             }
         }
-        int totalCols = qBound(1, qMax(node.width, pixelCells.cols), 1023);
-        int totalLines = qMax(1, qMax(node.height, pixelCells.rows));
+        int totalCols = qBound(1, qMax(layoutCells.width(), pixelCells.cols), 1023);
+        int totalLines = qMax(1, qMax(layoutCells.height(), pixelCells.rows));
 
         qCDebug(KonsoleTmuxResize) << "  computeSize tree: windowId=" << windowId << "pageSize=" << page->size() << "splitterSize=" << windowSplitter->size()
-                                   << "layoutCells=" << QSize(node.width, node.height) << "pixelCells=" << QSize(pixelCells.cols, pixelCells.rows)
-                                   << "→ cols=" << totalCols << "lines=" << totalLines;
+                                   << "layoutCells=" << layoutCells << "pixelCells=" << QSize(pixelCells.cols, pixelCells.rows) << "→ cols=" << totalCols
+                                   << "lines=" << totalLines;
 
         if (totalCols <= 0 || totalLines <= 0) {
             qCDebug(KonsoleTmuxResize) << "sendClientSize: skipping windowId=" << windowId << "totalSize=" << QSize(totalCols, totalLines) << "(non-positive)";

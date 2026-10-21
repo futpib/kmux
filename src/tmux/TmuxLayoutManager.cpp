@@ -19,99 +19,69 @@
 
 #include <QLoggingCategory>
 
+#include <utility>
+
 Q_LOGGING_CATEGORY(KonsoleTmuxLayout, "konsole.tmux.layout", QtWarningMsg)
 
 namespace Konsole
 {
 
-// Recursively set the height of a subtree node and propagate into children.
-// Used when an HSplit parent constrains all children to the same height.
-static void setSubtreeHeight(TmuxLayoutNode &node, int height)
-{
-    node.height = height;
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        return;
-    }
-    if (node.type == TmuxLayoutNodeType::HSplit) {
-        // HSplit: height is the cross-axis — propagate to all children
-        for (auto &child : node.children) {
-            setSubtreeHeight(child, height);
-        }
-    } else {
-        // VSplit: height is the split-axis — children stack vertically.
-        // Their heights must sum to (height - separators). Absorb any
-        // difference in the last child so tmux's checksum validation passes.
-        if (!node.children.isEmpty()) {
-            int currentSum = 0;
-            for (const auto &child : node.children) {
-                currentSum += child.height;
-            }
-            currentSum += node.children.size() - 1; // separators
-            int diff = currentSum - height;
-            if (diff != 0) {
-                auto &last = node.children.last();
-                int newH = qMax(1, last.height - diff);
-                setSubtreeHeight(last, newH);
-            }
-        }
-    }
-}
-
-// Recursively set the width of a subtree node and propagate into children.
-// Used when a VSplit parent constrains all children to the same width.
-static void setSubtreeWidth(TmuxLayoutNode &node, int width)
+// Assign final dimensions and absolute offsets in one top-down pass. The
+// last child absorbs a split-axis difference, matching tmux's layout rules.
+static void applyLayoutBounds(TmuxLayoutNode &node, int width, int height, int x, int y)
 {
     node.width = width;
-    if (node.type == TmuxLayoutNodeType::Leaf) {
+    node.height = height;
+    node.xOffset = x;
+    node.yOffset = y;
+    if (node.type == TmuxLayoutNodeType::Leaf || node.children.isEmpty()) {
         return;
     }
-    if (node.type == TmuxLayoutNodeType::VSplit) {
-        // VSplit: width is the cross-axis — propagate to all children
-        for (auto &child : node.children) {
-            setSubtreeWidth(child, width);
+    const bool horizontal = node.type == TmuxLayoutNodeType::HSplit;
+    int total = node.children.size() - 1;
+    for (const auto &child : std::as_const(node.children)) {
+        total += horizontal ? child.width : child.height;
+    }
+    const int difference = (horizontal ? width : height) - total;
+    int offset = 0;
+    for (auto &child : node.children) {
+        int extent = horizontal ? child.width : child.height;
+        if (&child == &node.children.last()) {
+            extent = qMax(1, extent + difference);
         }
-    } else {
-        // HSplit: width is the split-axis — children sit side-by-side.
-        // Their widths must sum to (width - separators). Absorb any
-        // difference in the last child so tmux's checksum validation passes.
-        if (!node.children.isEmpty()) {
-            int currentSum = 0;
-            for (const auto &child : node.children) {
-                currentSum += child.width;
-            }
-            currentSum += node.children.size() - 1; // separators
-            int diff = currentSum - width;
-            if (diff != 0) {
-                auto &last = node.children.last();
-                int newW = qMax(1, last.width - diff);
-                setSubtreeWidth(last, newW);
-            }
-        }
+        applyLayoutBounds(child, horizontal ? extent : width, horizontal ? height : extent, x + (horizontal ? offset : 0), y + (horizontal ? 0 : offset));
+        offset += extent + 1;
     }
 }
 
-// Recursively compute absolute offsets for all nodes in the tree.
-// baseX/baseY are the absolute position of this node's top-left corner.
-static void computeAbsoluteOffsets(TmuxLayoutNode &node, int baseX, int baseY)
+void TmuxLayoutManager::resizeLayout(TmuxLayoutNode &node, int width, int height)
 {
-    node.xOffset = baseX;
-    node.yOffset = baseY;
+    applyLayoutBounds(node, width, height, node.xOffset, node.yOffset);
+}
 
-    if (node.type == TmuxLayoutNodeType::Leaf) {
-        return;
-    }
-
-    bool horizontal = (node.type == TmuxLayoutNodeType::HSplit);
-    int offset = 0;
-    for (auto &child : node.children) {
-        if (horizontal) {
-            computeAbsoluteOffsets(child, baseX + offset, baseY);
-            offset += child.width + 1; // +1 for separator
+// Size advertisements need only the aggregate cell count, not a layout tree
+// with pane identities, normalized descendants and serialized offsets.
+QSize TmuxLayoutManager::layoutSize(ViewSplitter *splitter)
+{
+    const bool horizontal = splitter->orientation() == Qt::Horizontal;
+    int extent = 0;
+    int cross = 0;
+    int children = 0;
+    for (int i = 0; i < splitter->count(); ++i) {
+        QSize size;
+        if (auto *display = ViewSplitter::terminalDisplayForWidget(splitter->widget(i))) {
+            size = QSize(display->columns(), display->lines());
+        } else if (auto *nested = qobject_cast<ViewSplitter *>(splitter->widget(i))) {
+            size = layoutSize(nested);
         } else {
-            computeAbsoluteOffsets(child, baseX, baseY + offset);
-            offset += child.height + 1;
+            continue;
         }
+        extent += horizontal ? size.width() : size.height();
+        cross = qMax(cross, horizontal ? size.height() : size.width());
+        ++children;
     }
+    extent += qMax(0, children - 1);
+    return horizontal ? QSize(extent, cross) : QSize(cross, extent);
 }
 
 TmuxLayoutManager::TmuxLayoutManager(TmuxPaneManager *paneManager, ViewManager *viewManager, QObject *parent)
@@ -121,7 +91,8 @@ TmuxLayoutManager::TmuxLayoutManager(TmuxPaneManager *paneManager, ViewManager *
 {
 }
 
-TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPaneManager *paneManager)
+// Measure each subtree once before normalizing the completed tree.
+static TmuxLayoutNode buildMeasuredLayout(ViewSplitter *splitter, TmuxPaneManager *paneManager)
 {
     // Single-child splitter: unwrap and recurse into the child.
     // Displays are wrapped in a container QWidget (see ensureContainerWidget),
@@ -140,7 +111,7 @@ TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPa
         }
         auto *childSplitter = qobject_cast<ViewSplitter *>(splitter->widget(0));
         if (childSplitter) {
-            return buildLayoutNode(childSplitter, paneManager);
+            return buildMeasuredLayout(childSplitter, paneManager);
         }
     }
 
@@ -159,7 +130,7 @@ TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPa
             child.width = display->columns();
             child.height = display->lines();
         } else if (auto *childSplitter = qobject_cast<ViewSplitter *>(splitter->widget(i))) {
-            child = buildLayoutNode(childSplitter, paneManager);
+            child = buildMeasuredLayout(childSplitter, paneManager);
         } else {
             continue;
         }
@@ -182,27 +153,18 @@ TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPa
     if (horizontal) {
         node.width = offset > 0 ? offset - 1 : 0; // subtract last separator
         node.height = maxCross;
-        // tmux requires all children in an HSplit to have the same height as parent;
-        // propagate recursively into nested split children
-        for (auto &child : node.children) {
-            setSubtreeHeight(child, maxCross);
-        }
     } else {
         node.width = maxCross;
         node.height = offset > 0 ? offset - 1 : 0;
-        // tmux requires all children in a VSplit to have the same width as parent;
-        // propagate recursively into nested split children
-        for (auto &child : node.children) {
-            setSubtreeWidth(child, maxCross);
-        }
     }
 
-    // Compute absolute offsets for the entire subtree.
-    // The caller (or top-level) will set the final base position;
-    // for now use (0,0) as the root offset — onSplitterMoved always
-    // calls buildLayoutNode on the top-level splitter.
-    computeAbsoluteOffsets(node, 0, 0);
+    return node;
+}
 
+TmuxLayoutNode TmuxLayoutManager::buildLayoutNode(ViewSplitter *splitter, TmuxPaneManager *paneManager)
+{
+    TmuxLayoutNode node = buildMeasuredLayout(splitter, paneManager);
+    resizeLayout(node, node.width, node.height);
     return node;
 }
 

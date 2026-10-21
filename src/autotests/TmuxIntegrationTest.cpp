@@ -10431,7 +10431,8 @@ void TmuxIntegrationTest::testDeepLayoutResize()
     TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
     attach.mw->resize(1600, 1000);
     attach.mw->show();
-    QVERIFY(QTest::qWaitForWindowExposed(attach.mw));
+    attach.mw->activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
     auto *controller = attach.bridge->controller();
     QTRY_COMPARE_WITH_TIMEOUT(attach.mw->viewManager()->sessions().size(), depth + 1, 15000);
     auto *splitter = attach.container->viewSplitterAt(0);
@@ -10465,6 +10466,9 @@ void TmuxIntegrationTest::testDeepLayoutResize()
     QTest::qWait(500);
     for (const QSize size : {QSize(1400, 900), QSize(1600, 1000)}) {
         attach.mw->resize(size);
+        // Native window-manager resize events and the debounced size
+        // advertisement must finish before the next splitter interaction.
+        QTest::qWait(300);
         controller->sendClientSize();
         QVERIFY(flushOutputProbe(controller->gateway()));
         QVERIFY(panesPresent());
@@ -10477,6 +10481,8 @@ void TmuxIntegrationTest::testDeepLayoutResize()
     const auto before = splitter->sizes();
     QCOMPARE(before.size(), 2);
     splitter->setSizes({before[0] + 50, qMax(1, before[1] - 50)});
+    QCoreApplication::processEvents();
+    QVERIFY(splitter->sizes().first() > before.first());
     Q_EMIT splitter->splitterMoved(splitter->sizes().first(), 1);
     QVERIFY(flushOutputProbe(controller->gateway()));
     QTRY_VERIFY_WITH_TIMEOUT(paneWidth() > originalWidth, 15000);

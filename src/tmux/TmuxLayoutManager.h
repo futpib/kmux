@@ -10,6 +10,7 @@
 #include <QList>
 #include <QMap>
 #include <QObject>
+#include <QSize>
 
 namespace Konsole
 {
@@ -28,6 +29,8 @@ public:
 
     int applyLayout(int tabIndex, const TmuxLayoutNode &layout);
     static TmuxLayoutNode buildLayoutNode(ViewSplitter *splitter, TmuxPaneManager *paneManager);
+    static QSize layoutSize(ViewSplitter *splitter);
+    static void resizeLayout(TmuxLayoutNode &node, int width, int height);
 
 Q_SIGNALS:
     void splitterDragStarted();
