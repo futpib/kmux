@@ -221,6 +221,7 @@ private:
     // Enable tmux control-mode flow control (pause-after) so a suspended/stalled
     // client can't wedge the server. Idempotent; safe to call on every init.
     void enableFlowControl();
+    void pauseUnownedPane(int paneId);
     void connectGatewaySignals();
 
     TmuxGateway *_gateway;
@@ -236,6 +237,7 @@ private:
     QMap<int, QList<int>> _windowPanes;
     QSet<int> _zoomedWindows;
     QSet<int> _hiddenWindows;
+    QSet<int> _pausedOutputPanes;
     int _restrictedWindowId = -1;
 
     bool shouldShowWindow(int windowId) const;

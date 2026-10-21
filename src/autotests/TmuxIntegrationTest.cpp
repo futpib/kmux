@@ -9996,7 +9996,11 @@ void TmuxIntegrationTest::testHiddenPaneRendering()
     auto send = [&](const QString &text) {
         return tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), firstPane, QStringLiteral("-l"), text});
     };
-    QTRY_VERIFY_WITH_TIMEOUT(session->getAllDisplayedText(false).contains(QLatin1String("PROBE_READY")), 10000);
+    QString probeHistory;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        tmux({QStringLiteral("capture-pane"), QStringLiteral("-p"), QStringLiteral("-S"), QStringLiteral("-"), QStringLiteral("-t"), firstPane}, &probeHistory)
+            && probeHistory.contains(QLatin1String("PROBE_READY")),
+        10000);
     QString initialGrid;
     QTRY_VERIFY_WITH_TIMEOUT(
         tmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), firstPane, QStringLiteral("#{pane_width}x#{pane_height}")},
@@ -10211,7 +10215,13 @@ void TmuxIntegrationTest::testDetachedPaneOutputLifecycle()
     QSignalSpy sourceOutput(controller->gateway(), &TmuxGateway::outputReceived);
     QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), pane, QStringLiteral("-l"), QStringLiteral("DETACHED_OUTPUT\n")}));
     QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(paneId)->getAllDisplayedText(false).contains(QLatin1String("DETACHED_OUTPUT")), 10000);
-    qInfo() << "Untracked output notifications:" << sourceOutput.size();
+    QVERIFY(flushOutputProbe(controller->gateway()));
+    const auto untrackedOutput = [&](int id) {
+        return std::count_if(sourceOutput.cbegin(), sourceOutput.cend(), [id](const auto &notification) {
+            return notification.first().toInt() == id;
+        });
+    };
+    QCOMPARE(untrackedOutput(paneId), 0);
 
     // Splits created while detached must also stream to their owning window.
     QString splitPane;
@@ -10227,8 +10237,12 @@ void TmuxIntegrationTest::testDetachedPaneOutputLifecycle()
     splitPane = splitPane.trimmed();
     const int splitId = splitPane.mid(1).toInt();
     QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(splitId), 10000);
+    QVERIFY(flushOutputProbe(controller->gateway()));
+    sourceOutput.clear();
     QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), splitPane, QStringLiteral("-l"), QStringLiteral("SPLIT_OUTPUT\n")}));
     QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("SPLIT_OUTPUT")), 10000);
+    QVERIFY(flushOutputProbe(controller->gateway()));
+    QCOMPARE(untrackedOutput(splitId), 0);
 
     // Pane ownership can move between windows without a detach/merge action.
     const int sourcePaneId = controller->activePaneId();

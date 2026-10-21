@@ -448,6 +448,7 @@ void TmuxController::rebindGateway(TmuxGateway *gateway)
     _stateRecovery->setGateway(gateway);
     _stateRecovery->clear();
     _flowControlEnabled = false;
+    _pausedOutputPanes.clear();
     _windowIndexSubscriptionEnabled = false;
     _explicitDetach = false;
     connectGatewaySignals();
@@ -912,6 +913,20 @@ void TmuxController::enableWindowIndexSubscription()
                               .singleQuotedArg(QStringLiteral("%1:@*:#{window_index}").arg(QLatin1String(windowOrderSubscriptionName))));
 }
 
+void TmuxController::pauseUnownedPane(int paneId)
+{
+    if (_pausedOutputPanes.contains(paneId)) {
+        return;
+    }
+    _pausedOutputPanes.insert(paneId);
+    // Pause drops this client's copy while tmux keeps the pane's screen and
+    // history. Turning output off instead can backpressure the program when
+    // its last displaying client disconnects.
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                              .flag(QStringLiteral("-A"))
+                              .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":pause")));
+}
+
 void TmuxController::onPanePaused(int paneId)
 {
     // tmux paused this pane because our control client fell more than
@@ -921,7 +936,7 @@ void TmuxController::onPanePaused(int paneId)
     // everything up to the pause point and the link is healthy again. Resume the
     // pane and resync its current contents: a bare resumed stream would
     // otherwise paint onto a screen missing whatever was dropped.
-    if (!_paneManager->hasPane(paneId)) {
+    if (_pausedOutputPanes.contains(paneId) || !_paneManager->hasPane(paneId)) {
         return;
     }
     const int windowId = windowIdForPane(paneId);
@@ -1445,6 +1460,9 @@ void TmuxController::hideWindow(int windowId)
     // windowIdForPane(activePaneId) return -1, and tmux's own active pane
     // doesn't update without a user-initiated focus change it can echo.
     const QList<int> hiddenPanes = _windowPanes.value(windowId);
+    for (int paneId : hiddenPanes) {
+        pauseUnownedPane(paneId);
+    }
     if (hiddenPanes.contains(_activePaneId)) {
         _activePaneId = -1;
         for (auto it = _windowPanes.constBegin(); it != _windowPanes.constEnd(); ++it) {
@@ -1513,6 +1531,9 @@ void TmuxController::unhideWindow(int windowId)
                               _stateRecovery->queryPaneStates(wId);
                               const QList<int> panesInWindow = _windowPanes.value(wId);
                               for (int paneId : panesInWindow) {
+                                  if (_stateRecovery->isPendingCapture(paneId)) {
+                                      continue;
+                                  }
                                   _paneManager->suppressOutput(paneId);
                                   _stateRecovery->capturePaneHistory(paneId);
                               }
@@ -1526,10 +1547,6 @@ void TmuxController::showOnlyWindow(int windowId)
 
 void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layout)
 {
-    if (!shouldShowWindow(windowId)) {
-        return;
-    }
-
     // Collect pane IDs from the layout tree
     QList<int> paneIds;
     std::function<void(const TmuxLayoutNode &)> collectPanes = [&](const TmuxLayoutNode &node) {
@@ -1542,13 +1559,28 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
         }
     };
     collectPanes(layout);
+    if (!shouldShowWindow(windowId)) {
+        for (int paneId : paneIds) {
+            pauseUnownedPane(paneId);
+        }
+        return;
+    }
 
     QList<int> oldPaneIds = _windowPanes.value(windowId);
     _windowPanes[windowId] = paneIds;
 
-    // Ensure all pane sessions exist
+    // Ensure all pane sessions exist, and resume panes moved from an unowned
+    // window. They need a fresh snapshot of output dropped while paused.
+    QList<int> resumedPanes;
     for (int paneId : paneIds) {
         _paneManager->createPaneSession(paneId);
+        if (_pausedOutputPanes.remove(paneId)) {
+            _paneManager->suppressOutput(paneId);
+            _gateway->sendCommand(TmuxCommand(QStringLiteral("refresh-client"))
+                                      .flag(QStringLiteral("-A"))
+                                      .singleQuotedArg(QLatin1Char('%') + QString::number(paneId) + QStringLiteral(":continue")));
+            resumedPanes.append(paneId);
+        }
     }
 
     int tabIndex = tabIndexForWindow(windowId);
@@ -1569,6 +1601,15 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
             if (!paneIds.contains(oldPaneId)) {
                 _paneManager->destroyPaneSession(oldPaneId);
             }
+        }
+    }
+
+    // Initialization already recovers all tracked panes after applying layouts.
+    if (!resumedPanes.isEmpty() && _state != State::Initializing) {
+        rememberPaneDimensions(_stateRecovery, layout);
+        _stateRecovery->queryPaneStates(windowId);
+        for (int paneId : resumedPanes) {
+            _stateRecovery->capturePaneHistory(paneId);
         }
     }
 
@@ -1608,15 +1649,18 @@ void TmuxController::refreshWorkspaceSnapshot()
         QStringLiteral("pane_active"),
     });
 
+    const int requestedSession = _sessionId;
+    const QSet<int> pausedAtRequest = _pausedOutputPanes;
     _gateway->sendCommand(
         TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).sessionTarget(_sessionId).format(*spec),
-        [this, spec, layoutField](bool success, const QString &response) {
-            if (!success) {
+        [this, spec, layoutField, requestedSession, pausedAtRequest](bool success, const QString &response) {
+            if (!success || _sessionId != requestedSession) {
                 return;
             }
 
             TmuxWorkspaceSnapshot snapshot;
             QMap<int, TmuxWindowSnapshot> windowsById;
+            QSet<int> livePanes;
             for (const TmuxFormatSpec::Row &row : spec->parseRows(response)) {
                 bool pidOk = false;
                 const qint64 serverPid = row.value(QStringLiteral("pid")).toLongLong(&pidOk);
@@ -1655,6 +1699,7 @@ void TmuxController::refreshWorkspaceSnapshot()
                     window.layout = layout;
                 }
 
+                livePanes.insert(paneId);
                 TmuxPaneSnapshot pane;
                 pane.paneId = paneId;
                 pane.workingDirectory = row.value(QStringLiteral("pane_current_path"));
@@ -1668,6 +1713,9 @@ void TmuxController::refreshWorkspaceSnapshot()
             });
             snapshot.windows = std::move(windows);
             if (snapshot.isValid()) {
+                // Prune closed panes without removing subscriptions added while
+                // this query was in flight.
+                _pausedOutputPanes.subtract(pausedAtRequest - livePanes);
                 _workspaceSnapshot = std::move(snapshot);
             }
         });
@@ -1755,6 +1803,11 @@ void TmuxController::onLayoutChanged(int windowId, const QString &layout, const 
         // attach and a later %pause can shrink the emulation back to stale
         // dimensions and make resumed output disappear off-screen.
         rememberPaneDimensions(_stateRecovery, parsed.value());
+    }
+
+    if (parsed.has_value() && !shouldShowWindow(windowId)) {
+        applyWindowLayout(windowId, parsed.value());
+        return;
     }
 
     // Skip layout-change notifications while dragging a splitter — they are
@@ -2022,6 +2075,8 @@ void TmuxController::onSessionChanged(int sessionId, const QString &name)
 {
     _sessionId = sessionId;
     _sessionName = name;
+    // tmux resets per-client output offsets when switching sessions.
+    _pausedOutputPanes.clear();
     // Don't tear down old windows/panes before the new session's are in place:
     // doing so empties the view container and closes the MainWindow via
     // ViewManager::empty(). Instead, reinitialize from tmux — applyWindowLayout
