@@ -482,6 +482,14 @@ void TerminalDisplay::updateImage()
     // Better control over screen resizing visual glitches
     _screenWindow->updateCurrentLine();
 
+    // Hidden tabs and zoomed siblings still receive terminal output. Keep the
+    // model current, but defer the cell scan and image copy until showEvent.
+    // Scrolling the old image across those missed frames would be invalid.
+    if (!isVisible()) {
+        _screenWindow->resetScrollCount();
+        return;
+    }
+
     // optimization - scroll the existing image where possible and
     // avoid expensive text drawing for parts of the image that
     // can simply be moved up or down
@@ -1326,6 +1334,7 @@ QSize TerminalDisplay::cellChromeSize() const
 void TerminalDisplay::showEvent(QShowEvent *)
 {
     propagateSize();
+    updateImage();
     Q_EMIT changedContentSizeSignal(_contentRect.height(), _contentRect.width());
 }
 void TerminalDisplay::hideEvent(QHideEvent *)
