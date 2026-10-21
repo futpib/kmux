@@ -27,10 +27,14 @@ TmuxPaneManager::TmuxPaneManager(TmuxGateway *gateway, QObject *parent)
     : QObject(parent)
     , _gateway(gateway)
 {
+    _paneTitleQueryTimer.setSingleShot(true);
+    _paneTitleQueryTimer.setInterval(0);
+    connect(&_paneTitleQueryTimer, &QTimer::timeout, this, &TmuxPaneManager::sendPaneTitleQuery);
 }
 
 void TmuxPaneManager::setGateway(TmuxGateway *gateway)
 {
+    _paneTitleQueryTimer.stop();
     _gateway = gateway;
     for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
         ++_paneModeEpoch[it.key()];
@@ -104,17 +108,23 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
         });
     }
 
-    connect(session, &Session::finished, this, [this, paneId]() {
+    connect(session, &Session::finished, this, [this, paneId, session]() {
         // If the pane is still tracked, the close was initiated by the user
         // (not by tmux), so we need to tell tmux to kill the pane.
         // When tmux initiates the close, destroyPaneSession() removes the
         // pane from _paneToSession before calling session->close().
-        if (_paneToSession.contains(paneId)) {
+        if (_paneToSession.value(paneId) == session) {
             _gateway->sendCommand(TmuxCommand(QStringLiteral("kill-pane")).paneTarget(paneId));
         }
     });
 
-    connect(session, &QObject::destroyed, this, [this, paneId]() {
+    connect(session, &QObject::destroyed, this, [this, paneId, session]() {
+        _sessionToPane.remove(session);
+        // A moved or reattached pane can already have a replacement session
+        // when the old view's deferred deletion finally reaches us.
+        if (_paneToSession.contains(paneId) && _paneToSession.value(paneId) != session) {
+            return;
+        }
         _paneToSession.remove(paneId);
         _paneModeKnown.remove(paneId);
         _paneModeEpoch.remove(paneId);
@@ -129,6 +139,7 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
 
     _paneModeEpoch.insert(paneId, 0);
     _paneToSession[paneId] = session;
+    _sessionToPane.insert(session, paneId);
     return session;
 }
 
@@ -138,6 +149,7 @@ void TmuxPaneManager::destroyPaneSession(int paneId)
     if (it != _paneToSession.end()) {
         Session *session = it.value();
         _paneToSession.erase(it);
+        _sessionToPane.remove(session);
         session->close();
     }
 }
@@ -214,22 +226,12 @@ bool TmuxPaneManager::hasPane(int paneId) const
 
 int TmuxPaneManager::paneIdForSession(Session *session) const
 {
-    for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
-        if (it.value() == session) {
-            return it.key();
-        }
-    }
-    return -1;
+    return _sessionToPane.value(session, -1);
 }
 
 int TmuxPaneManager::paneIdForDisplay(TerminalDisplay *display) const
 {
-    for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
-        if (it.value()->views().contains(display)) {
-            return it.key();
-        }
-    }
-    return -1;
+    return display && display->sessionController() ? paneIdForSession(display->session().data()) : -1;
 }
 
 Session *TmuxPaneManager::sessionForPane(int paneId) const
@@ -244,6 +246,18 @@ QList<int> TmuxPaneManager::allPaneIds() const
 
 void TmuxPaneManager::queryPaneTitleInfo()
 {
+    // Attachment and layout changes can request this once per window in the
+    // same batch of control notifications. Query the final pane set once.
+    if (!_paneTitleQueryTimer.isActive()) {
+        _paneTitleQueryTimer.start();
+    }
+}
+
+void TmuxPaneManager::sendPaneTitleQuery()
+{
+    if (_paneToSession.isEmpty()) {
+        return;
+    }
     TmuxFormatSpec spec({
         QStringLiteral("pane_id"),
         QStringLiteral("pane_current_command"),
@@ -264,7 +278,7 @@ void TmuxPaneManager::queryPaneTitleInfo()
     });
 
     const QMap<int, quint64> requestedEpochs = _paneModeEpoch;
-    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).allSessions().format(spec),
+    _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).format(spec),
                           [this, spec, requestedEpochs](bool success, const QString &response) {
                               if (!success || response.isEmpty()) {
                                   return;

@@ -19,6 +19,7 @@
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QLineEdit>
@@ -1667,6 +1668,198 @@ void TmuxIntegrationTest::testTmuxPaneTitleInfo()
 
     QTRY_VERIFY_WITH_TIMEOUT(!attach.mw, 10000);
     delete attach.mw.data();
+}
+
+void TmuxIntegrationTest::testManyPaneMetadataAndResize_data()
+{
+    QTest::addColumn<int>("windowCount");
+    QTest::addColumn<int>("panesPerWindow");
+    QTest::newRow("one-pane") << 1 << 1;
+    QTest::newRow("eight-tabs") << 8 << 1;
+    QTest::newRow("32-tabs") << 32 << 1;
+    QTest::newRow("64-tabs") << 64 << 1;
+    QTest::newRow("eight-splits") << 1 << 8;
+    QTest::newRow("32-splits") << 1 << 32;
+    QTest::newRow("64-splits") << 1 << 64;
+}
+
+void TmuxIntegrationTest::testManyPaneMetadataAndResize()
+{
+    QFETCH(int, windowCount);
+    QFETCH(int, panesPerWindow);
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("sleep 300"), tmuxPath, m_tmuxTmpDir.path(), ctx, 1023, 100);
+    auto cleanup = qScopeGuard([&] {
+        QProcess::execute(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("kill-server")});
+    });
+    auto runTmux = [&](const QStringList &arguments, QString *output = nullptr) {
+        QProcess process;
+        process.start(tmuxPath, QStringList{QStringLiteral("-S"), ctx.socketPath} + arguments);
+        if (!process.waitForFinished(5000) || process.exitCode() != 0) {
+            qWarning() << arguments << process.readAllStandardError();
+            return false;
+        }
+        if (output) {
+            *output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        }
+        return true;
+    };
+
+    // An unrelated session must not affect the workspace or the pane titles.
+    QVERIFY(runTmux({QStringLiteral("new-session"), QStringLiteral("-d"), QStringLiteral("-s"), QStringLiteral("unrelated"), QStringLiteral("sleep 300")}));
+    QVERIFY(runTmux({QStringLiteral("set-option"), QStringLiteral("-g"), QStringLiteral("automatic-rename"), QStringLiteral("off")}));
+    QVERIFY(runTmux({QStringLiteral("set-option"), QStringLiteral("-g"), QStringLiteral("pane-base-index"), QStringLiteral("3")}));
+    const QString directory = m_tmuxTmpDir.path() + QStringLiteral("/metadata's directory\nsecond line");
+    QVERIFY(QDir().mkpath(directory));
+    QStringList windowTokens;
+    QStringList paneTokens;
+    for (int w = 0; w < windowCount; ++w) {
+        QString window;
+        if (w == 0) {
+            QVERIFY(runTmux({QStringLiteral("list-windows"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("-F"), QStringLiteral("#{window_id}")},
+                            &window));
+            QVERIFY(runTmux({QStringLiteral("respawn-pane"),
+                             QStringLiteral("-k"),
+                             QStringLiteral("-t"),
+                             window,
+                             QStringLiteral("-c"),
+                             directory,
+                             QStringLiteral("sleep 300")}));
+        } else {
+            QVERIFY(runTmux({QStringLiteral("new-window"),
+                             QStringLiteral("-d"),
+                             QStringLiteral("-t"),
+                             ctx.sessionName,
+                             QStringLiteral("-c"),
+                             directory,
+                             QStringLiteral("-P"),
+                             QStringLiteral("-F"),
+                             QStringLiteral("#{window_id}"),
+                             QStringLiteral("sleep 300")},
+                            &window));
+        }
+        windowTokens.append(window);
+        QVERIFY(runTmux({QStringLiteral("rename-window"), QStringLiteral("-t"), window, QStringLiteral("scale window %1").arg(w)}));
+        for (int p = 1; p < panesPerWindow; ++p) {
+            QVERIFY(runTmux({QStringLiteral("split-window"),
+                             QStringLiteral("-d"),
+                             QStringLiteral("-h"),
+                             QStringLiteral("-t"),
+                             window + QStringLiteral(".3"),
+                             QStringLiteral("-l"),
+                             QStringLiteral("2"),
+                             QStringLiteral("-c"),
+                             directory,
+                             QStringLiteral("sleep 300")}));
+        }
+        QVERIFY(runTmux({QStringLiteral("select-layout"), QStringLiteral("-t"), window, QStringLiteral("tiled")}));
+        QString panes;
+        QVERIFY(runTmux({QStringLiteral("list-panes"), QStringLiteral("-t"), window, QStringLiteral("-F"), QStringLiteral("#{pane_id}")}, &panes));
+        const QStringList ids = panes.split(QLatin1Char('\n'));
+        QCOMPARE(ids.size(), panesPerWindow);
+        paneTokens.append(ids);
+        for (const QString &id : ids) {
+            QVERIFY(runTmux({QStringLiteral("select-pane"), QStringLiteral("-t"), id, QStringLiteral("-T"), QStringLiteral("scale title ") + id}));
+        }
+        // Exercise snapshots whose active pane is not their first pane.
+        QVERIFY(runTmux({QStringLiteral("select-pane"), QStringLiteral("-t"), ids.last()}));
+    }
+    QVERIFY(runTmux({QStringLiteral("select-window"), QStringLiteral("-t"), windowTokens.first()}));
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    QVERIFY(attach.mw);
+    auto *controller = attach.bridge->controller();
+    QVERIFY(controller);
+    QTRY_COMPARE_WITH_TIMEOUT(attach.container->count(), windowCount, 15000);
+    attach.mw->resize(1600, 1000);
+    attach.mw->show();
+
+    auto metadataMatches = [&] {
+        const auto snapshot = controller->workspaceSnapshot();
+        if (!snapshot.isValid() || snapshot.sessionName != ctx.sessionName || snapshot.windows.size() != windowCount) {
+            return false;
+        }
+        for (int w = 0; w < windowCount; ++w) {
+            const auto &window = snapshot.windows[w];
+            if (window.windowId != windowTokens[w].mid(1).toInt() || window.name != QStringLiteral("scale window %1").arg(w)
+                || window.panes.size() != panesPerWindow || !TmuxLayoutParser::parse(window.layout).has_value()) {
+                return false;
+            }
+            for (const auto &pane : window.panes) {
+                Session *session = controller->sessionForPane(pane.paneId);
+                if (!session || controller->paneIdForSession(session) != pane.paneId || pane.workingDirectory != directory
+                    || session->currentWorkingDirectory() != directory || session->userTitle() != QStringLiteral("scale title %%1").arg(pane.paneId)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(metadataMatches(), 15000);
+
+    // Exercise the same complete layout walk used after resizing or changing
+    // focus. Record its cost without making correctness depend on host speed.
+    controller->sendClientSize();
+    QTest::qWait(200);
+    QElapsedTimer timer;
+    timer.start();
+    constexpr int iterations = 100;
+    for (int i = 0; i < iterations; ++i) {
+        controller->sendClientSize();
+    }
+    qInfo() << "resize traversal:" << windowCount << "windows," << panesPerWindow << "panes/window," << timer.nsecsElapsed() / iterations << "ns/call";
+
+    // Metadata must keep updating on hidden tabs, including the complete saved
+    // layout after a resize and a title changed by another tmux client.
+    const QString changedPane = paneTokens.last();
+    const int changedPaneId = changedPane.mid(1).toInt();
+    QVERIFY(runTmux({QStringLiteral("select-pane"), QStringLiteral("-t"), changedPane, QStringLiteral("-T"), QStringLiteral("updated background title")}));
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionForPane(changedPaneId)->userTitle(), QStringLiteral("updated background title"), 10000);
+    for (const QString &window : windowTokens) {
+        QString layout;
+        QVERIFY(runTmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), window, QStringLiteral("#{window_layout}")}, &layout));
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                for (const auto &saved : controller->workspaceSnapshot().windows) {
+                    if (saved.windowId == window.mid(1).toInt()) {
+                        return saved.layout == layout;
+                    }
+                }
+                return false;
+            }(),
+            10000);
+    }
+
+    // Switching sessions destroys the old views; reverse lookups and metadata
+    // must follow the replacement sessions rather than stale pointer entries.
+    QString otherSession;
+    QVERIFY(
+        runTmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), QStringLiteral("unrelated"), QStringLiteral("#{session_id}")},
+                &otherSession));
+    controller->requestSwitchSession(otherSession.mid(1).toInt());
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionName(), QStringLiteral("unrelated"), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(attach.container->count(), 1, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(controller->workspaceSnapshot().sessionName, QStringLiteral("unrelated"), 10000);
+    for (const QString &pane : paneTokens) {
+        QVERIFY(!controller->hasPane(pane.mid(1).toInt()));
+    }
+    const auto sessions = attach.mw->viewManager()->sessions();
+    QCOMPARE(sessions.size(), 1);
+    const int replacementPaneId = controller->paneIdForSession(sessions.first());
+    QVERIFY(replacementPaneId >= 0);
+    QCOMPARE(controller->sessionForPane(replacementPaneId), sessions.first());
+    controller->sendClientSize();
+
+    QString originalSession;
+    QVERIFY(runTmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("#{session_id}")},
+                    &originalSession));
+    QVERIFY(runTmux({QStringLiteral("select-pane"), QStringLiteral("-t"), changedPane, QStringLiteral("-T"), QStringLiteral("scale title ") + changedPane}));
+    controller->requestSwitchSession(originalSession.mid(1).toInt());
+    QTRY_COMPARE_WITH_TIMEOUT(controller->sessionName(), ctx.sessionName, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(metadataMatches(), 15000);
+    controller->sendClientSize();
 }
 
 void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()

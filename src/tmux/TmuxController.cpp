@@ -1591,6 +1591,9 @@ void TmuxController::refreshWorkspaceSnapshot()
         return;
     }
 
+    // There is exactly one active pane per window. Send the complete layout
+    // only on that row, so a P-pane layout is not repeated P times.
+    const QString layoutField = QStringLiteral("?pane_active,#{window_layout},");
     auto spec = std::make_shared<TmuxFormatSpec>(QStringList{
         QStringLiteral("pid"),
         QStringLiteral("session_created"),
@@ -1598,7 +1601,7 @@ void TmuxController::refreshWorkspaceSnapshot()
         QStringLiteral("window_id"),
         QStringLiteral("window_index"),
         QStringLiteral("window_name"),
-        QStringLiteral("window_layout"),
+        layoutField,
         QStringLiteral("window_active"),
         QStringLiteral("pane_id"),
         QStringLiteral("pane_current_path"),
@@ -1607,7 +1610,7 @@ void TmuxController::refreshWorkspaceSnapshot()
 
     _gateway->sendCommand(
         TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).sessionTarget(_sessionId).format(*spec),
-        [this, spec](bool success, const QString &response) {
+        [this, spec, layoutField](bool success, const QString &response) {
             if (!success) {
                 return;
             }
@@ -1645,8 +1648,11 @@ void TmuxController::refreshWorkspaceSnapshot()
                     window.windowId = windowId;
                     window.index = windowIndex;
                     window.name = row.value(QStringLiteral("window_name"));
-                    window.layout = row.value(QStringLiteral("window_layout"));
                     window.active = row.value(QStringLiteral("window_active")).toInt() != 0;
+                }
+                const QString layout = row.value(layoutField);
+                if (!layout.isEmpty()) {
+                    window.layout = layout;
                 }
 
                 TmuxPaneSnapshot pane;

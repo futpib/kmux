@@ -8,10 +8,12 @@
 #define TMUXPANEMANAGER_H
 
 #include <QByteArray>
+#include <QHash>
 #include <QList>
 #include <QMap>
 #include <QObject>
 #include <QSet>
+#include <QTimer>
 
 namespace Konsole
 {
@@ -68,6 +70,7 @@ Q_SIGNALS:
     void copyModeFinished(int paneId);
 
 private:
+    void sendPaneTitleQuery();
     void cancelPaneMode(int paneId, const QString &mode);
     void updatePaneMode(int paneId, const TmuxPaneModeState &state);
     void showPaneMode(int paneId, const QString &mode);
@@ -76,6 +79,8 @@ private:
 
     TmuxGateway *_gateway;
     QMap<int, Session *> _paneToSession;
+    QHash<Session *, int> _sessionToPane;
+    QTimer _paneTitleQueryTimer;
     QSet<int> _suppressedPanes;
     QSet<int> _paneModeKnown;
     QMap<int, quint64> _paneModeEpoch;

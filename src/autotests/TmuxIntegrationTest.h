@@ -42,6 +42,8 @@ private Q_SLOTS:
     void testTmuxPauseResumeRoundTripTui();
     void testSplitterResizePropagatedToTmux();
     void testTmuxPaneTitleInfo();
+    void testManyPaneMetadataAndResize_data();
+    void testManyPaneMetadataAndResize();
     void testMainWindowTitleReflectsTmuxPane();
     void testSshInsideTmuxResolvesUserAndHost();
     void testWindowNameWithSpaces();
