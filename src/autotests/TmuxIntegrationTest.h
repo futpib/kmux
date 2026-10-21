@@ -44,6 +44,9 @@ private Q_SLOTS:
     void testTmuxPaneTitleInfo();
     void testManyPaneMetadataAndResize_data();
     void testManyPaneMetadataAndResize();
+    void testMetadataChangesAfterIdle();
+    void testDeepLayoutResize_data();
+    void testDeepLayoutResize();
     void testHiddenPaneRendering_data();
     void testHiddenPaneRendering();
     void testHistoryRecoveryLimits_data();

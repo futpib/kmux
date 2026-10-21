@@ -25,15 +25,15 @@ tmux -S "$SOCKET" select-pane -t unrelated -T KMUX_UNRELATED_METADATA_SENTINEL
 
 kmux_test_start "$LOGDIR/kmux.log" -S "$SOCKET" -s scale --qwindowgeometry 1200x800
 
-# Allow for both initialization replies, then require a periodic snapshot too.
-# Group rows by the protocol's record boundary, not wall-clock sleeps.
+# Observe snapshots after external workspace changes. Group rows by the
+# protocol's record boundary, not wall-clock sleeps.
 cat > "$HOMEDIR/check.py" <<'PY'
 import pathlib
 import re
 import subprocess
 import sys
 
-socket, logfile, mode = sys.argv[1:]
+socket, logfile, mode, minimum = sys.argv[1:]
 result = subprocess.run(
     ["tmux", "-S", socket, "display-message", "-p", "-t", "scale", "#{window_layout}"],
     capture_output=True, text=True,
@@ -50,7 +50,7 @@ for line in text.splitlines():
     if boundary:
         groups.setdefault(boundary[0], []).append(line)
 snapshots = [rows for rows in groups.values() if len(rows) == 8 and any(layout in row for row in rows)]
-if len(snapshots) < 3:
+if len(snapshots) < int(minimum):
     sys.exit(1)
 if mode == "ready":
     sys.exit(0)
@@ -69,11 +69,14 @@ PY
 
 # shellcheck disable=SC2329
 metadata_ready() {
-    kill -0 "$KMUX_TEST_PID" 2>/dev/null && python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" ready
+    kill -0 "$KMUX_TEST_PID" 2>/dev/null && python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" ready "$snapshot_count"
 }
-if ! kmux_test_wait_until 30 "three complete workspace snapshots" metadata_ready; then
-    kmux_test_dump_log "$LOGDIR/kmux.log"
-    kmux_test_fail "workspace snapshots did not arrive"
-fi
-python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" check || kmux_test_fail "redundant metadata traffic"
+for snapshot_count in 1 2 3; do
+    tmux -S "$SOCKET" rename-window -t scale "metadata-update-$snapshot_count"
+    if ! kmux_test_wait_until 30 "workspace snapshot $snapshot_count" metadata_ready; then
+        kmux_test_dump_log "$LOGDIR/kmux.log"
+        kmux_test_fail "workspace snapshots did not arrive"
+    fi
+done
+python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" check 3 || kmux_test_fail "redundant metadata traffic"
 kmux_test_pass "metadata is session-scoped and window layouts are not duplicated per pane"
