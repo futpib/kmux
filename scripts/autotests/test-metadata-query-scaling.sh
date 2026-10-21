@@ -53,7 +53,7 @@ snapshots = [rows for rows in groups.values() if len(rows) == 8 and any(layout i
 if mode == "count":
     print(len(snapshots))
     sys.exit(0)
-if not any(f"metadata-update-{minimum}" in row for rows in snapshots for row in rows):
+if not any(f"metadata-update-{minimum}__KMUX_FS_" in row for rows in snapshots for row in rows):
     sys.exit(1)
 if mode == "ready":
     sys.exit(0)
@@ -88,4 +88,15 @@ before=$(python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" count 0)
 sleep 4.3
 after=$(python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" count 0)
 [[ "$before" == "$after" ]] || kmux_test_fail "idle workspace sent $((after - before)) redundant snapshots"
-kmux_test_pass "metadata is session-scoped and window layouts are not duplicated per pane"
+# Rapid structural changes must not turn the saved-workspace query into a
+# high-frequency poll. Keep the final state while bounding the burst's traffic.
+for change in {1..12}; do
+    tmux -S "$SOCKET" rename-window -t scale "metadata-update-burst-$change"
+    sleep .05
+done
+snapshot_count=burst
+tmux -S "$SOCKET" rename-window -t scale metadata-update-burst
+kmux_test_wait_until 30 "final burst snapshot" metadata_ready || kmux_test_fail "final workspace rename was lost"
+final=$(python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" count 0)
+(( final - after <= 2 )) || kmux_test_fail "rename burst sent $((final - after)) snapshots"
+kmux_test_pass "metadata is session-scoped, idle snapshots are suppressed, and bursts are bounded"

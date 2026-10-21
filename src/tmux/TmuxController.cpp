@@ -1649,6 +1649,7 @@ void TmuxController::resetWorkspaceSnapshotQuery()
 {
     _workspaceSnapshotTimer->stop();
     ++_workspaceSnapshotEpoch;
+    _workspaceSnapshotClock.invalidate();
     _workspaceSnapshotInFlight = false;
     _workspaceSnapshotDirty = false;
 }
@@ -1657,7 +1658,10 @@ void TmuxController::refreshWorkspaceSnapshot()
 {
     _workspaceSnapshotDirty = true;
     if (!_workspaceSnapshotInFlight && !_workspaceSnapshotTimer->isActive()) {
-        _workspaceSnapshotTimer->start(0);
+        // Preserve the old polling ceiling even during frequent focus or
+        // layout changes; the pending query observes the latest workspace.
+        const int delay = _workspaceSnapshotClock.isValid() ? qMax(0LL, 2000LL - _workspaceSnapshotClock.elapsed()) : 0;
+        _workspaceSnapshotTimer->start(delay);
     }
 }
 
@@ -1686,6 +1690,7 @@ void TmuxController::sendWorkspaceSnapshotQuery()
 
     _workspaceSnapshotDirty = false;
     _workspaceSnapshotInFlight = true;
+    _workspaceSnapshotClock.start();
     const quint64 epoch = _workspaceSnapshotEpoch;
     const int requestedSession = _sessionId;
     const QSet<int> pausedAtRequest = _pausedOutputPanes;
@@ -1697,7 +1702,7 @@ void TmuxController::sendWorkspaceSnapshotQuery()
             }
             _workspaceSnapshotInFlight = false;
             if (_workspaceSnapshotDirty) {
-                _workspaceSnapshotTimer->start(0);
+                refreshWorkspaceSnapshot();
             }
             if (!success) {
                 // Retry on the next poll, without spinning on a failed query.

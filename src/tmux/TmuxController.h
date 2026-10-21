@@ -7,6 +7,7 @@
 #ifndef TMUXCONTROLLER_H
 #define TMUXCONTROLLER_H
 
+#include <QElapsedTimer>
 #include <QKeySequence>
 #include <QList>
 #include <QMap>
@@ -253,6 +254,7 @@ private:
     bool _workspaceSnapshotDirty = false;
     bool _workspaceSnapshotInFlight = false;
     quint64 _workspaceSnapshotEpoch = 0;
+    QElapsedTimer _workspaceSnapshotClock;
     QTimer *_tabOrderReconcileTimer;
     QTimer *_tabOrderSyncTimer;
 
