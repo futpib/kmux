@@ -44,6 +44,11 @@ private Q_SLOTS:
     void testTmuxPaneTitleInfo();
     void testManyPaneMetadataAndResize_data();
     void testManyPaneMetadataAndResize();
+    void testHiddenPaneRendering_data();
+    void testHiddenPaneRendering();
+    void testHistoryRecoveryLimits_data();
+    void testHistoryRecoveryLimits();
+    void testDetachedPaneOutputLifecycle();
     void testMainWindowTitleReflectsTmuxPane();
     void testSshInsideTmuxResolvesUserAndHost();
     void testWindowNameWithSpaces();
