@@ -188,6 +188,13 @@ void TmuxPaneStateRecovery::handleCapturePaneResponse(int paneId, bool success, 
     }
 
     applyPaneState(paneId);
+    // Recovery replays at the captured grid size. The view may have resized
+    // while that capture was in flight, without another size-change signal
+    // pending to bring the emulation back to its current dimensions.
+    const auto views = session->views();
+    if (!views.isEmpty() && views.first()->isVisible()) {
+        session->emulation()->setImageSize(views.first()->lines(), views.first()->columns());
+    }
     Q_EMIT paneRecoveryComplete(paneId);
 }
 

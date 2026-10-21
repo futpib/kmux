@@ -9910,15 +9910,33 @@ QString outputProbeCommand()
 {
     return QStringLiteral("stty -echo; printf 'PROBE_READY\\n'; cat");
 }
+
+bool flushOutputProbe(TmuxGateway *gateway)
+{
+    auto result = std::make_shared<QPair<bool, bool>>(false, false);
+    gateway->sendCommand(TmuxCommand(QStringLiteral("display-message")).flag(QStringLiteral("-p")).arg(QStringLiteral("ready")),
+                         [result](bool success, const QString &) {
+                             *result = {true, success};
+                         });
+    return QTest::qWaitFor(
+               [&] {
+                   return result->first;
+               },
+               10000)
+        && result->second;
+}
 }
 
 void TmuxIntegrationTest::testHiddenPaneRendering_data()
 {
     QTest::addColumn<QString>("hideMode");
     QTest::addColumn<bool>("alternateScreen");
+    QTest::addColumn<bool>("resizeWhileHidden");
     for (const QString &mode : {QStringLiteral("tab"), QStringLiteral("window"), QStringLiteral("zoom")}) {
-        QTest::newRow(qPrintable(mode + QStringLiteral("-primary"))) << mode << false;
-        QTest::newRow(qPrintable(mode + QStringLiteral("-alternate"))) << mode << true;
+        QTest::newRow(qPrintable(mode + QStringLiteral("-primary"))) << mode << false << false;
+        QTest::newRow(qPrintable(mode + QStringLiteral("-alternate"))) << mode << true << false;
+        QTest::newRow(qPrintable(mode + QStringLiteral("-primary-resized"))) << mode << false << true;
+        QTest::newRow(qPrintable(mode + QStringLiteral("-alternate-resized"))) << mode << true << true;
     }
 }
 
@@ -9926,6 +9944,7 @@ void TmuxIntegrationTest::testHiddenPaneRendering()
 {
     QFETCH(QString, hideMode);
     QFETCH(bool, alternateScreen);
+    QFETCH(bool, resizeWhileHidden);
     const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
     TmuxTestFixture::SessionContext ctx;
     TmuxTestFixture::setupSinglePane(outputProbeCommand(), tmuxPath, m_tmuxTmpDir.path(), ctx, 120, 40);
@@ -9978,8 +9997,32 @@ void TmuxIntegrationTest::testHiddenPaneRendering()
         return tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), firstPane, QStringLiteral("-l"), text});
     };
     QTRY_VERIFY_WITH_TIMEOUT(session->getAllDisplayedText(false).contains(QLatin1String("PROBE_READY")), 10000);
+    QString initialGrid;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        tmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), firstPane, QStringLiteral("#{pane_width}x#{pane_height}")},
+             &initialGrid)
+            && initialGrid.trimmed() == QStringLiteral("%1x%2").arg(display->columns()).arg(display->lines())
+            && session->emulation()->imageSize() == QSize(display->columns(), display->lines()),
+        10000);
+    // Both initialization replies can enqueue captures. Wait for the gateway
+    // to finish those before feeding the live-output part of this test.
+    QVERIFY(flushOutputProbe(controller->gateway()));
     QVERIFY(send(QStringLiteral("\033[?25l\033[48;2;180;20;30m\033[2J\033[HBEFORE_HIDDEN\n")));
-    QTRY_VERIFY(session->getAllDisplayedText(false).contains(QLatin1String("BEFORE_HIDDEN")));
+    auto diagnoseFrame = [&] {
+        QString capture;
+        tmux({QStringLiteral("capture-pane"), QStringLiteral("-p"), QStringLiteral("-t"), firstPane}, &capture);
+        auto *screenWindow = display->screenWindow().data();
+        return QStringLiteral("tmux: %1\nkmux: %2\ntrack=%3 current=%4 history=%5 screen=%6x%7 view=%8x%9")
+            .arg(capture, session->getAllDisplayedText(false))
+            .arg(screenWindow->trackOutput())
+            .arg(screenWindow->currentLine())
+            .arg(screenWindow->screen()->getHistLines())
+            .arg(screenWindow->screen()->getColumns())
+            .arg(screenWindow->screen()->getLines())
+            .arg(display->columns())
+            .arg(display->lines());
+    };
+    QTRY_VERIFY2_WITH_TIMEOUT(session->getAllDisplayedText(false).contains(QLatin1String("BEFORE_HIDDEN")), qPrintable(diagnoseFrame()), 10000);
     auto background = [&] {
         const QImage image = display->grab().toImage();
         return image.pixelColor(image.width() / 3, image.height() / 3);
@@ -10013,7 +10056,9 @@ void TmuxIntegrationTest::testHiddenPaneRendering()
         display->updateImage();
     }
     qInfo() << "Hidden display update ns per call:" << timer.nsecsElapsed() / 1000;
-    attach.mw->resize(1080, 740);
+    if (resizeWhileHidden) {
+        attach.mw->resize(1080, 740);
+    }
     if (hideMode == QLatin1String("tab")) {
         attach.container->setCurrentIndex(0, Qt::OtherFocusReason);
     } else if (hideMode == QLatin1String("zoom")) {
@@ -10185,6 +10230,25 @@ void TmuxIntegrationTest::testDetachedPaneOutputLifecycle()
     QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), splitPane, QStringLiteral("-l"), QStringLiteral("SPLIT_OUTPUT\n")}));
     QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("SPLIT_OUTPUT")), 10000);
 
+    // Pane ownership can move between windows without a detach/merge action.
+    const int sourcePaneId = controller->activePaneId();
+    QVERIFY(sourcePaneId >= 0);
+    QVERIFY(tmux({QStringLiteral("move-pane"),
+                  QStringLiteral("-h"),
+                  QStringLiteral("-s"),
+                  splitPane,
+                  QStringLiteral("-t"),
+                  QLatin1Char('%') + QString::number(sourcePaneId)}));
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId), 10000);
+    QVERIFY(flushOutputProbe(controller->gateway()));
+    QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), splitPane, QStringLiteral("-l"), QStringLiteral("MOVED_TO_SOURCE\n")}));
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("MOVED_TO_SOURCE")), 10000);
+    QVERIFY(tmux({QStringLiteral("move-pane"), QStringLiteral("-h"), QStringLiteral("-s"), splitPane, QStringLiteral("-t"), pane}));
+    QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(splitId), 10000);
+    QVERIFY(flushOutputProbe(detachedController->gateway()));
+    QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), splitPane, QStringLiteral("-l"), QStringLiteral("MOVED_TO_DETACHED\n")}));
+    QTRY_VERIFY_WITH_TIMEOUT(detachedController->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("MOVED_TO_DETACHED")), 10000);
+
     // Reconnect creates a new control client whose output subscriptions must be restored.
     auto *process = bridgeProcess(bridge);
     QVERIFY(process);
@@ -10203,6 +10267,25 @@ void TmuxIntegrationTest::testDetachedPaneOutputLifecycle()
     QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("RECONNECTED_OUTPUT")), 10000);
     QVERIFY(tmux({QStringLiteral("send-keys"), QStringLiteral("-t"), splitPane, QStringLiteral("-l"), QStringLiteral("MERGED_OUTPUT\n")}));
     QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("MERGED_OUTPUT")), 10000);
+
+    // Closing the last window displaying a pane must not stall its program.
+    attach.container->setCurrentIndex(controller->windowToTabIndex().value(windowId), Qt::OtherFocusReason);
+    detachAction->trigger();
+    QTRY_VERIFY_WITH_TIMEOUT((detached = findOtherMainWindow(attach.mw)), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(detached->viewManager()->sessions().size() == 2, 10000);
+    delete detached.data();
+    const QString finishedPath = m_tmuxTmpDir.path() + QStringLiteral("/background-finished");
+    QFile writer(m_tmuxTmpDir.path() + QStringLiteral("/background-writer.py"));
+    QVERIFY(writer.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    writer.write("import pathlib, sys, time\nfor i in range(30000):\n    print('BACKGROUND_LINE_' + str(i))\nprint('BACKGROUND_COMPLETE', flush=True)\n");
+    writer.write(QStringLiteral("pathlib.Path('%1').touch()\ntime.sleep(300)\n").arg(finishedPath).toUtf8());
+    writer.close();
+    QVERIFY(
+        tmux({QStringLiteral("respawn-pane"), QStringLiteral("-k"), QStringLiteral("-t"), splitPane, QStringLiteral("python3 '%1'").arg(writer.fileName())}));
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(finishedPath), 15000);
+    controller->unhideWindow(windowId);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->sessionForPane(splitId)->getAllDisplayedText(false).contains(QLatin1String("BACKGROUND_COMPLETE")), 10000);
 }
 
 QTEST_MAIN(TmuxIntegrationTest)
