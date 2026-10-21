@@ -67,6 +67,7 @@ public:
 
 Q_SIGNALS:
     void paneViewSizeChanged();
+    void paneDirectoriesChanged();
     void copyModeFinished(int paneId);
 
 private:
@@ -81,6 +82,10 @@ private:
     QMap<int, Session *> _paneToSession;
     QHash<Session *, int> _sessionToPane;
     QTimer _paneTitleQueryTimer;
+    bool _paneTitleQueryInFlight = false;
+    bool _paneTitleQueryRequested = false;
+    quint64 _gatewayEpoch = 0;
+    QHash<int, QString> _paneDirectories;
     QSet<int> _suppressedPanes;
     QSet<int> _paneModeKnown;
     QMap<int, quint64> _paneModeEpoch;

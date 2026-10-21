@@ -27,6 +27,10 @@ void VirtualSession::injectData(const char *data, int length)
 void VirtualSession::setExternalProcessName(const QString &name)
 {
     auto *nullInfo = static_cast<NullProcessInfo *>(_sessionProcessInfo);
+    bool ok = false;
+    if (nullInfo->name(&ok) == name && ok) {
+        return;
+    }
     nullInfo->setExternalName(name);
     Q_EMIT sessionAttributeChanged();
 }
@@ -34,6 +38,10 @@ void VirtualSession::setExternalProcessName(const QString &name)
 void VirtualSession::setExternalCurrentDir(const QString &dir)
 {
     auto *nullInfo = static_cast<NullProcessInfo *>(_sessionProcessInfo);
+    bool ok = false;
+    if (nullInfo->currentDir(&ok) == dir && ok) {
+        return;
+    }
     nullInfo->setExternalCurrentDir(dir);
     Q_EMIT sessionAttributeChanged();
 }

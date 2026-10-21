@@ -10341,11 +10341,11 @@ void TmuxIntegrationTest::testMetadataChangesAfterIdle()
     attach.container->setCurrentIndex(hiddenTab == 0 ? 1 : 0, Qt::OtherFocusReason);
     QTRY_VERIFY(!session->views().first()->isVisible());
 
-    // Observe real periodic polling before changing a hidden pane. The count
-    // is a measurement; correctness must not depend on unnecessary signals.
+    // Allow the first periodic update and recovery to settle, then span two polls.
+    QTest::qWait(2300);
     QSignalSpy attributes(session, &Session::sessionAttributeChanged);
     QTest::qWait(4300);
-    qInfo() << "idle metadata attribute signals:" << attributes.count();
+    QCOMPARE(attributes.count(), 0);
 
     const QString directory = m_tmuxTmpDir.path() + QStringLiteral("/idle metadata's directory\nsecond line");
     QVERIFY(QDir().mkpath(directory));

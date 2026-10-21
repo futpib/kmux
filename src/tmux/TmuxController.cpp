@@ -371,6 +371,11 @@ TmuxController::TmuxController(TmuxGateway *gateway, ViewManager *viewManager, Q
     _paneTitleTimer->setInterval(2000);
     connect(_paneTitleTimer, &QTimer::timeout, this, &TmuxController::refreshPaneTitles);
 
+    _workspaceSnapshotTimer = new QTimer(this);
+    _workspaceSnapshotTimer->setSingleShot(true);
+    connect(_workspaceSnapshotTimer, &QTimer::timeout, this, &TmuxController::sendWorkspaceSnapshotQuery);
+    connect(_paneManager, &TmuxPaneManager::paneDirectoriesChanged, this, &TmuxController::refreshWorkspaceSnapshot);
+
     _tabOrderReconcileTimer = new QTimer(this);
     _tabOrderReconcileTimer->setSingleShot(true);
     connect(_tabOrderReconcileTimer, &QTimer::timeout, this, &TmuxController::reconcileTabOrder);
@@ -407,6 +412,16 @@ void TmuxController::connectGatewaySignals()
     connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::onSubscriptionChanged);
     connect(_gateway, &TmuxGateway::exitReceived, this, &TmuxController::onExit);
     connect(_gateway, &TmuxGateway::panePaused, this, &TmuxController::onPanePaused);
+    // Structural notifications cover snapshot fields; cwd changes are detected
+    // by the existing metadata poll. Coalesce bursts and outstanding queries.
+    connect(_gateway, &TmuxGateway::layoutChanged, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::windowAdded, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::windowClosed, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::windowRenamed, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::windowPaneChanged, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::sessionRenamed, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::sessionWindowChanged, this, &TmuxController::refreshWorkspaceSnapshot);
+    connect(_gateway, &TmuxGateway::subscriptionChanged, this, &TmuxController::refreshWorkspaceSnapshot);
     connect(_gateway, &TmuxGateway::paneModeChanged, this, [this](int paneId) {
         _paneManager->invalidatePaneMode(paneId);
         _paneManager->queryPaneTitleInfo();
@@ -432,6 +447,7 @@ void TmuxController::executePrefixCommand(const QString &command)
 
 void TmuxController::rebindGateway(TmuxGateway *gateway)
 {
+    resetWorkspaceSnapshotQuery();
     if (_gateway != nullptr) {
         disconnect(_gateway, nullptr, this, nullptr);
         disconnect(_gateway, nullptr, _paneManager, nullptr);
@@ -471,6 +487,7 @@ int TmuxController::restrictedWindowId() const
 
 void TmuxController::initialize()
 {
+    resetWorkspaceSnapshotQuery();
     setState(State::Initializing);
 
     identifyControlClient();
@@ -1623,10 +1640,28 @@ void TmuxController::applyWindowLayout(int windowId, const TmuxLayoutNode &layou
 void TmuxController::refreshPaneTitles()
 {
     _paneManager->queryPaneTitleInfo();
-    refreshWorkspaceSnapshot();
+    if (_workspaceSnapshotDirty) {
+        refreshWorkspaceSnapshot();
+    }
+}
+
+void TmuxController::resetWorkspaceSnapshotQuery()
+{
+    _workspaceSnapshotTimer->stop();
+    ++_workspaceSnapshotEpoch;
+    _workspaceSnapshotInFlight = false;
+    _workspaceSnapshotDirty = false;
 }
 
 void TmuxController::refreshWorkspaceSnapshot()
+{
+    _workspaceSnapshotDirty = true;
+    if (!_workspaceSnapshotInFlight && !_workspaceSnapshotTimer->isActive()) {
+        _workspaceSnapshotTimer->start(0);
+    }
+}
+
+void TmuxController::sendWorkspaceSnapshotQuery()
 {
     if (_sessionId < 0 || _gateway == nullptr) {
         return;
@@ -1649,11 +1684,25 @@ void TmuxController::refreshWorkspaceSnapshot()
         QStringLiteral("pane_active"),
     });
 
+    _workspaceSnapshotDirty = false;
+    _workspaceSnapshotInFlight = true;
+    const quint64 epoch = _workspaceSnapshotEpoch;
     const int requestedSession = _sessionId;
     const QSet<int> pausedAtRequest = _pausedOutputPanes;
     _gateway->sendCommand(
         TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).sessionTarget(_sessionId).format(*spec),
-        [this, spec, layoutField, requestedSession, pausedAtRequest](bool success, const QString &response) {
+        [this, spec, layoutField, requestedSession, pausedAtRequest, epoch](bool success, const QString &response) {
+            if (epoch != _workspaceSnapshotEpoch) {
+                return;
+            }
+            _workspaceSnapshotInFlight = false;
+            if (_workspaceSnapshotDirty) {
+                _workspaceSnapshotTimer->start(0);
+            }
+            if (!success) {
+                // Retry on the next poll, without spinning on a failed query.
+                _workspaceSnapshotDirty = true;
+            }
             if (!success || _sessionId != requestedSession) {
                 return;
             }
@@ -1784,6 +1833,7 @@ void TmuxController::handleListWindowsResponse(bool success, const QString &resp
     _windowsInitializedAfterRebind = true;
     maybeReplayClientSizes();
     refreshPaneTitles();
+    refreshWorkspaceSnapshot();
     _paneTitleTimer->start();
     Q_EMIT initialWindowsOpened();
 }
@@ -2321,6 +2371,7 @@ void TmuxController::refreshWindowIndexesForTabSync()
 
 void TmuxController::cleanup()
 {
+    resetWorkspaceSnapshotQuery();
     _paneTitleTimer->stop();
     _resizeCoordinator->stop();
     _stateRecovery->clear();
@@ -2507,6 +2558,7 @@ void TmuxController::queryPrefixBindings()
 
 void TmuxController::onExit(const QString &reason)
 {
+    resetWorkspaceSnapshotQuery();
     Q_UNUSED(reason)
     // Keep pane widgets frozen so a reconnect can reuse them. Destroying them
     // here would emit ViewManager::empty() and close the MainWindow.

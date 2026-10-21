@@ -215,6 +215,8 @@ private:
     void clearMaximizeInWindow(int windowId);
     void refreshPaneTitles();
     void refreshWorkspaceSnapshot();
+    void sendWorkspaceSnapshotQuery();
+    void resetWorkspaceSnapshotQuery();
     void handleListWindowsResponse(bool success, const QString &response);
     void removeStaleWindowsAndPanes(const QSet<int> &newWindowIds, const QSet<int> &newPaneIds);
     void queryPrefixBindings();
@@ -247,6 +249,10 @@ private:
     QList<PrefixBinding> _prefixBindings;
 
     QTimer *_paneTitleTimer;
+    QTimer *_workspaceSnapshotTimer;
+    bool _workspaceSnapshotDirty = false;
+    bool _workspaceSnapshotInFlight = false;
+    quint64 _workspaceSnapshotEpoch = 0;
     QTimer *_tabOrderReconcileTimer;
     QTimer *_tabOrderSyncTimer;
 

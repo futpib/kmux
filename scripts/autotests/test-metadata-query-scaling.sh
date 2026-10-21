@@ -50,7 +50,10 @@ for line in text.splitlines():
     if boundary:
         groups.setdefault(boundary[0], []).append(line)
 snapshots = [rows for rows in groups.values() if len(rows) == 8 and any(layout in row for row in rows)]
-if len(snapshots) < int(minimum):
+if mode == "count":
+    print(len(snapshots))
+    sys.exit(0)
+if not any(f"metadata-update-{minimum}" in row for rows in snapshots for row in rows):
     sys.exit(1)
 if mode == "ready":
     sys.exit(0)
@@ -79,4 +82,10 @@ for snapshot_count in 1 2 3; do
     fi
 done
 python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" check 3 || kmux_test_fail "redundant metadata traffic"
+# Allow the final layout/rename notifications to settle, then span two polls.
+sleep 1
+before=$(python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" count 0)
+sleep 4.3
+after=$(python3 "$HOMEDIR/check.py" "$SOCKET" "$LOGDIR/kmux.log" count 0)
+[[ "$before" == "$after" ]] || kmux_test_fail "idle workspace sent $((after - before)) redundant snapshots"
 kmux_test_pass "metadata is session-scoped and window layouts are not duplicated per pane"

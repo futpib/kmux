@@ -35,6 +35,10 @@ TmuxPaneManager::TmuxPaneManager(TmuxGateway *gateway, QObject *parent)
 void TmuxPaneManager::setGateway(TmuxGateway *gateway)
 {
     _paneTitleQueryTimer.stop();
+    _paneTitleQueryInFlight = false;
+    _paneTitleQueryRequested = false;
+    ++_gatewayEpoch;
+    _paneDirectories.clear();
     _gateway = gateway;
     for (auto it = _paneToSession.constBegin(); it != _paneToSession.constEnd(); ++it) {
         ++_paneModeEpoch[it.key()];
@@ -248,13 +252,15 @@ void TmuxPaneManager::queryPaneTitleInfo()
 {
     // Attachment and layout changes can request this once per window in the
     // same batch of control notifications. Query the final pane set once.
-    if (!_paneTitleQueryTimer.isActive()) {
+    _paneTitleQueryRequested = true;
+    if (!_paneTitleQueryInFlight && !_paneTitleQueryTimer.isActive()) {
         _paneTitleQueryTimer.start();
     }
 }
 
 void TmuxPaneManager::sendPaneTitleQuery()
 {
+    _paneTitleQueryRequested = false;
     if (_paneToSession.isEmpty()) {
         return;
     }
@@ -277,18 +283,31 @@ void TmuxPaneManager::sendPaneTitleQuery()
         QStringLiteral("selection_mode"),
     });
 
+    _paneTitleQueryInFlight = true;
+    const quint64 gatewayEpoch = _gatewayEpoch;
     const QMap<int, quint64> requestedEpochs = _paneModeEpoch;
     _gateway->sendCommand(TmuxCommand(QStringLiteral("list-panes")).flag(QStringLiteral("-s")).format(spec),
-                          [this, spec, requestedEpochs](bool success, const QString &response) {
+                          [this, spec, requestedEpochs, gatewayEpoch](bool success, const QString &response) {
+                              if (gatewayEpoch != _gatewayEpoch) {
+                                  return;
+                              }
+                              _paneTitleQueryInFlight = false;
+                              if (_paneTitleQueryRequested) {
+                                  _paneTitleQueryTimer.start();
+                              }
                               if (!success || response.isEmpty()) {
                                   return;
                               }
+                              QHash<int, QString> directories;
                               for (const auto &row : spec.parseRows(response)) {
                                   const QString paneIdStr = row.value(QStringLiteral("pane_id"));
                                   if (!paneIdStr.startsWith(QLatin1Char('%'))) {
                                       continue;
                                   }
                                   int paneId = paneIdStr.mid(1).toInt();
+                                  // Snapshots include the whole session, even panes displayed
+                                  // by a sibling detached window rather than this controller.
+                                  directories.insert(paneId, row.value(QStringLiteral("pane_current_path")));
                                   if (!requestedEpochs.contains(paneId) || requestedEpochs.value(paneId) != _paneModeEpoch.value(paneId)) {
                                       continue;
                                   }
@@ -327,6 +346,10 @@ void TmuxPaneManager::sendPaneTitleQuery()
                                   modeState.selectionEndY = row.value(QStringLiteral("selection_end_y")).toInt();
                                   modeState.selectionMode = row.value(QStringLiteral("selection_mode"));
                                   updatePaneMode(paneId, modeState);
+                              }
+                              if (_paneDirectories != directories) {
+                                  _paneDirectories = std::move(directories);
+                                  Q_EMIT paneDirectoriesChanged();
                               }
                           });
 }
