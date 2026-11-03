@@ -437,6 +437,10 @@ void TmuxController::enterCopyMode()
 
 void TmuxController::executePrefixCommand(const QString &command)
 {
+    if (_activePaneId >= 0 && command.trimmed() == QLatin1String("send-prefix")) {
+        _paneManager->sendPrefix(_activePaneId);
+        return;
+    }
     if (_activePaneId >= 0) {
         _paneManager->invalidatePaneMode(_activePaneId);
     }

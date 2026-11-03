@@ -68,25 +68,7 @@ Session *TmuxPaneManager::createPaneSession(int paneId)
     session->emulation()->setSuppressTerminalResponsesDuringReceive(true);
 
     connect(session->emulation(), &Emulation::sendData, this, [this, paneId](const QByteArray &data) {
-        if (!_paneModeKnown.contains(paneId)) {
-            auto &pending = _pendingInput[paneId];
-            qsizetype pendingSize = 0;
-            for (const QByteArray &chunk : std::as_const(pending)) {
-                pendingSize += chunk.size();
-            }
-            if (pendingSize + data.size() <= 64 * 1024) {
-                pending.append(data);
-            }
-            return;
-        }
-        const QString mode = _paneModes.value(paneId);
-        if (!mode.isEmpty()) {
-            if (data == QByteArray(1, '\x1b')) {
-                cancelPaneMode(paneId, mode);
-            }
-            return;
-        }
-        _gateway->sendKeys(paneId, data);
+        sendInput(paneId, {data});
     });
 
     connect(session, &Session::selectModeChanged, this, [this, paneId](bool enabled) {
@@ -376,6 +358,40 @@ void TmuxPaneManager::invalidatePaneMode(int paneId)
     }
 }
 
+void TmuxPaneManager::sendPrefix(int paneId)
+{
+    // A prefix is pane input too. Keep it behind keys awaiting a mode query,
+    // and do not invalidate that mode: send-prefix cannot change it.
+    sendInput(paneId, {{}, true});
+}
+
+void TmuxPaneManager::sendInput(int paneId, const PaneInput &input)
+{
+    if (!_paneModeKnown.contains(paneId)) {
+        auto &pending = _pendingInput[paneId];
+        qsizetype pendingSize = 0;
+        for (const PaneInput &chunk : std::as_const(pending)) {
+            pendingSize += chunk.prefix ? 1 : chunk.data.size();
+        }
+        if (pendingSize + (input.prefix ? 1 : input.data.size()) <= 64 * 1024) {
+            pending.append(input);
+        }
+        return;
+    }
+    const QString mode = _paneModes.value(paneId);
+    if (!mode.isEmpty()) {
+        if (input.data == QByteArray(1, '\x1b')) {
+            cancelPaneMode(paneId, mode);
+        }
+        return;
+    }
+    if (input.prefix) {
+        _gateway->sendCommand(TmuxCommand(QStringLiteral("send-prefix")).paneTarget(paneId));
+    } else {
+        _gateway->sendKeys(paneId, input.data);
+    }
+}
+
 void TmuxPaneManager::cancelPaneMode(int paneId, const QString &mode)
 {
     if (mode == QLatin1String("copy-mode")) {
@@ -404,14 +420,14 @@ void TmuxPaneManager::updatePaneMode(int paneId, const TmuxPaneModeState &state)
     _paneModes[paneId] = state.name;
     _paneModeStates[paneId] = state;
 
-    const QList<QByteArray> pendingInput = _pendingInput.take(paneId);
+    const QList<PaneInput> pendingInput = _pendingInput.take(paneId);
     if (state.name.isEmpty()) {
-        for (const QByteArray &data : pendingInput) {
-            _gateway->sendKeys(paneId, data);
+        for (const PaneInput &input : pendingInput) {
+            sendInput(paneId, input);
         }
     } else {
-        for (const QByteArray &data : pendingInput) {
-            if (data == QByteArray(1, '\x1b')) {
+        for (const PaneInput &input : pendingInput) {
+            if (input.data == QByteArray(1, '\x1b')) {
                 cancelPaneMode(paneId, state.name);
                 break;
             }

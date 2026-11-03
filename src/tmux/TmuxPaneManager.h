@@ -64,6 +64,7 @@ public:
     void queryPaneTitleInfo();
     void enterCopyMode(int paneId);
     void invalidatePaneMode(int paneId);
+    void sendPrefix(int paneId);
 
 Q_SIGNALS:
     void paneViewSizeChanged();
@@ -71,6 +72,12 @@ Q_SIGNALS:
     void copyModeFinished(int paneId);
 
 private:
+    struct PaneInput {
+        QByteArray data;
+        bool prefix = false;
+    };
+
+    void sendInput(int paneId, const PaneInput &input);
     void sendPaneTitleQuery();
     void cancelPaneMode(int paneId, const QString &mode);
     void updatePaneMode(int paneId, const TmuxPaneModeState &state);
@@ -91,7 +98,7 @@ private:
     QMap<int, quint64> _paneModeEpoch;
     QMap<int, QString> _paneModes;
     QMap<int, TmuxPaneModeState> _paneModeStates;
-    QMap<int, QList<QByteArray>> _pendingInput;
+    QMap<int, QList<PaneInput>> _pendingInput;
     QSet<int> _nativeCopyPanes;
     QSet<int> _serverBackedCopyPanes;
     QSet<int> _copyRecoveryPending;

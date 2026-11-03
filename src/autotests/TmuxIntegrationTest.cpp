@@ -7524,6 +7524,14 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     const auto views = paneSession->views();
     QVERIFY(!views.isEmpty());
     QTest::keyClick(views.first(), Qt::Key_C);
+
+    // Do not wait for the remote mode query between chords: later prefixes
+    // must not overtake letters still queued from earlier chords.
+    for (int i = 0; i < 3; ++i) {
+        QTest::keyClick(views.first(), Qt::Key_B, Qt::ControlModifier);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_B, Qt::ControlModifier);
+        QTest::keyClick(views.first(), Qt::Key_C);
+    }
     QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() == nullptr, 5000);
 
     // Raw mode delivers both bytes without Enter. The next key must not be
@@ -7535,8 +7543,19 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
         }
         return f.readAll();
     };
-    const QByteArray expected = QByteArray(1, '\x02') + 'c';
+    const QByteArray chord = QByteArray(1, '\x02') + 'c';
+    const QByteArray expected = chord.repeated(4);
     QTRY_COMPARE_WITH_TIMEOUT(readFile(), expected, 10000);
+
+    // A different prefix command can already have a mode query outstanding.
+    // Both the letter and the next literal prefix must wait in the same queue.
+    controller->executePrefixCommand(QStringLiteral("display-message -p prefix-order"));
+    QTest::keyClick(views.first(), Qt::Key_A);
+    QTest::keyClick(views.first(), Qt::Key_B, Qt::ControlModifier);
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_B, Qt::ControlModifier);
+    QTest::keyClick(views.first(), Qt::Key_C);
+    const QByteArray expectedWithPending = expected + 'a' + chord;
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), expectedWithPending, 10000);
 
     delete attach.mw.data();
 }

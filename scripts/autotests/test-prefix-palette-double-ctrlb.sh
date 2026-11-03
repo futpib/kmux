@@ -125,13 +125,13 @@ echo "OK (scaffold): real C-b C-b delivers the literal prefix to the pane"
 xdotool windowfocus "$WIN" 2>/dev/null || true
 xdotool key --clearmodifiers Escape 2>/dev/null || true; sleep 0.2
 off=$(python3 -c "print(len(open('$OUT','rb').read()))")
-sp_before=$(grep -c 'sendCommand: "send-prefix"' "$LOGDIR/kmux.log" 2>/dev/null || true)
+sp_before=$(grep -c 'sendCommand: "send-prefix' "$LOGDIR/kmux.log" 2>/dev/null || true)
 seq_bytes=$(delta_bytes bash -c "
     xdotool key --clearmodifiers ctrl+b   # opens the prefix palette
     sleep 0.15
     xdotool key --clearmodifiers b        # 2nd press, Ctrl dropped by the race
 ")
-sp_after=$(grep -c 'sendCommand: "send-prefix"' "$LOGDIR/kmux.log" 2>/dev/null || true)
+sp_after=$(grep -c 'sendCommand: "send-prefix' "$LOGDIR/kmux.log" 2>/dev/null || true)
 sp_delta=$(( ${sp_after:-0} - ${sp_before:-0} ))
 echo "second-press-loses-ctrl -> pane received: $seq_bytes ; send-prefix dispatched during repro: $sp_delta"
 

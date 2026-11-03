@@ -12,6 +12,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/lib.sh"
 
 export QT_LOGGING_RULES="konsole.tmux.gateway.debug=true"
+export QT_FORCE_STDERR_LOGGING=1
 if [[ ${KMUX_TEST_WAYLAND:-0} == 1 ]]; then
     COMPOSITOR_RUNTIME_DIR=$XDG_RUNTIME_DIR
     export DISPLAY=:99
@@ -82,7 +83,22 @@ EOF
 chmod +x "$CONNECT"
 
 tmux -S "$LOCAL_SOCKET" -f /dev/null new-session -d -s "$LOCAL_SESSION" -x 100 -y 30 "exec '$CONNECT'"
-kmux_test_start "$LOGDIR/kmux.log" -S "$LOCAL_SOCKET" -s "$LOCAL_SESSION"
+if [[ ${KMUX_TEST_PREFIX_RSH:-0} == 1 ]]; then
+    # Put the control connection over SSH too, with delayed replies so the
+    # next chord can arrive while an earlier pane-mode query is outstanding.
+    RSH="$HOMEDIR/rsh.sh"
+    cat >"$RSH" <<EOF
+#!/usr/bin/env bash
+exec python3 '$SCRIPT_DIR/fixtures/delayed-output.py' 0.15 \\
+    ssh -T -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes \\
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\
+    -o LogLevel=ERROR -i '$KEY' -p '$PORT' '$(id -un)@127.0.0.1' "\$@"
+EOF
+    chmod +x "$RSH"
+    kmux_test_start "$LOGDIR/kmux.log" --rsh "$RSH" -S "$LOCAL_SOCKET" -s "$LOCAL_SESSION"
+else
+    kmux_test_start "$LOGDIR/kmux.log" -S "$LOCAL_SOCKET" -s "$LOCAL_SESSION"
+fi
 KMUX_PID=$KMUX_TEST_PID
 if [[ ${KMUX_TEST_WAYLAND:-0} != 1 ]]; then
     kmux_test_wait_visible_window "$KMUX_PID" "$LOGDIR/kmux.log" 20 || kmux_test_fail
@@ -177,5 +193,21 @@ for expected_window_count in {2..11}; do
         kmux_test_fail "C-b C-b c did not create remote tmux window $expected_window_count"
     fi
 done
+
+# Waiting for every created window hides reordering: prefixes used to bypass
+# queued letters, so a burst arrived as C-b C-b ... c c ... in the inner tmux.
+for _ in {1..20}; do
+    send_key ctrl+b
+    send_key ctrl+b
+    send_key c
+done
+remote_burst_complete() {
+    [[ $(tmux -S "$REMOTE_SOCKET" list-windows -t "$REMOTE_SESSION" -F '#{window_index}' | wc -l) == 31 ]]
+}
+if ! kmux_test_wait_until 10 'all remote tmux windows from burst' remote_burst_complete; then
+    kmux_test_dump_tmux "$REMOTE_SOCKET" "$REMOTE_SESSION"
+    kmux_test_dump_log "$LOGDIR/kmux.log" 100
+    kmux_test_fail 'C-b C-b c burst lost or reordered remote tmux commands'
+fi
 
 kmux_test_pass 'C-b C-b passed through local tmux and SSH to remote tmux on all trials'
