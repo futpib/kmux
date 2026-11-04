@@ -1932,6 +1932,10 @@ void SessionController::clearHistory()
     if (controller) {
         controller->requestClearHistory(session());
     }
+
+    if (_isSearchBarEnabled) {
+        beginSearch(_searchBar->searchText(), reverseSearchChecked() ? Enum::BackwardsSearch : Enum::ForwardsSearch, noWrapChecked());
+    }
 }
 
 void SessionController::clearHistoryAndReset()
