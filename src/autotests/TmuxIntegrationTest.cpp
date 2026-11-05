@@ -18,6 +18,7 @@
 #include <QClipboard>
 #include <QCommandLineParser>
 #include <QDateTime>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -25,6 +26,7 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QProcess>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSignalSpy>
@@ -39,6 +41,7 @@
 #include "../Application.h"
 #include "../Emulation.h"
 #include "../MainWindow.h"
+#include "../RenameTabDialog.h"
 #include "../Screen.h"
 #include "../ScreenWindow.h"
 #include "../ViewManager.h"
@@ -1984,6 +1987,180 @@ void TmuxIntegrationTest::testTabTextPreservesEmojiOverMockRshStrippingLocale()
     }
     QTRY_VERIFY_WITH_TIMEOUT(!mw, 10000);
     delete mw.data();
+}
+
+void TmuxIntegrationTest::testCustomTabTitleSurvivesTabSwitch_data()
+{
+    QTest::addColumn<bool>("splitPane");
+    QTest::addColumn<bool>("delayedRsh");
+    QTest::addColumn<QString>("backgroundChange");
+    QTest::newRow("single-pane") << false << false << QString();
+    QTest::newRow("split-pane") << true << false << QString();
+    QTest::newRow("single-pane-rsh") << false << true << QString();
+    QTest::newRow("split-pane-rsh") << true << true << QString();
+    QTest::newRow("application-title") << false << false << QStringLiteral("title");
+    QTest::newRow("background-layout") << true << false << QStringLiteral("layout");
+    QTest::newRow("application-title-rsh") << false << true << QStringLiteral("title");
+    QTest::newRow("background-layout-rsh") << true << true << QStringLiteral("layout");
+}
+
+void TmuxIntegrationTest::testCustomTabTitleSurvivesTabSwitch()
+{
+    QFETCH(bool, splitPane);
+    QFETCH(bool, delayedRsh);
+    QFETCH(QString, backgroundChange);
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    TmuxTestFixture::SessionContext ctx;
+    const auto pane = TmuxTestFixture::pane(QStringLiteral("bash --norc --noprofile"), 50, 20, true);
+    TmuxTestFixture::setupTmuxSession(splitPane ? TmuxTestFixture::horizontal({TmuxTestFixture::pane(QStringLiteral("sleep 120"), 50, 20), pane}) : pane,
+                                      tmuxPath,
+                                      m_tmuxTmpDir.path(),
+                                      ctx);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+    QProcess otherWindow;
+    otherWindow.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-d"), QStringLiteral("sleep 120")});
+    QVERIFY(otherWindow.waitForFinished(5000));
+    QCOMPARE(otherWindow.exitCode(), 0);
+
+    TmuxTestFixture::AttachResult attach;
+    if (delayedRsh) {
+        const QString relay = QFINDTESTDATA("../../scripts/autotests/fixtures/delayed-output.py");
+        QVERIFY(!relay.isEmpty());
+        const QString wrapperPath = m_tmuxTmpDir.path() + QStringLiteral("/title-rsh.sh");
+        QFile wrapper(wrapperPath);
+        QVERIFY(wrapper.open(QIODevice::WriteOnly));
+        wrapper.write(QStringLiteral("#!/bin/sh\nexec python3 '%1' 0.15 \"$@\"\n").arg(relay).toUtf8());
+        wrapper.close();
+        QVERIFY(QFile::setPermissions(wrapperPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        attach.mw = new MainWindow();
+        attach.bridge = new TmuxProcessBridge(attach.mw->viewManager(), attach.mw);
+        QVERIFY(attach.bridge->start(tmuxPath,
+                                     {QStringLiteral("-S"), ctx.socketPath},
+                                     {QStringLiteral("attach-session"), QStringLiteral("-t"), ctx.sessionName},
+                                     {wrapperPath}));
+        QTRY_VERIFY_WITH_TIMEOUT(!attach.mw->viewManager()->sessions().isEmpty(), 10000);
+    } else {
+        TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    }
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+    auto *container = attach.mw->viewManager()->activeContainer();
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_COMPARE_WITH_TIMEOUT(container->count(), 2, 5000);
+    const int paneId = splitPane ? 1 : 0;
+    QTRY_COMPARE_WITH_TIMEOUT(controller->activePaneId(), paneId, 5000);
+    Session *session = controller->sessionForPane(paneId);
+    QVERIFY(session && !session->views().isEmpty());
+    auto *display = session->views().first();
+    QTRY_VERIFY_WITH_TIMEOUT(display->hasFocus(), 5000);
+    const int tabIndex = container->currentIndex();
+    const int otherIndex = 1 - tabIndex;
+
+    if (backgroundChange == QStringLiteral("title")) {
+        // Application titles still work until the user explicitly renames.
+        QProcess title;
+        title.start(tmuxPath,
+                    {QStringLiteral("-S"),
+                     ctx.socketPath,
+                     QStringLiteral("send-keys"),
+                     QStringLiteral("-t"),
+                     QLatin1Char('%') + QString::number(paneId),
+                     QStringLiteral("printf '\\033]30;initial-app-name\\007'"),
+                     QStringLiteral("Enter")});
+        QVERIFY(title.waitForFinished(5000));
+        QCOMPARE(title.exitCode(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(container->tabText(tabIndex), QStringLiteral("initial-app-name"), 5000);
+    }
+
+    // Use the same dialog and acceptance path as a user renaming the tab.
+    // KColorCombo reads clipboard MIME data during construction; offscreen
+    // tests start without any, unlike a desktop clipboard provider.
+    if (!QApplication::clipboard()->mimeData()) {
+        QApplication::clipboard()->setText(QString());
+    }
+    QTest::mouseDClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(tabIndex).center());
+    RenameTabDialog *dialog = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((dialog = attach.mw->findChild<RenameTabDialog *>()) != nullptr, 5000);
+    const QString customTitle = QStringLiteral("My custom work tab");
+    auto *edit = dialog->findChild<QLineEdit *>(QStringLiteral("tabTitleEdit"));
+    QVERIFY(edit);
+    edit->selectAll();
+    QTest::keyClicks(edit, customTitle);
+    QTest::mouseClick(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton);
+    QTRY_VERIFY_WITH_TIMEOUT(session->isTabTitleSetByUser(), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(container->tabText(tabIndex), customTitle, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!attach.mw->findChild<RenameTabDialog *>(), 5000);
+    // The offscreen platform has no window manager to reactivate the parent
+    // after closing a modal dialog.
+    attach.mw->activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+
+    if (!backgroundChange.isEmpty()) {
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(otherIndex).center());
+        QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), otherIndex, 5000);
+        QTest::qWait(500);
+        QPointer<ViewSplitter> previousSplitter = container->viewSplitterAt(tabIndex);
+        QSignalSpy tabChanges(container, &QTabWidget::currentChanged);
+        QProcess change;
+        if (backgroundChange == QStringLiteral("title")) {
+            change.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("send-keys"),
+                          QStringLiteral("-t"),
+                          QLatin1Char('%') + QString::number(paneId),
+                          QStringLiteral("printf '\\033]30;application-name\\007\\033]2;application-window\\007'"),
+                          QStringLiteral("Enter")});
+        } else {
+            change.start(tmuxPath,
+                         {QStringLiteral("-S"),
+                          ctx.socketPath,
+                          QStringLiteral("select-layout"),
+                          QStringLiteral("-t"),
+                          QStringLiteral("@0"),
+                          QStringLiteral("even-vertical")});
+        }
+        QVERIFY(change.waitForFinished(5000));
+        QCOMPARE(change.exitCode(), 0);
+        if (backgroundChange == QStringLiteral("title")) {
+            QTRY_COMPARE_WITH_TIMEOUT(session->userTitle(), QStringLiteral("application-window"), 5000);
+        } else {
+            QTRY_VERIFY_WITH_TIMEOUT(previousSplitter.isNull(), 5000);
+        }
+        QCOMPARE(container->currentIndex(), otherIndex);
+        QVERIFY(container->viewSplitterAt(otherIndex)->activeTerminalDisplay()->hasFocus());
+        // Inserting/removing the rebuilt page may shift the active index,
+        // but must never bring the background window (index zero) forward.
+        for (const auto &change : tabChanges) {
+            QVERIFY(change.first().toInt() != tabIndex);
+        }
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(tabIndex).center());
+        QTRY_VERIFY_WITH_TIMEOUT(display->hasFocus(), 5000);
+        QCOMPARE(session->tabTitleFormat(Session::LocalTabTitle), customTitle);
+        QCOMPARE(container->tabText(tabIndex), customTitle);
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(otherIndex).center());
+        QTRY_COMPARE_WITH_TIMEOUT(container->currentIndex(), otherIndex, 5000);
+        QTest::qWait(200);
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(tabIndex).center());
+        QTRY_VERIFY_WITH_TIMEOUT(display->hasFocus(), 5000);
+        QCOMPARE(session->tabTitleFormat(Session::LocalTabTitle), customTitle);
+        QTRY_COMPARE_WITH_TIMEOUT(container->tabText(tabIndex), customTitle, 5000);
+    }
+    for (int i = 0; i < 20; ++i) {
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(otherIndex).center());
+        QTest::mouseClick(container->tabBar(), Qt::LeftButton, Qt::NoModifier, container->tabBar()->tabRect(tabIndex).center());
+    }
+    QTest::qWait(1500);
+    QCOMPARE(container->currentIndex(), tabIndex);
+    QCOMPARE(session->tabTitleFormat(Session::LocalTabTitle), customTitle);
+    QCOMPARE(container->tabText(tabIndex), customTitle);
+    delete attach.mw.data();
 }
 
 void TmuxIntegrationTest::testMainWindowTitleReflectsTmuxPane()

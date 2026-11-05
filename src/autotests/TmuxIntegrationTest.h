@@ -53,6 +53,8 @@ private Q_SLOTS:
     void testHistoryRecoveryLimits();
     void testDetachedPaneOutputLifecycle();
     void testMainWindowTitleReflectsTmuxPane();
+    void testCustomTabTitleSurvivesTabSwitch_data();
+    void testCustomTabTitleSurvivesTabSwitch();
     void testSshInsideTmuxResolvesUserAndHost();
     void testWindowNameWithSpaces();
     void testSplitPaneFocusesNewPane();

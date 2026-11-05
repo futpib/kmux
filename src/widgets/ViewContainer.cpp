@@ -436,7 +436,7 @@ QSize TabbedViewContainer::sizeHint() const
     return {qMax(terminalSize.width(), tabBarSize.width()), tabBarSize.height() + terminalSize.height()};
 }
 
-void TabbedViewContainer::addSplitter(ViewSplitter *viewSplitter, int index)
+void TabbedViewContainer::addSplitter(ViewSplitter *viewSplitter, int index, bool activate)
 {
     auto *page = new TabPageWidget(viewSplitter);
     index = insertTab(index, page, QString());
@@ -456,7 +456,9 @@ void TabbedViewContainer::addSplitter(ViewSplitter *viewSplitter, int index)
     // addSplitter is plumbing — a freshly-created tab being placed in
     // the container, not a user picking it. OtherFocusReason marks it
     // as programmatic so the tmux echo is suppressed.
-    setCurrentIndex(index, Qt::OtherFocusReason);
+    if (activate) {
+        setCurrentIndex(index, Qt::OtherFocusReason);
+    }
 }
 
 void TabbedViewContainer::addView(TerminalDisplay *view)

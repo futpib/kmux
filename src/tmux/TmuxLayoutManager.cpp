@@ -247,6 +247,8 @@ int TmuxLayoutManager::applyLayout(int tabIndex, const TmuxLayoutNode &layout)
         auto *oldSplitter = container->viewSplitterAt(tabIndex);
         if (oldSplitter) {
             if (!updateSplitterSizes(oldSplitter, layout, false)) {
+                const bool wasCurrent = container->currentIndex() == tabIndex;
+                auto *activeDisplay = oldSplitter->activeTerminalDisplay();
                 // Structure changed — collect existing displays, build new splitter, swap
                 QMap<int, TerminalDisplay *> existingDisplays;
                 collectDisplays(oldSplitter, existingDisplays);
@@ -268,7 +270,16 @@ int TmuxLayoutManager::applyLayout(int tabIndex, const TmuxLayoutNode &layout)
                 QString tabText = container->tabText(tabIndex);
                 QIcon tabIcon = container->tabIcon(tabIndex);
                 auto *oldPage = container->tabPageAt(tabIndex);
-                container->addSplitter(newSplitter, tabIndex + 1);
+                container->addSplitter(newSplitter, tabIndex + 1, false);
+                // Reparenting clears Qt's remembered focus. Restore it while
+                // the replacement tab is hidden, preserving its selected pane
+                // and title without activating a background tab.
+                if (activeDisplay && newSplitter->isAncestorOf(activeDisplay)) {
+                    activeDisplay->setFocus(Qt::OtherFocusReason);
+                }
+                if (wasCurrent) {
+                    container->setCurrentIndex(tabIndex + 1, Qt::OtherFocusReason);
+                }
                 container->removeTab(tabIndex);
                 tabIndex = container->indexOfSplitter(newSplitter);
                 container->setTabText(tabIndex, tabText);

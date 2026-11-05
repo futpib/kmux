@@ -62,7 +62,7 @@ public:
 
     /** Adds a new view to the container widget */
     void addView(TerminalDisplay *view);
-    void addSplitter(ViewSplitter *viewSplitter, int index = -1);
+    void addSplitter(ViewSplitter *viewSplitter, int index = -1, bool activate = true);
 
     /** splits the currently focused Splitter */
     void splitView(TerminalDisplay *view, Qt::Orientation orientation);

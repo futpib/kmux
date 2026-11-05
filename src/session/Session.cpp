@@ -720,7 +720,9 @@ void Session::setSessionAttribute(int what, const QString &caption)
         }
     }
 
-    if (what == SessionName) {
+    // Applications may suggest a tab name with OSC 30, but an explicit
+    // rename must survive later output (including output in background tabs).
+    if (what == SessionName && !_tabTitleSetByUser) {
         if (_localTabTitleFormat != caption) {
             _localTabTitleFormat = caption;
             setTitle(Session::DisplayedTitleRole, caption);
