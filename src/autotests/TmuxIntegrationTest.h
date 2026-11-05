@@ -78,6 +78,7 @@ private Q_SLOTS:
     void testTmuxPrefixPaletteChooseTreeSessionShowsCollapsedSessions();
     void testTmuxPrefixPaletteShowsActionLabelForChooseTree();
     void testTmuxPrefixPaletteSendsLiteralPrefixToPane();
+    void testTmuxPrefixPaletteIgnoresBackgroundPaneSelection();
     void testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane();
     void testTmuxPrefixPaletteSendsLiteralPrefixWhenSecondPressLosesCtrl();
     void testTmuxPrefixPaletteCbCbLostWhenUnfocused();

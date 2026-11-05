@@ -7560,6 +7560,88 @@ void TmuxIntegrationTest::testTmuxPrefixPaletteSendsLiteralPrefixToTuiPane()
     delete attach.mw.data();
 }
 
+void TmuxIntegrationTest::testTmuxPrefixPaletteIgnoresBackgroundPaneSelection()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString outFile = m_tmuxTmpDir.path() + QStringLiteral("/background-prefix.bin");
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("stty raw -echo; exec cat > %1").arg(outFile), tmuxPath, m_tmuxTmpDir.path(), ctx, 100, 30);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(outFile), 5000);
+
+    QProcess background;
+    background.start(
+        tmuxPath,
+        {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("new-window"), QStringLiteral("-dP"), QStringLiteral("-F"), QStringLiteral("#{window_id}")});
+    QVERIFY(background.waitForFinished(5000));
+    QCOMPARE(background.exitCode(), 0);
+    const QString backgroundWindow = QString::fromUtf8(background.readAllStandardOutput()).trimmed();
+    QVERIFY(backgroundWindow.startsWith(QLatin1Char('@')));
+    background.start(tmuxPath,
+                     {QStringLiteral("-S"),
+                      ctx.socketPath,
+                      QStringLiteral("split-window"),
+                      QStringLiteral("-dP"),
+                      QStringLiteral("-F"),
+                      QStringLiteral("#{pane_id}"),
+                      QStringLiteral("-t"),
+                      backgroundWindow});
+    QVERIFY(background.waitForFinished(5000));
+    QCOMPARE(background.exitCode(), 0);
+    const QString backgroundPane = QString::fromUtf8(background.readAllStandardOutput()).trimmed();
+    QVERIFY(backgroundPane.startsWith(QLatin1Char('%')));
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    attach.mw->show();
+    QVERIFY(QTest::qWaitForWindowActive(attach.mw));
+    auto *container = attach.mw->viewManager()->activeContainer();
+    auto *controller = TmuxControllerRegistry::instance()->controllerForSession(attach.mw->viewManager()->sessions().first());
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller->prefixBindings().isEmpty(), 10000);
+    const int visiblePaneId = 0;
+    QTRY_COMPARE_WITH_TIMEOUT(controller->activePaneId(), visiblePaneId, 5000);
+    Session *visibleSession = controller->sessionForPane(visiblePaneId);
+    QVERIFY(visibleSession && !visibleSession->views().isEmpty());
+    auto *display = visibleSession->views().first();
+    QTRY_VERIFY_WITH_TIMEOUT(display->hasFocus() && display->isVisible(), 5000);
+    const int visibleTab = container->currentIndex();
+
+    // tmux broadcasts pane selections for background windows too. The palette
+    // must keep targeting the visible pane even if one arrives while it is open.
+    QTest::keyClick(display, Qt::Key_B, Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(attach.mw->findChild<TmuxPrefixPalette *>() != nullptr, 5000);
+    QSignalSpy selection(controller->gateway(), &TmuxGateway::windowPaneChanged);
+    background.start(tmuxPath, {QStringLiteral("-S"), ctx.socketPath, QStringLiteral("select-pane"), QStringLiteral("-t"), backgroundPane});
+    QVERIFY(background.waitForFinished(5000));
+    QCOMPARE(background.exitCode(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!selection.isEmpty(), 5000);
+    QCOMPARE(selection.last().at(0).toInt(), backgroundWindow.mid(1).toInt());
+    QCOMPARE(selection.last().at(1).toInt(), backgroundPane.mid(1).toInt());
+    QCOMPARE(container->currentIndex(), visibleTab);
+    QVERIFY(display->isVisible());
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_B, Qt::ControlModifier);
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_C);
+    auto readFile = [&]() -> QByteArray {
+        QFile file(outFile);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(readFile(), QByteArray(1, '\x02') + 'c', 5000);
+    QCOMPARE(controller->activePaneId(), visiblePaneId);
+    QCOMPARE(QApplication::focusWidget(), static_cast<QWidget *>(display));
+
+    // Visiting that tab must still restore its server-selected pane.
+    controller->requestSelectWindow(backgroundWindow.mid(1).toInt());
+    QTRY_COMPARE_WITH_TIMEOUT(controller->activePaneId(), backgroundPane.mid(1).toInt(), 5000);
+    const auto backgroundViews = controller->sessionForPane(backgroundPane.mid(1).toInt())->views();
+    QVERIFY(!backgroundViews.isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(backgroundViews.first()->hasFocus() && backgroundViews.first()->isVisible(), 5000);
+    delete attach.mw.data();
+}
+
 // Regression for the user-reported intermittent "C-b C-b works in tmux but not
 // kmux" on Wayland. The doubled-prefix gesture relies on the second press
 // resolving to the send-prefix binding. Under Wayland the first key event after

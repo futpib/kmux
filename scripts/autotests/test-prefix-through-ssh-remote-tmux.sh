@@ -83,6 +83,8 @@ EOF
 chmod +x "$CONNECT"
 
 tmux -S "$LOCAL_SOCKET" -f /dev/null new-session -d -s "$LOCAL_SESSION" -x 100 -y 30 "exec '$CONNECT'"
+BACKGROUND_WINDOW=$(tmux -S "$LOCAL_SOCKET" new-window -d -P -F '#{window_id}' -t "$LOCAL_SESSION" -n background)
+BACKGROUND_PANE=$(tmux -S "$LOCAL_SOCKET" split-window -d -P -F '#{pane_id}' -t "$BACKGROUND_WINDOW")
 if [[ ${KMUX_TEST_PREFIX_RSH:-0} == 1 ]]; then
     # Put the control connection over SSH too, with delayed replies so the
     # next chord can arrive while an earlier pane-mode query is outstanding.
@@ -208,6 +210,23 @@ if ! kmux_test_wait_until 10 'all remote tmux windows from burst' remote_burst_c
     kmux_test_dump_tmux "$REMOTE_SOCKET" "$REMOTE_SESSION"
     kmux_test_dump_log "$LOGDIR/kmux.log" 100
     kmux_test_fail 'C-b C-b c burst lost or reordered remote tmux commands'
+fi
+
+# A pane selection in a background window must not redirect the prefix away
+# from the visible SSH pane. Other clients can produce these notifications.
+tmux -S "$LOCAL_SOCKET" select-pane -t "$BACKGROUND_PANE"
+background_selection_received() {
+    grep -Fq "notification: \"%window-pane-changed $BACKGROUND_WINDOW $BACKGROUND_PANE\"" "$LOGDIR/kmux.log"
+}
+kmux_test_wait_until 5 'background pane selection notification' background_selection_received || kmux_test_fail
+tmux -S "$REMOTE_SOCKET" set-option -gu @prefix-probe
+send_key ctrl+b
+send_key ctrl+b
+send_key x
+if ! kmux_test_wait_until 5 'remote prefix after background pane selection' remote_prefix_seen; then
+    kmux_test_dump_tmux "$LOCAL_SOCKET" "$LOCAL_SESSION"
+    kmux_test_dump_log "$LOGDIR/kmux.log" 60
+    kmux_test_fail 'C-b C-b was redirected by a background pane selection'
 fi
 
 kmux_test_pass 'C-b C-b passed through local tmux and SSH to remote tmux on all trials'

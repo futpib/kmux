@@ -552,6 +552,14 @@ void TmuxController::initialize()
                                       QString paneStr = parts[0];
                                       if (paneStr.startsWith(QLatin1Char('%'))) {
                                           _activePaneId = paneStr.mid(1).toInt();
+                                          // Creating the tabs leaves the last one visible.
+                                          // Align both keyboard focus and prefix targeting
+                                          // with tmux's active pane on a fresh attachment.
+                                          const int tabIndex = tabIndexForWindow(winId);
+                                          if (auto *container = _viewManager->activeContainer(); container && tabIndex >= 0) {
+                                              container->setCurrentIndex(tabIndex, Qt::OtherFocusReason);
+                                              focusPane(_activePaneId);
+                                          }
                                       }
                                       break;
                                   }
@@ -2055,13 +2063,13 @@ void TmuxController::onWindowRenamed(int windowId, const QString &name)
 
 void TmuxController::onWindowPaneChanged(int windowId, int paneId)
 {
-    // Only adopt the active pane if this controller actually shows the
-    // window. Sibling clients on the same tmux session (e.g. a window
-    // detached into its own kmux MainWindow) broadcast %window-pane-changed
-    // for windows we've hidden; adopting their pane would point _activePaneId
-    // — and the next split/pane op — into a window the user can't see.
-    if (!shouldShowWindow(windowId)) {
-        qCDebug(KonsoleTmuxController) << "onWindowPaneChanged: ignoring pane" << paneId << "in @" << windowId << "— not shown on this controller";
+    // Pane selections are broadcast for background tabs and detached windows
+    // too. Adopting those panes redirects send-prefix away from the visible
+    // terminal, while ordinary input still goes to that terminal's session.
+    // Keep accepting notifications before a new window's tab exists so its
+    // layout can finish creating and focusing the selected pane.
+    if (!shouldShowWindow(windowId) || (tabIndexForWindow(windowId) >= 0 && !isWindowVisible(windowId))) {
+        qCDebug(KonsoleTmuxController) << "onWindowPaneChanged: ignoring pane" << paneId << "in @" << windowId << "— not the visible window";
         return;
     }
     _activePaneId = paneId;
