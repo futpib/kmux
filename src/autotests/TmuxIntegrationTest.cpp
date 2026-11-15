@@ -9799,6 +9799,84 @@ TerminalDisplay *firstViewOf(MainWindow *mw)
     const auto views = mw->viewManager()->sessions().first()->views();
     return views.isEmpty() ? nullptr : views.first();
 }
+
+QString runTmux(const QString &tmuxPath, const TmuxTestFixture::SessionContext &ctx, const QStringList &args)
+{
+    QProcess p;
+    p.start(tmuxPath, QStringList{QStringLiteral("-S"), ctx.socketPath} + args);
+    p.waitForFinished(5000);
+    return QString::fromUtf8(p.readAllStandardOutput());
+}
+
+// Paint the frame a full-screen TUI like Claude Code leaves on the alternate
+// screen: the top `blankTopRows` rows empty, ROWnn on every row below down to
+// the last, the cursor parked on an input row above the bottom, and no further
+// output — so whatever kmux shows afterwards came from recovery alone.
+// Returns tmux's own rows.
+QStringList paintTuiFrame(const QString &tmuxPath, const TmuxTestFixture::SessionContext &ctx, int lines, int blankTopRows)
+{
+    // Concatenated: QString::arg would read printf's %02d as a placeholder.
+    const QString script = QStringLiteral("printf '\\033[?1049h\\033[2J'; for i in $(seq ") + QString::number(blankTopRows + 1) + QLatin1Char(' ')
+        + QString::number(lines) + QStringLiteral("); do printf '\\033[%d;1HROW%02d' $i $i; done; printf '\\033[") + QString::number(lines - 2)
+        + QStringLiteral(";3H'; exec sleep 600");
+    runTmux(tmuxPath, ctx, {QStringLiteral("send-keys"), QStringLiteral("-t"), ctx.sessionName, script, QStringLiteral("Enter")});
+    const QString last = QStringLiteral("ROW%1").arg(lines, 2, 10, QLatin1Char('0'));
+    QElapsedTimer timer;
+    timer.start();
+    QString screen;
+    while (timer.elapsed() < 5000) {
+        screen = runTmux(tmuxPath, ctx, {QStringLiteral("capture-pane"), QStringLiteral("-p"), QStringLiteral("-t"), ctx.sessionName});
+        if (screen.contains(last)) {
+            break;
+        }
+        QTest::qWait(50);
+    }
+    QStringList rows = screen.split(QLatin1Char('\n')).mid(0, lines);
+    for (QString &row : rows) {
+        while (!row.isEmpty() && row.back().isSpace()) {
+            row.chop(1);
+        }
+    }
+    return rows;
+}
+
+QStringList visibleRows(Session *session, int lines)
+{
+    QStringList rows;
+    if (session == nullptr) {
+        return rows;
+    }
+    Screen *screen = session->emulation()->createWindow()->screen();
+    const int histLines = screen->getHistLines();
+    for (int row = 0; row < qMin(screen->getLines(), lines); ++row) {
+        screen->setSelectionStart(0, histLines + row, false);
+        screen->setSelectionEnd(screen->getColumns() - 1, histLines + row, false);
+        QString text = screen->selectedText(Screen::PlainText);
+        while (!text.isEmpty() && text.back().isSpace()) {
+            text.chop(1);
+        }
+        rows.append(text);
+    }
+    screen->clearSelection();
+    return rows;
+}
+
+QString describeRows(const QStringList &tmuxRows, const QStringList &kmuxRows)
+{
+    QStringList out;
+    for (int i = 0; i < qMax(tmuxRows.size(), kmuxRows.size()); ++i) {
+        out.append(QStringLiteral("%1: tmux=%2 kmux=%3").arg(i).arg(tmuxRows.value(i), kmuxRows.value(i)));
+    }
+    return out.join(QLatin1Char('\n'));
+}
+
+// Wipe kmux's local copy of the pane, so the rows seen after a reconnect can
+// only have come from that reconnect's recovery.
+void wipeLocalScreen(Session *session)
+{
+    static const char wipe[] = "\033[2J\033[H";
+    session->emulation()->receiveData(wipe, sizeof(wipe) - 1);
+}
 } // namespace
 
 void TmuxIntegrationTest::testTransportDeathAutoReconnects()
@@ -9853,6 +9931,131 @@ void TmuxIntegrationTest::testTransportDeathAutoReconnects()
     QVERIFY(QString::fromUtf8(listSessions.readAllStandardOutput()).contains(ctx.sessionName));
 
     delete attach.mw.data();
+}
+
+// Claude Code paints its frame on the alternate screen with the top row
+// blank. Recovery replays `capture-pane`, whose first line is then empty — and
+// the gateway dropped leading blank lines from every command response, so the
+// whole frame landed one row too high per blank top row, with as many blank
+// rows left at the bottom. Every reconnect recovers the frame again.
+void TmuxIntegrationTest::testRecoveredRowsMatchTmuxAcrossReconnect()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+
+    constexpr int lines = 12;
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 40, lines);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+    const QStringList tmuxRows = paintTuiFrame(tmuxPath, ctx, lines, 2);
+    QCOMPARE(tmuxRows.size(), lines);
+    QCOMPARE(runTmux(tmuxPath,
+                     ctx,
+                     {QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), ctx.sessionName, QStringLiteral("#{alternate_on}")})
+                 .trimmed(),
+             QStringLiteral("1"));
+
+    TmuxTestFixture::AttachResult attach;
+    TmuxTestFixture::attachKonsole(tmuxPath, ctx, attach);
+    QPointer<MainWindow> mwGuard(attach.mw);
+    Session *paneSession = attach.mw->viewManager()->sessions().first();
+    QVERIFY(paneSession);
+
+    QTRY_VERIFY_WITH_TIMEOUT(visibleRows(paneSession, lines).join(QLatin1Char('\n')).contains(tmuxRows.last()), 10000);
+    QTest::qWait(300);
+    QVERIFY2(visibleRows(paneSession, lines) == tmuxRows,
+             qPrintable(QStringLiteral("after attach:\n") + describeRows(tmuxRows, visibleRows(paneSession, lines))));
+
+    wipeLocalScreen(paneSession);
+    auto *proc = bridgeProcess(attach.bridge);
+    QVERIFY(proc);
+    proc->kill();
+    QTRY_VERIFY_WITH_TIMEOUT(mwGuard && !connectionBannerVisibleTo(firstViewOf(attach.mw))
+                                 && visibleRows(paneSession, lines).join(QLatin1Char('\n')).contains(tmuxRows.last()),
+                             10000);
+    QTest::qWait(300);
+    QVERIFY2(visibleRows(paneSession, lines) == tmuxRows,
+             qPrintable(QStringLiteral("after reconnect:\n") + describeRows(tmuxRows, visibleRows(paneSession, lines))));
+
+    delete mwGuard.data();
+}
+
+// The same frame, one blank top row as Claude Code leaves it, recovered by the
+// unresponsive banner's Retry — the path that showed it two rows too high.
+void TmuxIntegrationTest::testRecoveredRowsMatchTmuxAfterRetry()
+{
+    const QString tmuxPath = TmuxTestFixture::findTmuxOrSkip();
+    const QString killPath = QStandardPaths::findExecutable(QStringLiteral("kill"));
+    if (killPath.isEmpty()) {
+        QSKIP("kill(1) not found.");
+    }
+
+    constexpr int lines = 12;
+    TmuxTestFixture::SessionContext ctx;
+    TmuxTestFixture::setupSinglePane(QStringLiteral("bash --norc --noprofile"), tmuxPath, m_tmuxTmpDir.path(), ctx, 40, lines);
+    auto cleanup = qScopeGuard([&] {
+        TmuxTestFixture::killTmuxSession(tmuxPath, ctx);
+    });
+    const QStringList tmuxRows = paintTuiFrame(tmuxPath, ctx, lines, 1);
+    QCOMPARE(tmuxRows.size(), lines);
+
+    const QString pidFile = m_tmuxTmpDir.path() + QStringLiteral("/rows-relay.pid");
+    const QString wrapper = m_tmuxTmpDir.path() + QStringLiteral("/rows-rsh.sh");
+    {
+        QFile f(wrapper);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("#!/bin/bash\n\"$@\" | { echo $BASHPID > \"");
+        f.write(pidFile.toUtf8());
+        f.write("\"; exec cat; }\n");
+        f.close();
+    }
+    QVERIFY(QFile::setPermissions(wrapper, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    auto *mw = new MainWindow();
+    QPointer<MainWindow> mwGuard(mw);
+    auto *bridge = new TmuxProcessBridge(mw->viewManager(), mw);
+    QVERIFY(bridge->start(tmuxPath,
+                          {QStringLiteral("-S"), ctx.socketPath},
+                          {QStringLiteral("new-session"), QStringLiteral("-A"), QStringLiteral("-s"), ctx.sessionName},
+                          {wrapper}));
+    QTRY_VERIFY_WITH_TIMEOUT(!mw->viewManager()->sessions().isEmpty(), 10000);
+    Session *paneSession = mw->viewManager()->sessions().first();
+    QTRY_VERIFY_WITH_TIMEOUT(visibleRows(paneSession, lines).join(QLatin1Char('\n')).contains(tmuxRows.last()), 10000);
+    QTest::qWait(300);
+    QVERIFY2(visibleRows(paneSession, lines) == tmuxRows,
+             qPrintable(QStringLiteral("after attach:\n") + describeRows(tmuxRows, visibleRows(paneSession, lines))));
+
+    TmuxGateway *gateway = bridge->controller()->gateway();
+    gateway->setCommandTimeoutMs(600);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(pidFile), 10000);
+    qint64 relayPid = 0;
+    {
+        QFile f(pidFile);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        relayPid = QString::fromUtf8(f.readAll()).trimmed().toLongLong();
+    }
+    QVERIFY(relayPid > 0);
+    QCOMPARE(QProcess::execute(killPath, {QStringLiteral("-STOP"), QString::number(relayPid)}), 0);
+    gateway->sendCommand(TmuxCommand(QStringLiteral("display-message")));
+
+    TerminalDisplay *view = firstViewOf(mw);
+    QVERIFY(view);
+    QTRY_VERIFY_WITH_TIMEOUT(connectionBannerVisibleTo(view), 10000);
+    wipeLocalScreen(paneSession);
+    QAction *retry = reconnectActionFor(view);
+    QVERIFY(retry);
+    retry->trigger();
+
+    QTRY_VERIFY_WITH_TIMEOUT(mwGuard && !connectionBannerVisibleTo(firstViewOf(mw))
+                                 && visibleRows(paneSession, lines).join(QLatin1Char('\n')).contains(tmuxRows.last()),
+                             10000);
+    QTest::qWait(500);
+    QVERIFY2(visibleRows(paneSession, lines) == tmuxRows,
+             qPrintable(QStringLiteral("after retry:\n") + describeRows(tmuxRows, visibleRows(paneSession, lines))));
+
+    QProcess::execute(killPath, {QStringLiteral("-CONT"), QString::number(relayPid)});
+    delete mwGuard.data();
 }
 
 void TmuxIntegrationTest::testUnresponsiveBannerRetryReconnects()
