@@ -64,9 +64,12 @@ void TmuxGateway::processLine(const QByteArray &line)
             handleNotification(line);
             return;
         }
-        // Accumulate response data
+        // Accumulate response data. Separate by line count, not by whether
+        // the response is still empty: a body that starts with blank lines
+        // (capture-pane of a screen whose top rows are empty) must keep them,
+        // or every row below lands that many rows too high.
         if (!_serverOriginated) {
-            if (!_currentCommand.response.isEmpty()) {
+            if (_currentCommand.responseLines++ > 0) {
                 _currentCommand.response += QLatin1Char('\n');
             }
             _currentCommand.response += QString::fromUtf8(line);

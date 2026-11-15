@@ -19,6 +19,7 @@ private Q_SLOTS:
     void testNotificationInsideServerOriginatedBlockIsRouted();
     void testNotificationOutsideAnyBlockIsRouted();
     void testResponseInsideClientOriginatedBlockIsCaptured();
+    void testLeadingBlankResponseLinesAreKept();
     void testUnresponsiveFiresWhenCommandUnanswered();
     void testReplyBeforeTimeoutStaysResponsive();
     void testIdleLinkNeverUnresponsive();
