@@ -126,6 +126,29 @@ void TmuxGatewayTest::testResponseInsideClientOriginatedBlockIsCaptured()
     QCOMPARE(got, QStringLiteral("hello world"));
 }
 
+void TmuxGatewayTest::testLeadingBlankResponseLinesAreKept()
+{
+    // capture-pane of a screen whose top rows are blank (Claude Code leaves
+    // row 0 empty) starts its response with empty lines. They are rows of the
+    // screen: dropping them lands every row below that many rows too high.
+    TmuxGateway gateway([](const QByteArray &) {});
+
+    QString got;
+    gateway.sendCommand(TmuxCommand(QStringLiteral("capture-pane")), [&](bool, const QString &response) {
+        got = response;
+    });
+
+    gateway.processLine("%begin 1779000000 1 1");
+    gateway.processLine("");
+    gateway.processLine("");
+    gateway.processLine("row 2");
+    gateway.processLine("");
+    gateway.processLine("row 4");
+    gateway.processLine("%end 1779000000 1 1");
+
+    QCOMPARE(got, QStringLiteral("\n\nrow 2\n\nrow 4"));
+}
+
 void TmuxGatewayTest::testUnresponsiveFiresWhenCommandUnanswered()
 {
     // A command that never gets its %begin/%end within the timeout marks the

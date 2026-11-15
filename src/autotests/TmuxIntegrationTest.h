@@ -145,6 +145,8 @@ private Q_SLOTS:
     void testCloseTabFromContainerConfirmed();
     void testTabTextPreservesEmojiOverMockRshStrippingLocale();
     void testTransportDeathAutoReconnects();
+    void testRecoveredRowsMatchTmuxAcrossReconnect();
+    void testRecoveredRowsMatchTmuxAfterRetry();
     void testUnresponsiveBannerRetryReconnects();
     void testKillSessionDoesNotInventNewSession();
     void testDetachedWindowReconnectKeepsShowOnlyWindow();

@@ -103,6 +103,7 @@ private:
         QString command;
         CommandCallback callback;
         QString response;
+        int responseLines = 0;
         int commandId = -1;
     };
     QQueue<PendingCommand> _pendingCommands;
