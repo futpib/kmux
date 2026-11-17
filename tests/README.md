@@ -18,7 +18,7 @@ in other terminal emulators.
  - [Various URLs](text-files/cat_test_urls.txt)
  - [Emojis](text-files/emoji_test.txt)
  - [Box characters](text-files/boxes.txt)
- - [URL escape sequences](text-files/url-escape-sequences.txt): Hides the real URL that is opened if clicked.
+ - [URL escape sequences](text-files/url-escape-sequences.txt): Labeled hyperlinks. Hover shows the destination; opening a hidden destination requires confirmation.
  - [Characters available in 9x15, encoded in UTF-8](text-files/9x15.repertoire-utf8.txt)
  - [UTF-8 decomposed hangul character](textfiles/text-files/decomposed-hangul.txt): Testcase for commit 43744097.
  - [UTF-8 test file from the Kermit project](text-files/GLASS.utf8.txt)

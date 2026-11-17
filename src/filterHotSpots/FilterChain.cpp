@@ -71,13 +71,18 @@ void FilterChain::clear()
 
 QSharedPointer<HotSpot> FilterChain::hotSpotAt(int line, int column) const
 {
+    QSharedPointer<HotSpot> first;
     for (auto *filter : _filters) {
         QSharedPointer<HotSpot> spot = filter->hotSpotAt(line, column);
-        if (spot != nullptr) {
+        // An explicit destination takes precedence over URL-looking label text.
+        if (spot && spot->type() == HotSpot::EscapedUrl) {
             return spot;
         }
+        if (!first) {
+            first = spot;
+        }
     }
-    return nullptr;
+    return first;
 }
 
 QList<QSharedPointer<HotSpot>> FilterChain::hotSpots() const

@@ -901,7 +901,6 @@ private:
     // used in REP (repeating char)
     quint32 _lastDrawnChar;
     std::unique_ptr<EscapeSequenceUrlExtractor> _escapeSequenceUrlExtractor;
-    void toggleUrlInput();
 
     // Vt102Emulation defined max argument value that can be passed to a Screen function
     const int MAX_SCREEN_ARGUMENT = 40960;

@@ -450,10 +450,10 @@
          <item>
           <widget class="QLabel" name="allowLinkEscapeSequenceButtonWarning">
            <property name="text">
-            <string>&lt;b&gt;WARNING&lt;/b&gt;: This has security implications as it allows malicious URLs to be shown as another URL or hidden.&lt;br&gt;Make sure you understand the implications before turning this on.</string>
+            <string>Hover to see the destination. Links whose text differs from the destination, and links to files or other applications, require confirmation before opening.</string>
            </property>
            <property name="textFormat">
-            <enum>Qt::TextFormat::RichText</enum>
+            <enum>Qt::TextFormat::PlainText</enum>
            </property>
            <property name="wordWrap">
             <bool>true</bool>

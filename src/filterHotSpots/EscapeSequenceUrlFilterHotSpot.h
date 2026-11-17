@@ -30,6 +30,7 @@ public:
 
 private:
     QMimeData *createMimeData() const;
+    bool confirmOpen(QWidget *parent) const;
 
 private:
     QString _text;

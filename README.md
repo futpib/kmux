@@ -61,6 +61,13 @@ KDE feature set — profiles, color schemes, KPart embedding, bookmarks.
   per-host tmux session/socket/path overrides.
 - **Full Konsole feature set** — color schemes, keyboard shortcuts, KPart
   embedding, profiles, bookmarks, and everything else Konsole provides.
+- **Terminal hyperlinks enabled by default** — OSC 8 links show their destination
+  on hover. Opening or dragging a link whose visible text differs from its
+  destination requires confirmation, with Cancel selected by default. File and
+  custom-application links always require confirmation. The default formats are
+  HTTP, HTTPS, and local files; executable files are not run. Existing profiles
+  that explicitly disable links keep that choice. Configure this under
+  Settings → Edit Current Profile → Mouse → Miscellaneous.
 
 ## Installation
 

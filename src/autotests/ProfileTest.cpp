@@ -270,6 +270,13 @@ void ProfileTest::testBuiltinProfile()
     QVERIFY(builtin->isBuiltin());
     QCOMPARE(builtin->untranslatedName(), QStringLiteral("Built-in"));
     QCOMPARE(builtin->path(), QStringLiteral("FALLBACK/"));
+    QVERIFY(builtin->allowEscapedLinks());
+    QCOMPARE(builtin->escapedLinksSchema(), QStringList({QStringLiteral("http://"), QStringLiteral("https://"), QStringLiteral("file://")}));
+
+    Profile child(builtin);
+    QVERIFY(child.allowEscapedLinks());
+    child.setProperty(Profile::AllowEscapedLinks, false);
+    QVERIFY(!child.allowEscapedLinks());
 }
 
 void ProfileTest::testLoadProfileNamedAsBuiltin()

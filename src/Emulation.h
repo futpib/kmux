@@ -433,8 +433,6 @@ Q_SIGNALS:
      */
     void resetCursorStyleRequest();
 
-    void toggleUrlExtractionRequest();
-
     /**
      * Emitted when an OSC 777 (notification/extension) escape sequence is received.
      * The params list contains the semicolon-separated values after "777;".

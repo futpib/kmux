@@ -73,10 +73,6 @@ static const quint16 vt100_graphics[32] = {
 };
 /* clang-format on */
 
-enum XTERM_EXTENDED {
-    URL_LINK = '8',
-};
-
 Vt102Emulation::Vt102Emulation()
     : Emulation()
     , tokenBuffer(256)
@@ -675,20 +671,6 @@ void Vt102Emulation::osc_put(const uint cc)
 
 void Vt102Emulation::osc_end(const uint cc)
 {
-    // This runs two times per link, the first prepares the link to be read,
-    // the second finalizes it. The escape sequence is in two parts
-    //  start: '\e ] 8 ; <id-path> ; <url-part> \e \\'
-    //  end:   '\e ] 8 ; ; \e \\'
-    // GNU libtextstyle inserts the IDs, for instance; many examples
-    // do not.
-    if (tokenBuffer[0] == XTERM_EXTENDED::URL_LINK) {
-        // printf '\e]8;;https://example.com\e\\This is a link\e]8;;\e\\\n'
-        if (auto extractor = _currentScreen->urlExtractor()) {
-            // OSC 8 is per-screen; do not broadcast to all screens.
-            extractor->toggleUrlInput();
-        }
-    }
-
     processSessionAttributeRequest(tokenBufferPos, cc);
 }
 
@@ -1307,13 +1289,17 @@ void Vt102Emulation::processSessionAttributeRequest(const int tokenSize, const u
     ++i;
 
     QString value = QString::fromUcs4(&tokenBuffer[i], tokenSize - i);
-    if (_currentScreen->urlExtractor() && _currentScreen->urlExtractor()->reading()) {
-        // To handle '\e ] 8 ; <id-part> ; <url-part>' we discard
-        // the <id-part>. Often it is empty, but GNU libtextstyle
-        // may output an id here, see e.g.
-        // https://www.gnu.org/software/gettext/libtextstyle/manual/libtextstyle.html#index-styled_005fostream_005fset_005fhyperlink
-        value.remove(0, value.indexOf(QLatin1Char(';')) + 1);
-        _currentScreen->urlExtractor()->setUrl(value);
+    if (attribute == 8) {
+        // OSC 8 explicitly opens or closes a link on the current screen.
+        // Other OSC commands must never replace its destination.
+        if (auto *extractor = _currentScreen->urlExtractor()) {
+            const auto separator = value.indexOf(QLatin1Char(';'));
+            if (separator < 0) {
+                extractor->abortUrlInput();
+            } else {
+                extractor->setUrl(value.mid(separator + 1));
+            }
+        }
         return;
     }
 

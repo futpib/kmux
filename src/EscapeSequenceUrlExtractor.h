@@ -44,19 +44,13 @@ private:
     /* Tell us if we are currently reading or not a URL. */
     bool _reading = false;
 
-    /* If we abort reading a URL input we enter in a invalid state,
-     * and we need to ignore the next toggle.
-     */
-    bool _ignoreNextUrlInput = false;
-
     /* The url / text pair being extracted currently */
     ExtractedUrl _currentUrl{};
 
-    /* The maximum size of url to prevent a bomb
-     * that will take over the history file.
-     * TODO: make it configurable.
-     */
-    // Not used ATM const int _maximumUrlHistory = 200;
+    /* Bound metadata retained from untrusted terminal output. */
+    static constexpr int MaximumUrlLength = 4096;
+    static constexpr int MaximumTextLength = 4096;
+    static constexpr int MaximumUrlHistory = 1024;
 
     /* All of the extracted URL's. */
     QVector<ExtractedUrl> _history;
@@ -87,9 +81,6 @@ public:
     {
         return _reading;
     }
-
-    /* We found an URL, starting to parse */
-    void beginUrlInput();
 
     /* We received the end byte to finish the Url. */
     void endUrlInput();
@@ -125,10 +116,6 @@ public:
      */
     void historyLinesRemoved(int lines);
 
-    /* starts / stops URL Processing */
-
-public Q_SLOTS:
-    void toggleUrlInput();
 };
 
 }

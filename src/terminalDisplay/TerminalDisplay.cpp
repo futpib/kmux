@@ -158,10 +158,6 @@ void TerminalDisplay::setScreenWindow(ScreenWindow *window)
 
         if (_screenWindow->screen()->urlExtractor()) {
             _screenWindow->screen()->urlExtractor()->setAllowedLinkSchema(profile->escapedLinksSchema());
-            connect(_sessionController->session()->emulation(),
-                    &Emulation::toggleUrlExtractionRequest,
-                    _screenWindow->screen()->urlExtractor(),
-                    &EscapeSequenceUrlExtractor::toggleUrlInput);
         }
     }
 }
@@ -243,6 +239,8 @@ TerminalDisplay::TerminalDisplay(QWidget *parent)
     connect(_scrollBar, &QScrollBar::sliderMoved, this, &Konsole::TerminalDisplay::viewScrolledByUser);
 
     _hoverLinkIndicator = new QLabel(this);
+    _hoverLinkIndicator->setTextFormat(Qt::PlainText);
+    _hoverLinkIndicator->setLayoutDirection(Qt::LeftToRight);
     _hoverLinkIndicator->setStyleSheet(QStringLiteral("background-color:palette(window); padding: 2px;"));
     _hoverLinkIndicator->setVisible(false);
 

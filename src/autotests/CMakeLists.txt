@@ -65,6 +65,11 @@ ecm_add_test(
 )
 
 ecm_add_test(
+    EscapeSequenceUrlTest.cpp
+    LINK_LIBRARIES konsoleprivate Qt::Multimedia Qt::Test
+)
+
+ecm_add_test(
     ContainerDetectorParsingTest.cpp
     LINK_LIBRARIES konsolecontainers Qt::Test
 )

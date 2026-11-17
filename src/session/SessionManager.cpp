@@ -320,7 +320,8 @@ void SessionManager::applyProfile(Session *session, const Profile::Ptr &profile,
     if (apply.shouldApply(Profile::SilenceSeconds)) {
         session->setMonitorSilenceSeconds(profile->silenceSeconds());
     }
-    if (apply.shouldApply(Profile::AllowEscapedLinks) || apply.shouldApply(Profile::ReflowLines) || apply.shouldApply(Profile::IgnoreWcWidth)) {
+    if (apply.shouldApply(Profile::AllowEscapedLinks) || apply.shouldApply(Profile::EscapedLinksSchema) || apply.shouldApply(Profile::ReflowLines)
+        || apply.shouldApply(Profile::IgnoreWcWidth)) {
         const bool shouldEnableUrlExtractor = profile->allowEscapedLinks();
         const bool enableReflowLines = profile->property<bool>(Profile::ReflowLines);
         const bool ignoreWcWidth = profile->property<bool>(Profile::IgnoreWcWidth);
@@ -331,10 +332,6 @@ void SessionManager::applyProfile(Session *session, const Profile::Ptr &profile,
             view->screenWindow()->screen()->setEnableUrlExtractor(shouldEnableUrlExtractor);
             if (shouldEnableUrlExtractor) {
                 view->screenWindow()->screen()->urlExtractor()->setAllowedLinkSchema(profile->escapedLinksSchema());
-                connect(session->emulation(),
-                        &Emulation::toggleUrlExtractionRequest,
-                        view->screenWindow()->screen()->urlExtractor(),
-                        &EscapeSequenceUrlExtractor::toggleUrlInput);
             }
         }
     }
@@ -370,7 +367,11 @@ void SessionManager::sessionProfileCommandReceived(Session *session, const QStri
     }
 
     ProfileCommandParser parser;
-    newProfile->assignProperties(parser.parse(text));
+    auto changes = parser.parse(text);
+    // Terminal output must not relax the user's hyperlink policy.
+    changes.erase(Profile::AllowEscapedLinks);
+    changes.erase(Profile::EscapedLinksSchema);
+    newProfile->assignProperties(changes);
 
     _sessionProfiles[session] = newProfile;
     applyProfile(newProfile, true);

@@ -15,8 +15,10 @@
 #include <QClipboard>
 #include <QDebug>
 #include <QDrag>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPushButton>
 
 #include "terminalDisplay/TerminalDisplay.h"
 
@@ -49,10 +51,37 @@ void EscapeSequenceUrlHotSpot::activate(QObject *object)
     }
 
     if ((object == nullptr) || actionName == QLatin1String("open-action")) {
-        auto *job = new KIO::OpenUrlJob(QUrl(_url));
+        const QUrl destination(_url, QUrl::StrictMode);
+        if (!confirmOpen(QApplication::activeWindow())) {
+            return;
+        }
+        auto *job = new KIO::OpenUrlJob(destination);
+        job->setRunExecutables(false);
+        job->setShowOpenOrExecuteDialog(false);
         job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, QApplication::activeWindow()));
         job->start();
     }
+}
+
+bool EscapeSequenceUrlHotSpot::confirmOpen(QWidget *parent) const
+{
+    const QUrl destination(_url, QUrl::StrictMode);
+    if (_text == _url && (destination.scheme() == QLatin1String("http") || destination.scheme() == QLatin1String("https"))) {
+        return true;
+    }
+
+    QMessageBox dialog(QMessageBox::Question,
+                       i18n("Open Terminal Link"),
+                       i18n("Check the destination before opening this terminal link:"),
+                       QMessageBox::Open | QMessageBox::Cancel,
+                       parent);
+    dialog.setTextFormat(Qt::PlainText);
+    dialog.setLayoutDirection(Qt::LeftToRight);
+    dialog.setInformativeText(_url);
+    dialog.button(QMessageBox::Open)->setText(i18n("&Open Link"));
+    dialog.setDefaultButton(QMessageBox::Cancel);
+    dialog.setEscapeButton(QMessageBox::Cancel);
+    return dialog.exec() == QMessageBox::Open;
 }
 
 QList<QAction *> EscapeSequenceUrlHotSpot::actions()
@@ -88,6 +117,11 @@ bool EscapeSequenceUrlHotSpot::hasDragOperation() const
 
 void EscapeSequenceUrlHotSpot::startDrag(TerminalDisplay *td, QPoint dragPosition)
 {
+    QPointer<EscapeSequenceUrlHotSpot> guard(this);
+    QPointer<TerminalDisplay> display(td);
+    if (!confirmOpen(td) || !guard || !display) {
+        return;
+    }
     auto *drag = new QDrag(this);
     auto *mimeData = createMimeData();
 

@@ -180,7 +180,7 @@ const std::vector<Profile::PropertyInfo> Profile::DefaultProperties = {
     {MouseWheelZoomEnabled, "MouseWheelZoomEnabled", INTERACTION_GROUP, true},
     {AllowMouseTracking, "AllowMouseTracking", INTERACTION_GROUP, true},
     {AlternateScrolling, "AlternateScrolling", INTERACTION_GROUP, true},
-    {AllowEscapedLinks, "AllowEscapedLinks", INTERACTION_GROUP, false},
+    {AllowEscapedLinks, "AllowEscapedLinks", INTERACTION_GROUP, true},
     {EscapedLinksSchema, "EscapedLinksSchema", INTERACTION_GROUP, QLatin1String("http://;https://;file://")},
     {ColorFilterEnabled, "ColorFilterEnabled", INTERACTION_GROUP, true},
 
