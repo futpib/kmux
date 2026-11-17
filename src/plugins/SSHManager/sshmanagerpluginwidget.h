@@ -55,6 +55,7 @@ public:
     Q_SLOT void requestImport();
 
     Q_SLOT void handleTreeClick(Qt::MouseButton btn, const QModelIndex idx);
+    Q_SLOT void selectionChanged(const QModelIndex current);
 
     Q_SIGNAL void requestNewTab();
     Q_SIGNAL void requestRemoteConnection(const SSHConfigurationData &data);
