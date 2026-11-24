@@ -1822,8 +1822,24 @@ void TmuxIntegrationTest::testManyPaneMetadataAndResize()
     QVERIFY(runTmux({QStringLiteral("select-pane"), QStringLiteral("-t"), changedPane, QStringLiteral("-T"), QStringLiteral("updated background title")}));
     QTRY_COMPARE_WITH_TIMEOUT(controller->sessionForPane(changedPaneId)->userTitle(), QStringLiteral("updated background title"), 10000);
     for (const QString &window : windowTokens) {
+        // tmux 3.8 returns JSON layouts to ordinary command clients, while
+        // kmux's control client still receives the legacy layout format.
+        // Query through that client so both sides describe the same format.
         QString layout;
-        QVERIFY(runTmux({QStringLiteral("display-message"), QStringLiteral("-p"), QStringLiteral("-t"), window, QStringLiteral("#{window_layout}")}, &layout));
+        bool layoutReceived = false;
+        bool layoutQuerySucceeded = false;
+        controller->gateway()->sendCommand(TmuxCommand(QStringLiteral("display-message"))
+                                               .flag(QStringLiteral("-p"))
+                                               .windowTarget(window.mid(1).toInt())
+                                               .format(QStringLiteral("#{window_layout}")),
+                                           [&](bool success, const QString &response) {
+                                               layoutQuerySucceeded = success;
+                                               layout = response.trimmed();
+                                               layoutReceived = true;
+                                           });
+        QTRY_VERIFY_WITH_TIMEOUT(layoutReceived, 5000);
+        QVERIFY(layoutQuerySucceeded);
+        QVERIFY(TmuxLayoutParser::parse(layout).has_value());
         QTRY_VERIFY_WITH_TIMEOUT(
             [&] {
                 for (const auto &saved : controller->workspaceSnapshot().windows) {

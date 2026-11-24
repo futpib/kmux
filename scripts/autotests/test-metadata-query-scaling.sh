@@ -35,12 +35,15 @@ import sys
 
 socket, logfile, mode, minimum = sys.argv[1:]
 result = subprocess.run(
-    ["tmux", "-S", socket, "display-message", "-p", "-t", "scale", "#{window_layout}"],
-    capture_output=True, text=True,
+    ["tmux", "-S", socket, "-C", "display-message", "-p", "-t", "scale", "#{window_layout}"],
+    input="", capture_output=True, text=True,
 )
-layout = result.stdout.strip()
-if result.returncode or not layout:
+# tmux 3.8 uses JSON for ordinary clients and legacy layouts for control
+# clients. Match kmux's format and extract only a successful command reply.
+reply = re.search(r"^%begin ([^\n]+)\n([^\n]+)\n%end \1$", result.stdout, re.MULTILINE)
+if result.returncode or not reply:
     sys.exit(1)
+layout = reply[2]
 text = pathlib.Path(logfile).read_text(errors="replace")
 groups = {}
 for line in text.splitlines():
